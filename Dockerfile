@@ -43,7 +43,9 @@ RUN set -eux; \
     curl --fail --silent --show-error --location \
       "https://nodejs.org/dist/v${NODE_VERSION}/SHASUMS256.txt" \
       --output /tmp/SHASUMS256.txt; \
-    grep -F "  node-v${NODE_VERSION}-linux-${node_arch}.tar.xz" /tmp/SHASUMS256.txt | sha256sum --check --status -; \
+    grep -F "  node-v${NODE_VERSION}-linux-${node_arch}.tar.xz" /tmp/SHASUMS256.txt | \
+      sed "s#  node-v${NODE_VERSION}-linux-${node_arch}.tar.xz#  /tmp/node.tar.xz#" | \
+      sha256sum --check --status -; \
     tar --extract --file /tmp/node.tar.xz --directory /usr/local --strip-components=1; \
     rm -f /tmp/node.tar.xz /tmp/SHASUMS256.txt; \
     apt-get purge -y --auto-remove curl xz-utils; \
