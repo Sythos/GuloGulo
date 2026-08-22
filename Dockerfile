@@ -36,7 +36,7 @@ RUN set -eux; \
     export DEBIAN_FRONTEND=noninteractive; \
     apt-get update; \
     apt-get upgrade -y; \
-    apt-get install -y --no-install-recommends ca-certificates curl xz-utils; \
+    apt-get install -y --no-install-recommends ca-certificates curl libatomic1 xz-utils; \
     curl --fail --silent --show-error --location \
       "https://nodejs.org/dist/v${NODE_VERSION}/node-v${NODE_VERSION}-linux-${node_arch}.tar.xz" \
       --output /tmp/node.tar.xz; \
