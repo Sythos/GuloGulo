@@ -1,0 +1,67 @@
+# SPDX-License-Identifier: MIT
+# SPDX-FileCopyrightText: 2026 Sythos (https://www.sythos.net)
+# Author: Sythos (https://www.sythos.net)
+
+name: gulogulo
+
+services:
+  gulogulo:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    environment:
+      HOST: ${HOST:-0.0.0.0}
+      PORT: ${PORT:-8080}
+      APP_ENV: ${APP_ENV:-development}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      LOG_FORMAT: ${LOG_FORMAT:-json}
+      LDAP_ENABLED: ${LDAP_ENABLED:-false}
+      LDAP_URL: ${LDAP_URL:-ldaps://ldap.example.invalid:636}
+      LDAP_STARTTLS: ${LDAP_STARTTLS:-false}
+      LDAP_BIND_DN: ${LDAP_BIND_DN:-}
+      LDAP_BIND_PASSWORD: ${LDAP_BIND_PASSWORD:-}
+      LDAP_CONNECT_TIMEOUT_MS: ${LDAP_CONNECT_TIMEOUT_MS:-3000}
+      POSTGRES_ENABLED: ${POSTGRES_ENABLED:-false}
+      POSTGRES_HOST: ${POSTGRES_HOST:-postgres.example.invalid}
+      POSTGRES_PORT: ${POSTGRES_PORT:-5432}
+      POSTGRES_DB: ${POSTGRES_DB:-gulogulo}
+      POSTGRES_USER: ${POSTGRES_USER:-gulogulo}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-}
+      POSTGRES_SSLMODE: ${POSTGRES_SSLMODE:-verify-full}
+      POSTGRES_CONNECT_TIMEOUT_MS: ${POSTGRES_CONNECT_TIMEOUT_MS:-3000}
+    ports:
+      - "127.0.0.1:${GULOGULO_HTTP_PORT:-8080}:8080"
+    volumes:
+      - runtime-state:/var/lib/gulogulo
+      - mail-data:/var/lib/gulogulo/mail
+      - dav-data:/var/lib/gulogulo/dav
+      - backup-data:/var/lib/gulogulo/backups
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=64m
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    init: true
+    restart: "no"
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - "fetch('http://127.0.0.1:'+(process.env.PORT||8080)+'/health/ready').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"
+      interval: 30s
+      timeout: 5s
+      start_period: 10s
+      retries: 3
+
+volumes:
+  runtime-state:
+    name: gulogulo-runtime-state
+  mail-data:
+    name: gulogulo-mail-data
+  dav-data:
+    name: gulogulo-dav-data
+  backup-data:
+    name: gulogulo-backup-data

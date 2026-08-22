@@ -1,9 +1,18 @@
+<!--
+SPDX-License-Identifier: MIT
+SPDX-FileCopyrightText: 2026 Sythos (https://www.sythos.net)
+Author: Sythos (https://www.sythos.net)
+-->
+
 # Gulo Gulo
 
 [![Issues](https://img.shields.io/github/issues/Sythos/GuloGulo?label=issues)](https://github.com/Sythos/GuloGulo/issues)
 [![Last commit](https://img.shields.io/github/last-commit/Sythos/GuloGulo?label=last%20commit)](https://github.com/Sythos/GuloGulo/commits/main/)
 [![Commit tests](https://github.com/Sythos/GuloGulo/actions/workflows/commit-tests.yml/badge.svg)](https://github.com/Sythos/GuloGulo/actions/workflows/commit-tests.yml)
 [![PR validation](https://github.com/Sythos/GuloGulo/actions/workflows/pr-validation.yml/badge.svg)](https://github.com/Sythos/GuloGulo/actions/workflows/pr-validation.yml)
+
+Gulo Gulo is released under the MIT License. See [LICENSE](LICENSE) for the
+complete license text.
 
 Gulo Gulo is an OCI-native, mail-first, tenant-isolated groupware platform
 built around open protocols and operationally safe deployment.
@@ -23,6 +32,24 @@ document folder beside this repository during bootstrap. Repository
 documentation, source code, variables, configuration, tests, and notes are
 written in English.
 
+## M0 Docker-first scaffold
+
+The first runnable milestone contains a dependency-light Node.js runtime with
+safe liveness and readiness endpoints. Docker and Compose are required from
+this point onward:
+
+~~~powershell
+npm test
+docker compose --env-file .env.example config
+./scripts/m0-smoke.ps1
+~~~
+
+The M0 container is intentionally not a mail server yet. LDAP and PostgreSQL
+are external, disabled by default, and represented only by non-secret
+configuration placeholders. The accepted Gulo Gulo runtime and frontend
+architecture is recorded in ADR-001-gulogulo-runtime-and-frontend-architecture.md
+in the document folder.
+
 ## Core architecture
 
 The V1 platform is designed around:
@@ -33,7 +60,7 @@ The V1 platform is designed around:
 - Dovecot for IMAP, IMAP IDLE, LMTP, and Sieve;
 - an external LDAP directory;
 - an external PostgreSQL database;
-- WebWare implemented with HTML5 and TypeScript;
+- Gulo Gulo web application implemented with HTML5 and TypeScript;
 - CalDAV and CardDAV interoperability;
 - tenant, master, and user RBAC;
 - explicit quotas, aliases, delegations, and audit;

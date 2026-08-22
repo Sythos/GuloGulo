@@ -1,3 +1,7 @@
+# SPDX-License-Identifier: MIT
+# SPDX-FileCopyrightText: 2026 Sythos (https://www.sythos.net)
+# Author: Sythos (https://www.sythos.net)
+
 name: Quality gates
 
 on:
@@ -45,11 +49,40 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          test -f LICENSE
+          grep -Fq 'MIT License' LICENSE
           test -f README.md
           grep -Fxq '# Gulo Gulo' README.md
+          test -f scripts/m0-smoke.ps1
           test -f .github/workflows/commit-tests.yml
           test -f .github/workflows/pr-validation.yml
           test -f .github/workflows/quality-gates.yml
+
+      - name: Validate MIT and SPDX metadata
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          for file in \
+            README.md \
+            Dockerfile \
+            compose.yaml \
+            .env.example \
+            .dockerignore \
+            scripts/m0-smoke.ps1 \
+            src/runtime/config.mjs \
+            src/runtime/index.mjs \
+            src/runtime/logger.mjs \
+            src/runtime/server.mjs \
+            src/runtime/runtime.test.mjs \
+            .github/workflows/commit-tests.yml \
+            .github/workflows/pr-validation.yml \
+            .github/workflows/quality-gates.yml; do
+            grep -Fq 'SPDX-License-Identifier: MIT' "$file"
+            grep -Fq 'Author: Sythos (https://www.sythos.net)' "$file"
+          done
+
+          node -e "const p=require('./package.json'); if (p.license !== 'MIT' || p.author !== 'Sythos (https://www.sythos.net)' || p.spdxLicenseIdentifier !== 'MIT') process.exit(1)"
 
       - name: Set up Node.js when package metadata exists
         if: hashFiles('package.json') != ''
@@ -80,6 +113,16 @@ jobs:
           else
             echo "No package test script is defined; repository checks remain active."
           fi
+
+      - name: Run Docker Compose M0 smoke checks
+        if: hashFiles('compose.yaml') != '' || hashFiles('compose.yml') != '' || hashFiles('docker-compose.yml') != '' || hashFiles('docker-compose.yaml') != ''
+        shell: pwsh
+        run: ./scripts/m0-smoke.ps1
+
+      - name: Report Docker smoke-check status when Compose is not defined
+        if: hashFiles('compose.yaml') == '' && hashFiles('compose.yml') == '' && hashFiles('docker-compose.yml') == '' && hashFiles('docker-compose.yaml') == ''
+        shell: bash
+        run: echo "No Compose file exists yet; M0 Docker smoke checks are deferred until the Docker-first scaffold is added."
 
       - name: Report package-test status when no package exists
         if: hashFiles('package.json') == ''
