@@ -53,6 +53,8 @@ jobs:
           grep -Fq 'MIT License' LICENSE
           test -f README.md
           grep -Fxq '# Gulo Gulo' README.md
+          test -f assets/README.md
+          test -f assets/gulo-gulo-calendar-mail.png
           test -f scripts/m0-smoke.ps1
           test -f scripts/m1-fixture-smoke.ps1
           test -f test/fixtures/manifest.json
@@ -154,6 +156,8 @@ jobs:
           grep -Fq 'Author: Sythos (https://www.sythos.net)' tsconfig.json
           grep -Fq 'SPDX-License-Identifier: MIT' web/README.md
           grep -Fq 'Author: Sythos (https://www.sythos.net)' web/README.md
+          grep -Fq 'SPDX-License-Identifier: MIT' assets/README.md
+          grep -Fq 'Author: Sythos (https://www.sythos.net)' assets/README.md
           node -e "const m=require('./web/manifest.json'); if (m.license !== 'MIT' || m.author !== 'Sythos (https://www.sythos.net)' || m.spdxLicenseIdentifier !== 'MIT') process.exit(1)"
 
           grep -Fq 'GULOGULO_VOLUMES_EXTERNAL' compose.yaml

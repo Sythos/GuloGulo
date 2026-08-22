@@ -11,6 +11,10 @@ Author: Sythos (https://www.sythos.net)
 [![Commit tests](https://github.com/Sythos/GuloGulo/actions/workflows/commit-tests.yml/badge.svg)](https://github.com/Sythos/GuloGulo/actions/workflows/commit-tests.yml)
 [![PR validation](https://github.com/Sythos/GuloGulo/actions/workflows/pr-validation.yml/badge.svg)](https://github.com/Sythos/GuloGulo/actions/workflows/pr-validation.yml)
 
+<p align="center">
+  <img src="assets/gulo-gulo-calendar-mail.png" alt="Wolverine tearing through a calendar and paper correspondence" width="720">
+</p>
+
 Gulo Gulo is an OCI-native, mail-first, tenant-isolated groupware platform.
 The guiding animal is the wolverine (*Gulo gulo*). Human-facing text uses
 **Gulo Gulo**; file names, paths, package names, and other machine-facing
@@ -98,6 +102,9 @@ gulogulo/
 │       ├── commit-tests.yml
 │       ├── pr-validation.yml
 │       └── quality-gates.yml
+├── assets/
+│   ├── README.md
+│   └── gulo-gulo-calendar-mail.png
 ├── config/
 │   └── schema.v1.json
 ├── doc/
