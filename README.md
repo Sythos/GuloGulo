@@ -78,6 +78,7 @@ where the item depends on external infrastructure.
 ### Operations
 
 - [x] health and metrics;
+- [x] multi-architecture Docker images for Ubuntu 26.04 LTS on amd64 (x86_64) and arm64;
 - [ ] log rotation;
 - [ ] alerts;
 - [x] Postfix queue visibility;
@@ -168,12 +169,10 @@ gulogulo/
 
 ## Development and contribution
 
-If you want to work on Gulo Gulo, start with a normal checkout of `git/`, pick
-the smallest useful change, and let the repository checks do their job. We keep
-dependencies, actions, runtimes, images, and external tools on their latest
-stable releases; the lockfile and the companion docs record the exact versions
-that were resolved. Please keep secrets, credentials, private keys, and real
-user data out of commits entirely.
+I keep dependencies, actions, runtimes, images, and external tools on their
+latest stable releases; the lockfile and the companion docs record the exact
+versions that were resolved. Please keep secrets, credentials, private keys,
+and real user data out of commits entirely.
 
 Every pushed commit and every pull request, whether it comes from an internal
 branch or an external fork, goes through the same read-only quality gates. A
