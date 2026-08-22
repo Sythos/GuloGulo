@@ -123,6 +123,17 @@ jobs:
           test -f src/auth/recovery-codes.mjs
           test -f src/auth/auth.test.mjs
           test -f doc/rbac-admin-mfa.md
+          test -f src/lifecycle/retention.mjs
+          test -f src/lifecycle/retention.test.mjs
+          test -f src/lifecycle/account-lifecycle.mjs
+          test -f src/lifecycle/account-lifecycle.test.mjs
+          test -f src/backup/backup-contract.mjs
+          test -f src/backup/backup-contract.test.mjs
+          test -f src/observability/log-policy.mjs
+          test -f src/observability/structured-event.mjs
+          test -f src/observability/alert-policy.mjs
+          test -f src/observability/observability.test.mjs
+          test -f doc/lifecycle-backup-dr.md
           grep -Fq 'profiles: ["local"]' compose.yaml
           grep -Fq 'profiles: ["test"]' compose.yaml
           grep -Fq 'profiles: ["fixture"]' compose.yaml
@@ -196,6 +207,12 @@ jobs:
           grep -Fq 'REPLAYED_CODE' src/auth/totp.mjs
           grep -Fq 'challenge' src/auth/webauthn.mjs
           grep -Fq 'One-time recovery' src/auth/recovery-codes.mjs
+          grep -Fq 'DEFAULT_TRASH_RETENTION_DAYS = 28' src/lifecycle/retention.mjs
+          grep -Fq "BACKUP_ENCRYPTION_ALGORITHM = 'aes-256-gcm'" src/backup/backup-contract.mjs
+          grep -Fq 'PURGE_REJECTED' src/lifecycle/retention.mjs
+          grep -Fq 'createLogRotationPolicy' src/observability/log-policy.mjs
+          grep -Fq 'createStructuredEvent' src/observability/structured-event.mjs
+          grep -Fq 'createAlertPolicy' src/observability/alert-policy.mjs
 
           grep -Fq 'SPDX-License-Identifier: MIT' config/schema.v1.json
           grep -Fq 'Sythos (https://www.sythos.net)' config/schema.v1.json
