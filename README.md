@@ -55,11 +55,11 @@ where the item depends on external infrastructure.
 
 - [x] sources of truth documented;
 - [x] quota ledger verified;
-- [ ] 28-day retention tested;
+- [x] 28-day retention tested;
 - [x] user backup authorization tested;
-- [ ] provider backup encrypted;
-- [ ] restore tested;
-- [ ] purge idempotent;
+- [x] provider backup encrypted;
+- [x] restore tested;
+- [x] purge idempotent;
 - [ ] account deletion runbook approved.
 
 ### Interoperability
@@ -68,19 +68,19 @@ where the item depends on external infrastructure.
 - [x] IMAP IDLE;
 - [x] Sieve;
 - [x] aliases;
-  - [x] CalDAV contract and conditional object semantics;
-  - [x] CardDAV contract and conditional object semantics;
-  - [x] .well-known resources;
-  - [x] autodiscovery contract with safe manual fallback;
-  - [x] ICS/vCard validation and metadata export;
+- [x] CalDAV contract and conditional object semantics;
+- [x] CardDAV contract and conditional object semantics;
+- [x] .well-known resources;
+- [x] autodiscovery contract with safe manual fallback;
+- [x] ICS/vCard validation and metadata export;
 - [x] timezone behavior.
 
 ### Operations
 
 - [x] health and metrics;
 - [x] multi-architecture Docker images for Ubuntu 26.04 LTS on amd64 (x86_64) and arm64;
-- [ ] log rotation;
-- [ ] alerts;
+- [x] log rotation;
+- [x] alerts;
 - [x] Postfix queue visibility;
 - [ ] automatic Rspamd/ClamAV updates;
 - [ ] blue/green rehearsal;
@@ -122,6 +122,7 @@ gulogulo/
 │   ├── container-patching.md
 │   ├── dav-and-discovery.md
 │   ├── identity-and-postgres.md
+│   ├── lifecycle-backup-dr.md
 │   ├── mail-core.md
 │   ├── rbac-admin-mfa.md
 │   ├── observability.md
@@ -133,10 +134,13 @@ gulogulo/
 ├── src/
 │   ├── admin/
 │   ├── auth/
+│   ├── backup/
 │   ├── db/migrations/
 │   ├── foundation/
 │   ├── integrations/
+│   ├── lifecycle/
 │   ├── mail/
+│   ├── observability/
 │   ├── runtime/
 │   ├── dav/
 │   │   ├── caldav/
