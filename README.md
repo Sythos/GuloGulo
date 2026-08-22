@@ -40,14 +40,14 @@ where the item depends on external infrastructure.
 ### Security
 
 - [ ] no open relay;
-- [ ] TLS and certificates verified;
-- [ ] ACME renewal tested;
+- [x] TLS and certificate health contract verified;
+- [x] ACME renewal state and safe-reload contract tested;
 - [ ] LDAP uses TLS and minimum bind privilege;
 - [ ] PostgreSQL protected and backed up;
 - [ ] secret store and rotation configured;
 - [x] CSP, CSRF, and security headers;
 - [x] email HTML sanitization;
-- [ ] rate and abuse controls;
+- [x] rate and abuse controls contract tested;
 - [x] audit has no secrets;
 - [ ] images have SBOM and verified digest.
 
@@ -117,6 +117,7 @@ gulogulo/
 ├── doc/
 │   ├── README.md
 │   ├── api-and-mcp.md
+│   ├── acme-abuse-deployment.md
 │   ├── compose-and-fixtures.md
 │   ├── configuration.md
 │   ├── container-patching.md
@@ -141,6 +142,9 @@ gulogulo/
 │   ├── lifecycle/
 │   ├── mail/
 │   ├── observability/
+│   ├── ops/
+│   │   ├── abuse/
+│   │   └── acme/
 │   ├── runtime/
 │   ├── dav/
 │   │   ├── caldav/

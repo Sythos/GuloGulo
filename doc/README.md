@@ -31,6 +31,15 @@ normal workflow.
 - [M3 mail core](mail-core.md) — explicit mailbox and alias delivery, closed
   submission, scanner verdicts, LMTP retry/bounce behavior, queue visibility,
   Sieve forwarding protection, and deterministic IMAP IDLE events.
+- [RBAC, administration, and web MFA](rbac-admin-mfa.md) — role and permission
+  matrices, delegation, quota/admin metadata, password policy, TOTP, WebAuthn,
+  recovery, and the content/session privacy boundary.
+- [Lifecycle, backup, and disaster recovery](lifecycle-backup-dr.md) — the
+  28-day purge rule, account lifecycle, encrypted backup envelopes, restore
+  metadata, and operational evidence limits.
+- [ACME, abuse, and production deployment](acme-abuse-deployment.md) —
+  Let's Encrypt and generic ACME configuration, renewal/reload health,
+  metadata-only rate and abuse controls, and fail-closed Compose readiness.
 - [Upgrade and migration operations](upgrade-and-migration.md) — the planned
   provider-only API/MCP command contract, Docker-to-Docker replacement, and
   Kubernetes blue/green cutover and rollback runbook.
@@ -43,7 +52,9 @@ normal workflow.
   configuration fallback.
 
 The project is still intentionally small. The documents describe real behavior
-only; the DAV contract is now implemented as a deterministic adapter boundary.
-Production deployment still needs a persistent DAV backend, authenticated HTTP
-method adapter, and standard-client interoperability rehearsal before it is
-treated as a complete external service.
+only: DAV, administration, lifecycle, backup, observability, ACME, and abuse
+are deterministic contract boundaries until their external adapters and
+rehearsals are in place. Production deployment still needs a persistent DAV
+backend, authenticated HTTP method adapter, real ACME/DNS operations, measured
+RPO/RTO, and standard-client interoperability rehearsal before it is treated as
+a complete external service.
