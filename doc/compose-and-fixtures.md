@@ -21,8 +21,11 @@ docker compose --env-file .env ps
 
 The service listens on `127.0.0.1:8080` by default. The image is non-root,
 read-only at the root filesystem, drops all Linux capabilities, and keeps
-runtime state in named volumes. The mail, DAV, and backup volumes are
-placeholders only; no source of truth has been implemented yet.
+runtime state in named volumes. Set `GULOGULO_VOLUMES_EXTERNAL=true` only when
+the volumes were created and backed up independently of Compose; this keeps
+user data safe across container replacement and blue/green upgrades. The mail,
+DAV, and backup paths are persistent mounts even while their higher-level
+protocol services are still future milestones.
 
 ## Profiles
 

@@ -59,8 +59,8 @@ patching mode: build_and_operator
 ```
 
 The parser rejects attempts to enable catch-all, user forwarding, or a
-write-capable API. Enabling LDAP requires `ldap.bindSecretRef`; enabling
-PostgreSQL requires `postgres.dsnSecretRef`.
+write-capable API. Enabling LDAP requires `ldap.bindDn`, `ldap.bindSecretRef`,
+and `ldap.userBaseDn`; enabling PostgreSQL requires `postgres.dsnSecretRef`.
 
 ## Secrets
 

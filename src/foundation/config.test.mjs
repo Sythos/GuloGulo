@@ -182,7 +182,9 @@ test('secret references are allowed but secret values and unsafe cross-field set
   const configuration = loadConfiguration(
     {
       GULOGULO_LDAP_ENABLED: 'true',
+      GULOGULO_LDAP_BIND_DN: 'cn=service,dc=example,dc=test',
       GULOGULO_LDAP_BIND_SECRET_REF: 'ldap-bind',
+      GULOGULO_LDAP_USER_BASE_DN: 'ou=users,dc=example,dc=test',
       GULOGULO_POSTGRES_ENABLED: 'true',
       GULOGULO_POSTGRES_DSN_SECRET_REF: 'postgres-dsn',
       GULOGULO_LDAP_BIND_PASSWORD: 'must-not-be-read',

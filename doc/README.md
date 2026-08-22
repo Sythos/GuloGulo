@@ -24,7 +24,11 @@ normal workflow.
   build-time security updates, and controlled maintenance operations.
 - [API and MCP operations](api-and-mcp.md) — the read-only monitoring contract,
   safe examples, and the boundary between monitoring and deployment control.
+- [External identity and application state](identity-and-postgres.md) — LDAP,
+  PostgreSQL, migrations, tenant isolation, and transactional quota checks.
+- [Persistent storage and quotas](storage-and-quotas.md) — external volumes,
+  blue/green mounts, backup boundaries, and durable gross-quota accounting.
 
 The project is still intentionally small. The documents describe real behavior
-only; LDAP, PostgreSQL, mail, DAV, and user-facing features remain future
-milestones until their own implementation and tests land.
+only; mail, DAV, and user-facing features remain future milestones until their
+own implementation and tests land.

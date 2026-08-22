@@ -51,7 +51,18 @@ const TOP_LEVEL_KEYS = new Set([
 const SECTION_KEYS = Object.freeze({
   project: new Set(['displayName', 'machineName']),
   runtime: new Set(['host', 'port', 'serviceName', 'environment', 'shutdownTimeoutMs']),
-  ldap: new Set(['enabled', 'url', 'startTls', 'bindSecretRef', 'userBaseDn', 'connectTimeoutMs']),
+  ldap: new Set([
+    'enabled',
+    'url',
+    'startTls',
+    'bindDn',
+    'bindSecretRef',
+    'userBaseDn',
+    'connectTimeoutMs',
+    'operationTimeoutMs',
+    'poolMax',
+    'retryAttempts',
+  ]),
   postgres: new Set([
     'enabled',
     'host',
@@ -61,6 +72,9 @@ const SECTION_KEYS = Object.freeze({
     'sslMode',
     'dsnSecretRef',
     'connectTimeoutMs',
+    'idleTimeoutMs',
+    'poolMax',
+    'retryAttempts',
   ]),
   mail: new Set(['imapIdle', 'pop3sEnabled', 'catchAll', 'userForwarding']),
   certificates: new Set(['provider', 'autoRenew']),
@@ -86,9 +100,13 @@ const ENVIRONMENT_VARIABLES = Object.freeze({
     enabled: ['GULOGULO_LDAP_ENABLED', 'LDAP_ENABLED'],
     url: ['GULOGULO_LDAP_URL', 'LDAP_URL'],
     startTls: ['GULOGULO_LDAP_STARTTLS', 'LDAP_STARTTLS'],
+    bindDn: ['GULOGULO_LDAP_BIND_DN', 'LDAP_BIND_DN'],
     bindSecretRef: ['GULOGULO_LDAP_BIND_SECRET_REF', 'LDAP_BIND_SECRET_REF'],
     userBaseDn: ['GULOGULO_LDAP_USER_BASE_DN', 'LDAP_USER_BASE_DN'],
     connectTimeoutMs: ['GULOGULO_LDAP_CONNECT_TIMEOUT_MS', 'LDAP_CONNECT_TIMEOUT_MS'],
+    operationTimeoutMs: ['GULOGULO_LDAP_OPERATION_TIMEOUT_MS', 'LDAP_OPERATION_TIMEOUT_MS'],
+    poolMax: ['GULOGULO_LDAP_POOL_MAX', 'LDAP_POOL_MAX'],
+    retryAttempts: ['GULOGULO_LDAP_RETRY_ATTEMPTS', 'LDAP_RETRY_ATTEMPTS'],
   },
   postgres: {
     enabled: ['GULOGULO_POSTGRES_ENABLED', 'POSTGRES_ENABLED'],
@@ -99,6 +117,9 @@ const ENVIRONMENT_VARIABLES = Object.freeze({
     sslMode: ['GULOGULO_POSTGRES_SSLMODE', 'POSTGRES_SSLMODE'],
     dsnSecretRef: ['GULOGULO_POSTGRES_DSN_SECRET_REF', 'POSTGRES_DSN_SECRET_REF'],
     connectTimeoutMs: ['GULOGULO_POSTGRES_CONNECT_TIMEOUT_MS', 'POSTGRES_CONNECT_TIMEOUT_MS'],
+    idleTimeoutMs: ['GULOGULO_POSTGRES_IDLE_TIMEOUT_MS', 'POSTGRES_IDLE_TIMEOUT_MS'],
+    poolMax: ['GULOGULO_POSTGRES_POOL_MAX', 'POSTGRES_POOL_MAX'],
+    retryAttempts: ['GULOGULO_POSTGRES_RETRY_ATTEMPTS', 'POSTGRES_RETRY_ATTEMPTS'],
   },
   mail: {
     imapIdle: ['GULOGULO_MAIL_IMAP_IDLE', 'MAIL_IMAP_IDLE'],
@@ -255,6 +276,14 @@ function readDistinguishedName(value, name) {
   return readString(value, name, DISTINGUISHED_NAME_PATTERN);
 }
 
+function readEnvironmentOptionalDistinguishedName(value, name) {
+  if (value === '') {
+    return null;
+  }
+
+  return readDistinguishedName(value, name);
+}
+
 function readPatchStatusFile(value, name) {
   return readString(value, name, PATCH_STATUS_PATH_PATTERN);
 }
@@ -394,9 +423,13 @@ function buildConfiguration(fileConfiguration, environment) {
       enabled: readBoolean(ldapFile.enabled ?? false, 'ldap.enabled'),
       url: readUrl(ldapFile.url ?? 'ldaps://ldap.example.invalid:636', 'ldap.url'),
       startTls: readBoolean(ldapFile.startTls ?? false, 'ldap.startTls'),
+      bindDn: ldapFile.bindDn === undefined ? null : readDistinguishedName(ldapFile.bindDn, 'ldap.bindDn'),
       bindSecretRef: ldapFile.bindSecretRef === undefined ? null : readSecretReference(ldapFile.bindSecretRef, 'ldap.bindSecretRef'),
       userBaseDn: ldapFile.userBaseDn === undefined ? null : readDistinguishedName(ldapFile.userBaseDn, 'ldap.userBaseDn'),
       connectTimeoutMs: readInteger(ldapFile.connectTimeoutMs ?? 3_000, 'ldap.connectTimeoutMs', 100, 120_000),
+      operationTimeoutMs: readInteger(ldapFile.operationTimeoutMs ?? 5_000, 'ldap.operationTimeoutMs', 100, 120_000),
+      poolMax: readInteger(ldapFile.poolMax ?? 4, 'ldap.poolMax', 1, 32),
+      retryAttempts: readInteger(ldapFile.retryAttempts ?? 2, 'ldap.retryAttempts', 0, 5),
     },
     postgres: {
       enabled: readBoolean(postgresFile.enabled ?? false, 'postgres.enabled'),
@@ -411,6 +444,9 @@ function buildConfiguration(fileConfiguration, environment) {
       ),
       dsnSecretRef: postgresFile.dsnSecretRef === undefined ? null : readSecretReference(postgresFile.dsnSecretRef, 'postgres.dsnSecretRef'),
       connectTimeoutMs: readInteger(postgresFile.connectTimeoutMs ?? 3_000, 'postgres.connectTimeoutMs', 100, 120_000),
+      idleTimeoutMs: readInteger(postgresFile.idleTimeoutMs ?? 30_000, 'postgres.idleTimeoutMs', 1_000, 600_000),
+      poolMax: readInteger(postgresFile.poolMax ?? 8, 'postgres.poolMax', 1, 32),
+      retryAttempts: readInteger(postgresFile.retryAttempts ?? 2, 'postgres.retryAttempts', 0, 5),
     },
     mail: {
       imapIdle: readBoolean(mailFile.imapIdle ?? true, 'mail.imapIdle'),
@@ -486,9 +522,13 @@ function buildConfiguration(fileConfiguration, environment) {
       applyEnvironmentValue(target, 'enabled', environment, variables.enabled, readEnvironmentBoolean);
       applyEnvironmentValue(target, 'url', environment, variables.url, readUrl);
       applyEnvironmentValue(target, 'startTls', environment, variables.startTls, readEnvironmentBoolean);
+      applyEnvironmentValue(target, 'bindDn', environment, variables.bindDn, readEnvironmentOptionalDistinguishedName);
       applyEnvironmentValue(target, 'bindSecretRef', environment, variables.bindSecretRef, readEnvironmentOptionalSecretReference);
       applyEnvironmentValue(target, 'userBaseDn', environment, variables.userBaseDn, readDistinguishedName);
       applyEnvironmentValue(target, 'connectTimeoutMs', environment, variables.connectTimeoutMs, (value, name) => readEnvironmentInteger(value, name, 100, 120_000));
+      applyEnvironmentValue(target, 'operationTimeoutMs', environment, variables.operationTimeoutMs, (value, name) => readEnvironmentInteger(value, name, 100, 120_000));
+      applyEnvironmentValue(target, 'poolMax', environment, variables.poolMax, (value, name) => readEnvironmentInteger(value, name, 1, 32));
+      applyEnvironmentValue(target, 'retryAttempts', environment, variables.retryAttempts, (value, name) => readEnvironmentInteger(value, name, 0, 5));
       continue;
     }
 
@@ -501,6 +541,9 @@ function buildConfiguration(fileConfiguration, environment) {
       applyEnvironmentValue(target, 'sslMode', environment, variables.sslMode, (value, name) => readEnvironmentEnum(value, name, ['disable', 'allow', 'prefer', 'require', 'verify-ca', 'verify-full']));
       applyEnvironmentValue(target, 'dsnSecretRef', environment, variables.dsnSecretRef, readEnvironmentOptionalSecretReference);
       applyEnvironmentValue(target, 'connectTimeoutMs', environment, variables.connectTimeoutMs, (value, name) => readEnvironmentInteger(value, name, 100, 120_000));
+      applyEnvironmentValue(target, 'idleTimeoutMs', environment, variables.idleTimeoutMs, (value, name) => readEnvironmentInteger(value, name, 1_000, 600_000));
+      applyEnvironmentValue(target, 'poolMax', environment, variables.poolMax, (value, name) => readEnvironmentInteger(value, name, 1, 32));
+      applyEnvironmentValue(target, 'retryAttempts', environment, variables.retryAttempts, (value, name) => readEnvironmentInteger(value, name, 0, 5));
       continue;
     }
 
@@ -552,6 +595,14 @@ function buildConfiguration(fileConfiguration, environment) {
 
   if (config.ldap.enabled && config.ldap.bindSecretRef === null) {
     throw configurationError('ldap.bindSecretRef is required when ldap.enabled is true');
+  }
+
+  if (config.ldap.enabled && config.ldap.bindDn === null) {
+    throw configurationError('ldap.bindDn is required when ldap.enabled is true');
+  }
+
+  if (config.ldap.enabled && config.ldap.userBaseDn === null) {
+    throw configurationError('ldap.userBaseDn is required when ldap.enabled is true');
   }
 
   if (config.ldap.startTls && config.ldap.url.startsWith('ldaps:')) {

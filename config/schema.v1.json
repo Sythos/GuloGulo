@@ -50,9 +50,13 @@
         "enabled": { "type": "boolean", "default": false },
         "url": { "type": "string", "pattern": "^ldaps?://" },
         "startTls": { "type": "boolean", "default": false },
+        "bindDn": { "type": ["string", "null"] },
         "bindSecretRef": { "type": ["string", "null"], "pattern": "^[A-Za-z0-9][A-Za-z0-9._/-]{0,127}$" },
         "userBaseDn": { "type": ["string", "null"] },
-        "connectTimeoutMs": { "type": "integer", "minimum": 100, "maximum": 120000, "default": 3000 }
+        "connectTimeoutMs": { "type": "integer", "minimum": 100, "maximum": 120000, "default": 3000 },
+        "operationTimeoutMs": { "type": "integer", "minimum": 100, "maximum": 120000, "default": 5000 },
+        "poolMax": { "type": "integer", "minimum": 1, "maximum": 32, "default": 4 },
+        "retryAttempts": { "type": "integer", "minimum": 0, "maximum": 5, "default": 2 }
       }
     },
     "postgres": {
@@ -66,7 +70,10 @@
         "user": { "type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$" },
         "sslMode": { "type": "string", "enum": ["disable", "allow", "prefer", "require", "verify-ca", "verify-full"], "default": "verify-full" },
         "dsnSecretRef": { "type": ["string", "null"], "pattern": "^[A-Za-z0-9][A-Za-z0-9._/-]{0,127}$" },
-        "connectTimeoutMs": { "type": "integer", "minimum": 100, "maximum": 120000, "default": 3000 }
+        "connectTimeoutMs": { "type": "integer", "minimum": 100, "maximum": 120000, "default": 3000 },
+        "idleTimeoutMs": { "type": "integer", "minimum": 1000, "maximum": 600000, "default": 30000 },
+        "poolMax": { "type": "integer", "minimum": 1, "maximum": 32, "default": 8 },
+        "retryAttempts": { "type": "integer", "minimum": 0, "maximum": 5, "default": 2 }
       }
     },
     "mail": {

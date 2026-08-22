@@ -67,6 +67,12 @@ jobs:
           test -f doc/compose-and-fixtures.md
           test -f doc/container-patching.md
           test -f doc/api-and-mcp.md
+          test -f doc/identity-and-postgres.md
+          test -f doc/storage-and-quotas.md
+          test -f src/integrations/tenant-context.mjs
+          test -f src/integrations/ldap-client.mjs
+          test -f src/integrations/postgres-store.mjs
+          test -f src/db/migrations/0001_m2_foundation.sql
           test -f .github/workflows/commit-tests.yml
           test -f .github/workflows/pr-validation.yml
           test -f .github/workflows/quality-gates.yml
@@ -88,6 +94,7 @@ jobs:
             scripts/m0-smoke.ps1 \
             scripts/m1-fixture-smoke.ps1 \
             scripts/container-patch.sh \
+            .gitignore \
             .github/workflows/commit-tests.yml \
             .github/workflows/pr-validation.yml \
             .github/workflows/quality-gates.yml; do
@@ -107,6 +114,11 @@ jobs:
             grep -Fq 'SPDX-License-Identifier: MIT' "$file"
             grep -Fq 'Author: Sythos (https://www.sythos.net)' "$file"
           done
+
+          grep -Fq 'GULOGULO_VOLUMES_EXTERNAL' compose.yaml
+          grep -Fq 'FORCE ROW LEVEL SECURITY' src/db/migrations/0001_m2_foundation.sql
+          grep -Fq "set_config('gulogulo.tenant_id'" src/integrations/postgres-store.mjs
+          grep -Fq 'rejectUnauthorized: true' src/integrations/ldap-client.mjs
 
           grep -Fq 'SPDX-License-Identifier: MIT' config/schema.v1.json
           grep -Fq 'Sythos (https://www.sythos.net)' config/schema.v1.json
@@ -214,6 +226,26 @@ jobs:
           "${compose[@]}" --profile test config --quiet
           "${compose[@]}" --profile test build --pull gulogulo-test
           "${compose[@]}" --profile test run --rm --no-deps gulogulo-test
+
+      - name: Run disposable PostgreSQL M2 integration contract
+        if: hashFiles('src/integrations/postgres.integration.test.mjs') != ''
+        shell: bash
+        run: |
+          set -euo pipefail
+          container="gulogulo-m2-postgres-${GITHUB_RUN_ID}"
+          cleanup() { docker rm --force "$container" >/dev/null 2>&1 || true; }
+          trap cleanup EXIT
+          docker run --detach --name "$container" \
+            --env POSTGRES_DB=gulogulo \
+            --env POSTGRES_USER=gulogulo \
+            --env POSTGRES_HOST_AUTH_METHOD=trust \
+            postgres:18 >/dev/null
+          for attempt in {1..30}; do
+            if docker exec "$container" pg_isready --username=gulogulo --dbname=gulogulo >/dev/null 2>&1; then break; fi
+            sleep 2
+          done
+          docker exec "$container" pg_isready --username=gulogulo --dbname=gulogulo >/dev/null
+          GULOGULO_M2_POSTGRES_DSN="postgresql://gulogulo@$(docker inspect --format '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' "$container"):5432/gulogulo" npm run test:m2:postgres
 
       - name: Run M1 fixture, health, and metrics smoke checks
         if: hashFiles('compose.yaml') != '' || hashFiles('compose.yml') != '' || hashFiles('docker-compose.yml') != '' || hashFiles('docker-compose.yaml') != ''
