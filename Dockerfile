@@ -86,6 +86,15 @@ RUN set -eux; \
     else \
       npm install --include=dev --ignore-scripts --no-audit --no-fund; \
     fi; \
+    typescript_platform_package=''; \
+    case "${TARGETARCH:-${debian_arch}}" in \
+      amd64) typescript_platform_package='@typescript/typescript-linux-x64' ;; \
+      arm64) typescript_platform_package='@typescript/typescript-linux-arm64' ;; \
+    esac; \
+    if [ -n "${typescript_platform_package}" ] && ! node -e "require.resolve('${typescript_platform_package}/package.json')" >/dev/null 2>&1; then \
+      typescript_version="$(node -p "require('./node_modules/typescript/package.json').version")"; \
+      npm install --no-save --ignore-scripts --no-audit --no-fund "${typescript_platform_package}@${typescript_version}"; \
+    fi; \
     if [ -f web/src/app.ts ]; then \
       npm run build:web; \
     fi; \
