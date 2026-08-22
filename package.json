@@ -9,7 +9,7 @@
   "spdxLicenseIdentifier": "MIT",
   "spdxFileCopyrightText": "2026 Sythos (https://www.sythos.net)",
   "engines": {
-    "node": ">=20.0.0"
+    "node": ">=26.7.0"
   },
   "scripts": {
     "start": "node src/runtime/index.mjs",

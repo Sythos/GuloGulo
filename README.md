@@ -171,6 +171,8 @@ validation checks as required before merge.
 - Keep migrations backward-compatible for the blue/green window.
 - Never commit secrets, credentials, private keys, or real user data.
 - Inspect the remote, branch, and staged scope before pushing.
+- Use the latest stable release of every package, library, action, runtime,
+  image, and external software dependency; record any approved exception.
 
 ## Repository layout
 

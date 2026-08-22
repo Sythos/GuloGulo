@@ -88,7 +88,8 @@ jobs:
         if: hashFiles('package.json') != ''
         uses: actions/setup-node@v6
         with:
-          node-version: lts/*
+          node-version: latest
+          check-latest: true
 
       - name: Install dependencies and run the test script when available
         if: hashFiles('package.json') != ''

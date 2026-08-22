@@ -2,10 +2,10 @@
 # SPDX-FileCopyrightText: 2026 Sythos (https://www.sythos.net)
 # Author: Sythos (https://www.sythos.net)
 
-# The versioned tag keeps the first scaffold reproducible while the image
-# digest can be pinned by the release pipeline once the base-image policy is
-# established.
-FROM node:22.17.1-alpine3.22
+# Verified 2026-08-22 against the official Node.js release index and the
+# Docker Official Image tags. This is the latest stable Node.js release
+# available at adoption time, paired with the latest stable Alpine line.
+FROM node:26.7.0-alpine3.24
 
 ENV NODE_ENV=production \
     HOST=0.0.0.0 \
