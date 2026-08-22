@@ -105,6 +105,11 @@ services:
   # here, avoiding a second port binding during the default smoke path.
   gulogulo-local-check:
     <<: *gulogulo-service
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        INSTALL_DEV: "true"
     profiles: ["local"]
     command: ["npm", "test"]
     environment:
@@ -120,6 +125,11 @@ services:
   # image and with no external dependency credentials.
   gulogulo-test:
     <<: *gulogulo-service
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        INSTALL_DEV: "true"
     profiles: ["test"]
     command: ["npm", "test"]
     environment:

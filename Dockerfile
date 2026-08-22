@@ -11,6 +11,7 @@ FROM ubuntu:26.04
 
 ARG NODE_VERSION=26.7.0
 ARG TARGETARCH
+ARG INSTALL_DEV=false
 
 ENV NODE_ENV=production \
     HOST=0.0.0.0 \
@@ -88,7 +89,9 @@ RUN set -eux; \
     if [ -f web/src/app.ts ]; then \
       npm run build:web; \
     fi; \
-    npm prune --omit=dev; \
+    if [ "${INSTALL_DEV}" != "true" ]; then \
+      npm prune --omit=dev; \
+    fi; \
     npm cache clean --force; \
     chown -R gulogulo:gulogulo /app
 
