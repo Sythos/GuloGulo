@@ -243,6 +243,14 @@ function readSecretReference(value, name) {
   return readString(value, name, SECRET_REFERENCE_PATTERN);
 }
 
+function readEnvironmentOptionalSecretReference(value, name) {
+  if (value === '') {
+    return null;
+  }
+
+  return readSecretReference(value, name);
+}
+
 function readDistinguishedName(value, name) {
   return readString(value, name, DISTINGUISHED_NAME_PATTERN);
 }
@@ -478,7 +486,7 @@ function buildConfiguration(fileConfiguration, environment) {
       applyEnvironmentValue(target, 'enabled', environment, variables.enabled, readEnvironmentBoolean);
       applyEnvironmentValue(target, 'url', environment, variables.url, readUrl);
       applyEnvironmentValue(target, 'startTls', environment, variables.startTls, readEnvironmentBoolean);
-      applyEnvironmentValue(target, 'bindSecretRef', environment, variables.bindSecretRef, readSecretReference);
+      applyEnvironmentValue(target, 'bindSecretRef', environment, variables.bindSecretRef, readEnvironmentOptionalSecretReference);
       applyEnvironmentValue(target, 'userBaseDn', environment, variables.userBaseDn, readDistinguishedName);
       applyEnvironmentValue(target, 'connectTimeoutMs', environment, variables.connectTimeoutMs, (value, name) => readEnvironmentInteger(value, name, 100, 120_000));
       continue;
@@ -491,7 +499,7 @@ function buildConfiguration(fileConfiguration, environment) {
       applyEnvironmentValue(target, 'database', environment, variables.database, (value, name) => readEnvironmentString(value, name, SAFE_NAME_PATTERN));
       applyEnvironmentValue(target, 'user', environment, variables.user, (value, name) => readEnvironmentString(value, name, SAFE_NAME_PATTERN));
       applyEnvironmentValue(target, 'sslMode', environment, variables.sslMode, (value, name) => readEnvironmentEnum(value, name, ['disable', 'allow', 'prefer', 'require', 'verify-ca', 'verify-full']));
-      applyEnvironmentValue(target, 'dsnSecretRef', environment, variables.dsnSecretRef, readSecretReference);
+      applyEnvironmentValue(target, 'dsnSecretRef', environment, variables.dsnSecretRef, readEnvironmentOptionalSecretReference);
       applyEnvironmentValue(target, 'connectTimeoutMs', environment, variables.connectTimeoutMs, (value, name) => readEnvironmentInteger(value, name, 100, 120_000));
       continue;
     }
