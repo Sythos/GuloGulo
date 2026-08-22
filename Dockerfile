@@ -81,10 +81,14 @@ RUN set -eux; \
       exit 1; \
     fi; \
     if [ -f package-lock.json ]; then \
-      npm ci --omit=dev --ignore-scripts; \
+      npm ci --ignore-scripts --no-audit --no-fund; \
     else \
-      npm install --omit=dev --ignore-scripts; \
+      npm install --ignore-scripts --no-audit --no-fund; \
     fi; \
+    if [ -f web/src/app.ts ]; then \
+      npm run build:web; \
+    fi; \
+    npm prune --omit=dev; \
     npm cache clean --force; \
     chown -R gulogulo:gulogulo /app
 

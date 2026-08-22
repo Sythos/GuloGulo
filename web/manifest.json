@@ -1,0 +1,18 @@
+{
+  "$comment": "SPDX-License-Identifier: MIT; SPDX-FileCopyrightText: 2026 Sythos (https://www.sythos.net); Author: Sythos (https://www.sythos.net)",
+  "name": "Gulo Gulo Mail",
+  "short_name": "Gulo Gulo",
+  "description": "Gulo Gulo secure mail and groupware workspace.",
+  "start_url": "/web/",
+  "scope": "/web/",
+  "display": "standalone",
+  "background_color": "#111417",
+  "theme_color": "#d99a4f",
+  "lang": "en",
+  "dir": "ltr",
+  "license": "MIT",
+  "author": "Sythos (https://www.sythos.net)",
+  "spdxLicenseIdentifier": "MIT",
+  "spdxFileCopyrightText": "2026 Sythos (https://www.sythos.net)",
+  "icons": []
+}

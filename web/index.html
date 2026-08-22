@@ -1,0 +1,248 @@
+<!--
+SPDX-License-Identifier: MIT
+SPDX-FileCopyrightText: 2026 Sythos (https://www.sythos.net)
+Author: Sythos (https://www.sythos.net)
+-->
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="color-scheme" content="dark light">
+    <meta name="description" content="Gulo Gulo secure mail and groupware workspace">
+    <meta name="csrf-token" content="">
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; base-uri 'none'; object-src 'none'; frame-ancestors 'none'; form-action 'self'; connect-src 'self'; img-src 'self' data: blob:; style-src 'self'; script-src 'self'"
+    >
+    <title>Gulo Gulo — Mail</title>
+    <link rel="manifest" href="/web/manifest.json">
+    <link rel="stylesheet" href="/web/styles.css">
+    <script type="module" src="/web/dist/app.js"></script>
+  </head>
+  <body data-api-base="/api" data-events-path="/api/events">
+    <a class="skip-link" href="#main-content">Skip to main content</a>
+
+    <div class="app-shell" id="app-shell">
+      <header class="app-header">
+        <div class="brand-lockup">
+          <span class="brand-mark" aria-hidden="true">GG</span>
+          <div>
+            <p class="eyebrow">Gulo Gulo</p>
+            <h1>Mail</h1>
+          </div>
+        </div>
+
+        <div class="header-actions">
+          <p class="connection-state" id="connection-state" role="status" aria-live="polite">
+            Connecting…
+          </p>
+          <button class="button button-quiet" id="preferences-button" type="button">
+            Preferences
+          </button>
+          <button class="button button-quiet" id="logout-button" type="button">
+            Sign out
+          </button>
+        </div>
+      </header>
+
+      <div class="mobile-toolbar">
+        <button
+          class="button button-quiet"
+          id="navigation-toggle"
+          type="button"
+          aria-controls="navigation"
+          aria-expanded="false"
+        >
+          Folders
+        </button>
+        <span id="account-label">Signed-in user</span>
+      </div>
+
+      <div class="app-status" id="app-status" role="status" aria-live="polite" hidden></div>
+
+      <div class="workspace">
+        <aside class="navigation-panel" id="navigation" aria-label="Mailbox navigation">
+          <div class="account-card">
+            <span class="account-avatar" aria-hidden="true">GG</span>
+            <div>
+              <p class="eyebrow">Account</p>
+              <p class="account-name" id="account-name">Signed-in user</p>
+            </div>
+          </div>
+
+          <button class="button button-primary compose-button" id="compose-button" type="button">
+            <span aria-hidden="true">+</span>
+            <span>New message</span>
+          </button>
+
+          <nav class="folder-navigation" aria-label="Folders">
+            <p class="section-label">Folders</p>
+            <ul class="folder-list" id="folder-list">
+              <li>
+                <button class="folder-link is-active" type="button" data-folder="inbox" aria-current="page">
+                  <span aria-hidden="true">▸</span>
+                  <span>Inbox</span>
+                  <span class="folder-count" data-folder-count="inbox">0</span>
+                </button>
+              </li>
+              <li>
+                <button class="folder-link" type="button" data-folder="starred">
+                  <span aria-hidden="true">★</span>
+                  <span>Starred</span>
+                  <span class="folder-count" data-folder-count="starred">0</span>
+                </button>
+              </li>
+              <li>
+                <button class="folder-link" type="button" data-folder="sent">
+                  <span aria-hidden="true">↗</span>
+                  <span>Sent</span>
+                  <span class="folder-count" data-folder-count="sent">0</span>
+                </button>
+              </li>
+              <li>
+                <button class="folder-link" type="button" data-folder="drafts">
+                  <span aria-hidden="true">✎</span>
+                  <span>Drafts</span>
+                  <span class="folder-count" data-folder-count="drafts">0</span>
+                </button>
+              </li>
+              <li>
+                <button class="folder-link" type="button" data-folder="trash">
+                  <span aria-hidden="true">⌫</span>
+                  <span>Trash</span>
+                  <span class="folder-count" data-folder-count="trash">0</span>
+                </button>
+              </li>
+            </ul>
+          </nav>
+
+          <div class="navigation-footer">
+            <p class="section-label">Local time</p>
+            <p class="timezone-readout" id="timezone-readout">Detecting timezone…</p>
+          </div>
+        </aside>
+
+        <main class="main-panel" id="main-content">
+          <section class="mailbox-panel" aria-labelledby="mailbox-heading">
+            <div class="panel-heading">
+              <div>
+                <p class="eyebrow" id="active-folder-label">Inbox</p>
+                <h2 id="mailbox-heading">Your messages</h2>
+              </div>
+              <form class="search-form" id="search-form" role="search">
+                <label class="visually-hidden" for="search-input">Search messages</label>
+                <input
+                  id="search-input"
+                  name="query"
+                  type="search"
+                  autocomplete="off"
+                  placeholder="Search messages"
+                  enterkeyhint="search"
+                >
+                <button class="button button-quiet" type="submit">Search</button>
+              </form>
+            </div>
+
+            <div class="message-list-frame">
+              <div class="list-state" id="list-state" role="status" aria-live="polite">Loading messages…</div>
+              <ul class="message-list" id="message-list" aria-label="Messages"></ul>
+            </div>
+          </section>
+
+          <article class="message-panel" aria-labelledby="message-heading" id="message-panel">
+            <div class="message-empty" id="message-empty">
+              <span class="empty-icon" aria-hidden="true">✉</span>
+              <h2 id="message-heading">Select a message</h2>
+              <p>Choose a message from the list to read it here.</p>
+            </div>
+            <div class="message-content" id="message-content" hidden>
+              <div class="message-heading-row">
+                <div>
+                  <p class="eyebrow" id="message-folder-label">Inbox</p>
+                  <h2 id="message-subject">Message subject</h2>
+                </div>
+                <time id="message-date" datetime=""></time>
+              </div>
+              <div class="message-meta">
+                <p>
+                  <span class="meta-label">From</span>
+                  <span id="message-from"></span>
+                </p>
+                <p>
+                  <span class="meta-label">To</span>
+                  <span id="message-to"></span>
+                </p>
+              </div>
+              <div class="message-actions" aria-label="Message actions">
+                <button class="button button-quiet" id="reply-button" type="button">Reply</button>
+                <button class="button button-quiet" id="archive-button" type="button">Archive</button>
+              </div>
+              <div class="message-body" id="message-body"></div>
+              <section class="attachment-section" id="attachment-section" aria-labelledby="attachment-heading" hidden>
+                <h3 id="attachment-heading">Attachments</h3>
+                <ul class="attachment-list" id="attachment-list"></ul>
+              </section>
+            </div>
+          </article>
+        </main>
+      </div>
+    </div>
+
+    <dialog class="modal" id="compose-dialog" aria-labelledby="compose-heading">
+      <form class="modal-form" id="compose-form" method="dialog">
+        <div class="modal-heading">
+          <div>
+            <p class="eyebrow">New message</p>
+            <h2 id="compose-heading">Compose</h2>
+          </div>
+          <button class="icon-button" type="button" data-close-dialog="compose-dialog" aria-label="Close compose dialog">×</button>
+        </div>
+        <label for="compose-to">To</label>
+        <input id="compose-to" name="to" type="email" autocomplete="email" required>
+        <label for="compose-subject">Subject</label>
+        <input id="compose-subject" name="subject" type="text" maxlength="998" required>
+        <label for="compose-body">Message</label>
+        <textarea id="compose-body" name="body" rows="10" required></textarea>
+        <p class="form-hint">Attachments and rich HTML are handled by the protected mail API.</p>
+        <div class="modal-actions">
+          <button class="button button-quiet" type="button" data-close-dialog="compose-dialog">Cancel</button>
+          <button class="button button-primary" type="submit">Send message</button>
+        </div>
+      </form>
+    </dialog>
+
+    <dialog class="modal" id="preferences-dialog" aria-labelledby="preferences-heading">
+      <form class="modal-form" id="preferences-form" method="dialog">
+        <div class="modal-heading">
+          <div>
+            <p class="eyebrow">Personal settings</p>
+            <h2 id="preferences-heading">Preferences</h2>
+          </div>
+          <button class="icon-button" type="button" data-close-dialog="preferences-dialog" aria-label="Close preferences dialog">×</button>
+        </div>
+        <label for="timezone-input">Timezone</label>
+        <select id="timezone-input" name="timezone">
+          <option value="auto">Use browser timezone</option>
+        </select>
+        <p class="form-hint" id="timezone-help">Your browser timezone is detected locally. A manual choice is kept for this browser only.</p>
+        <label for="signature-input">Signature</label>
+        <textarea id="signature-input" name="signature" rows="4" maxlength="4000" placeholder="A short sign-off for new messages"></textarea>
+        <label class="checkbox-row" for="vacation-enabled">
+          <input id="vacation-enabled" name="vacationEnabled" type="checkbox">
+          <span>Enable vacation reply</span>
+        </label>
+        <label for="vacation-message">Vacation message</label>
+        <textarea id="vacation-message" name="vacationMessage" rows="4" maxlength="4000" placeholder="I am away and will reply when I return."></textarea>
+        <div class="modal-actions">
+          <button class="button button-quiet" type="button" data-close-dialog="preferences-dialog">Cancel</button>
+          <button class="button button-primary" type="submit">Save preferences</button>
+        </div>
+      </form>
+    </dialog>
+
+    <noscript>
+      <div class="noscript-warning">Gulo Gulo Mail needs JavaScript enabled to open a protected mailbox session.</div>
+    </noscript>
+  </body>
+</html>

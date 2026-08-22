@@ -66,6 +66,31 @@ function getJson(runtime, path, method = 'GET') {
   });
 }
 
+function getResponse(runtime, path, method = 'GET') {
+  const address = runtime.server.address();
+  return new Promise((resolveResponse, reject) => {
+    const requestHandle = request(
+      {
+        host: address.address,
+        port: address.port,
+        path,
+        method,
+      },
+      (response) => {
+        const chunks = [];
+        response.on('data', (chunk) => chunks.push(Buffer.from(chunk)));
+        response.on('end', () => resolveResponse({
+          statusCode: response.statusCode,
+          headers: response.headers,
+          body: Buffer.concat(chunks),
+        }));
+      },
+    );
+    requestHandle.on('error', reject);
+    requestHandle.end();
+  });
+}
+
 test('runtime exposes liveness and readiness endpoints without secrets', async () => {
   const { runtime } = makeTestRuntime();
   await startServer(runtime);
@@ -105,6 +130,30 @@ test('runtime returns safe protocol responses for unsupported routes and methods
     const head = await getJson(runtime, '/health/live', 'HEAD');
     assert.equal(head.statusCode, 200);
     assert.equal(head.body, null);
+  } finally {
+    await stopServer(runtime);
+  }
+});
+
+test('runtime serves the HTML5 shell with defensive static headers and rejects traversal', async () => {
+  const { runtime } = makeTestRuntime();
+  await startServer(runtime);
+
+  try {
+    const shell = await getResponse(runtime, '/');
+    assert.equal(shell.statusCode, 200);
+    assert.match(shell.headers['content-type'], /^text\/html/);
+    assert.equal(shell.headers['x-content-type-options'], 'nosniff');
+    assert.equal(shell.headers['x-frame-options'], 'DENY');
+    assert.match(shell.headers['content-security-policy'], /frame-ancestors 'none'/);
+    assert.match(shell.body.toString('utf8'), /Gulo Gulo/);
+
+    const styles = await getResponse(runtime, '/web/styles.css');
+    assert.equal(styles.statusCode, 200);
+    assert.match(styles.headers['content-type'], /^text\/css/);
+
+    const traversal = await getJson(runtime, '/web/%2e%2e/src/runtime/server.mjs');
+    assert.equal(traversal.statusCode, 404);
   } finally {
     await stopServer(runtime);
   }

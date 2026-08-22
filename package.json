@@ -13,11 +13,17 @@
   },
   "scripts": {
     "start": "node src/runtime/index.mjs",
-    "test": "node src/runtime/runtime.test.mjs && node src/foundation/config.test.mjs && node src/runtime/observability.test.mjs && node src/integrations/tenant-context.test.mjs && node src/integrations/ldap-client.test.mjs && node src/integrations/postgres-store.test.mjs && node src/mail/mail-core.test.mjs",
+    "build:web": "node web/build.mjs",
+    "typecheck": "tsc --project tsconfig.json --noEmit",
+    "test:web": "npm run build:web && node web/test/web-shell.test.mjs",
+    "test": "npm run test:web && node src/runtime/runtime.test.mjs && node src/foundation/config.test.mjs && node src/runtime/observability.test.mjs && node src/integrations/tenant-context.test.mjs && node src/integrations/ldap-client.test.mjs && node src/integrations/postgres-store.test.mjs && node src/mail/mail-core.test.mjs && node src/web/security/security.test.mjs && node src/web/content/email-content.test.mjs && node src/web/content/attachment-policy.test.mjs && node src/web/content/timezone.test.mjs && node src/web/realtime/event-normalizer.test.mjs && node src/web/backup/backup-request.test.mjs",
     "test:m2:postgres": "node src/integrations/postgres.integration.test.mjs"
   },
   "dependencies": {
     "ldapts": "9.0.0",
     "pg": "8.23.0"
+  },
+  "devDependencies": {
+    "typescript": "7.0.2"
   }
 }

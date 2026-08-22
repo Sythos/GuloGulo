@@ -71,6 +71,20 @@ jobs:
           test -f doc/storage-and-quotas.md
           test -f doc/mail-core.md
           test -f doc/upgrade-and-migration.md
+          test -f doc/web-foundation.md
+          test -f tsconfig.json
+          test -f web/index.html
+          test -f web/styles.css
+          test -f web/manifest.json
+          test -f web/build.mjs
+          test -f web/src/app.ts
+          test -f web/test/web-shell.test.mjs
+          test -f src/web/security/security.test.mjs
+          test -f src/web/content/email-content.test.mjs
+          test -f src/web/content/attachment-policy.test.mjs
+          test -f src/web/content/timezone.test.mjs
+          test -f src/web/realtime/event-normalizer.test.mjs
+          test -f src/web/backup/backup-request.test.mjs
           test -f src/integrations/tenant-context.mjs
           test -f src/integrations/ldap-client.mjs
           test -f src/integrations/postgres-store.mjs
@@ -115,6 +129,11 @@ jobs:
             grep -Fq 'Author: Sythos (https://www.sythos.net)' "$file"
           done < <(find src -type f \( -name '*.mjs' -o -name '*.cjs' -o -name '*.js' -o -name '*.ts' \) -print)
 
+          while IFS= read -r file; do
+            grep -Fq 'SPDX-License-Identifier: MIT' "$file"
+            grep -Fq 'Author: Sythos (https://www.sythos.net)' "$file"
+          done < <(find web -type f \( -path 'web/dist/*' -prune -o -name '*.mjs' -o -name '*.cjs' -o -name '*.js' -o -name '*.ts' -o -name '*.html' -o -name '*.css' -print \))
+
           grep -Fq 'SPDX-License-Identifier: MIT' test/fixtures/README.md
           grep -Fq 'Author: Sythos (https://www.sythos.net)' test/fixtures/README.md
 
@@ -122,6 +141,12 @@ jobs:
             grep -Fq 'SPDX-License-Identifier: MIT' "$file"
             grep -Fq 'Author: Sythos (https://www.sythos.net)' "$file"
           done
+
+          grep -Fq 'SPDX-License-Identifier: MIT' tsconfig.json
+          grep -Fq 'Author: Sythos (https://www.sythos.net)' tsconfig.json
+          grep -Fq 'SPDX-License-Identifier: MIT' web/README.md
+          grep -Fq 'Author: Sythos (https://www.sythos.net)' web/README.md
+          node -e "const m=require('./web/manifest.json'); if (m.license !== 'MIT' || m.author !== 'Sythos (https://www.sythos.net)' || m.spdxLicenseIdentifier !== 'MIT') process.exit(1)"
 
           grep -Fq 'GULOGULO_VOLUMES_EXTERNAL' compose.yaml
           grep -Fq 'FORCE ROW LEVEL SECURITY' src/db/migrations/0001_m2_foundation.sql

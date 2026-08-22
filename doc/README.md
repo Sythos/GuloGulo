@@ -34,6 +34,9 @@ normal workflow.
 - [Upgrade and migration operations](upgrade-and-migration.md) — the planned
   provider-only API/MCP command contract, Docker-to-Docker replacement, and
   Kubernetes blue/green cutover and rollback runbook.
+- [Web foundation](web-foundation.md) — the HTML5/TypeScript shell, secure
+  session and CSRF contracts, message sanitization, attachment policy,
+  timezone display, realtime events, and browser/API boundaries.
 
 The project is still intentionally small. The documents describe real behavior
 only; vendor mail-service wiring, DAV, and user-facing features remain separate

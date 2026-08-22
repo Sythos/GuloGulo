@@ -1,0 +1,19 @@
+// SPDX-License-Identifier: MIT
+// SPDX-FileCopyrightText: 2026 Sythos (https://www.sythos.net)
+// Author: Sythos (https://www.sythos.net)
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ES2022",
+    "moduleResolution": "Bundler",
+    "lib": ["ES2022", "DOM"],
+    "strict": true,
+    "noEmitOnError": true,
+    "sourceMap": false,
+    "rootDir": "web/src",
+    "outDir": "web/dist",
+    "skipLibCheck": true,
+    "verbatimModuleSyntax": true
+  },
+  "include": ["web/src/**/*.ts"]
+}
