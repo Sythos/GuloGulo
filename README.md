@@ -46,7 +46,7 @@ where the item depends on external infrastructure.
 - [x] sources of truth documented;
 - [x] quota ledger verified;
 - [ ] 28-day retention tested;
-- [ ] user backup authorization tested;
+- [x] user backup authorization tested;
 - [ ] provider backup encrypted;
 - [ ] restore tested;
 - [ ] purge idempotent;
