@@ -25,6 +25,11 @@ function sleep(milliseconds) {
   return new Promise((resolve) => setTimeout(resolve, milliseconds));
 }
 
+async function closeClient(client) {
+  if (typeof client?.unbind !== 'function') return;
+  try { await client.unbind(); } catch { /* best-effort cleanup; never expose bind material */ }
+}
+
 export function createLdapIdentityClient({ config, resolveSecret, logger = console, ClientClass = DefaultClient, sleep: sleepFunction = sleep } = {}) {
   const contract = config?.contract ?? config ?? {};
   const settings = contract.ldap ?? {};
@@ -61,7 +66,7 @@ export function createLdapIdentityClient({ config, resolveSecret, logger = conso
       await client.bind(settings.bindDn, secret);
       return await callback(client);
     } finally {
-      await client.unbind?.().catch?.(() => {});
+      await closeClient(client);
     }
   }
 
@@ -87,7 +92,7 @@ export function createLdapIdentityClient({ config, resolveSecret, logger = conso
       const identity = await lookupUser({ tenantContext, username });
       if (!identity?.dn || identity.active === false) return false;
       const client = await openClient();
-      try { await client.bind(identity.dn, password); return true; } finally { await client.unbind?.().catch?.(() => {}); }
+      try { await client.bind(identity.dn, password); return true; } finally { await closeClient(client); }
     } catch (error) {
       logger.warn?.('ldap_authentication_failed', { error: { name: error?.name ?? 'Error', code: error?.code ?? 'unknown' } });
       return false;

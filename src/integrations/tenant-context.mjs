@@ -19,9 +19,10 @@ function requiredString(value, name, pattern) {
 }
 
 export function createTenantContext({ tenantId, domain, actorId = null, role = 'user' } = {}) {
+  const canonicalDomain = requiredString(domain, 'domain', DOMAIN_PATTERN).toLowerCase();
   const context = {
     tenantId: requiredString(tenantId, 'tenantId', TENANT_ID_PATTERN),
-    domain: requiredString(domain.toLowerCase(), 'domain', DOMAIN_PATTERN).toLowerCase(),
+    domain: canonicalDomain,
     actorId: actorId === null ? null : requiredString(actorId, 'actorId', ACTOR_ID_PATTERN),
     role: ROLES.has(role) ? role : (() => { throw contextError('role is invalid'); })(),
   };
