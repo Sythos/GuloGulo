@@ -31,6 +31,9 @@ normal workflow.
 - [M3 mail core](mail-core.md) — explicit mailbox and alias delivery, closed
   submission, scanner verdicts, LMTP retry/bounce behavior, queue visibility,
   Sieve forwarding protection, and deterministic IMAP IDLE events.
+- [Upgrade and migration operations](upgrade-and-migration.md) — the planned
+  provider-only API/MCP command contract, Docker-to-Docker replacement, and
+  Kubernetes blue/green cutover and rollback runbook.
 
 The project is still intentionally small. The documents describe real behavior
 only; vendor mail-service wiring, DAV, and user-facing features remain separate

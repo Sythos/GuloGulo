@@ -209,6 +209,7 @@ gulogulo/
 │   ├── identity-and-postgres.md
 │   ├── mail-core.md
 │   ├── observability.md
+│   ├── upgrade-and-migration.md
 │   └── storage-and-quotas.md
 ├── scripts/
 │   ├── container-patch.sh

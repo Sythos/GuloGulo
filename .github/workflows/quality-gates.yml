@@ -70,6 +70,7 @@ jobs:
           test -f doc/identity-and-postgres.md
           test -f doc/storage-and-quotas.md
           test -f doc/mail-core.md
+          test -f doc/upgrade-and-migration.md
           test -f src/integrations/tenant-context.mjs
           test -f src/integrations/ldap-client.mjs
           test -f src/integrations/postgres-store.mjs
