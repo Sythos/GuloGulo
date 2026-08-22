@@ -53,6 +53,26 @@ test('configuration defaults are versioned, deterministic, and secret-free', () 
   assert.equal(JSON.stringify(first).includes('secret'), false);
 });
 
+test('the production process environment is accepted by the loader', () => {
+  const configuration = loadConfiguration(process.env, { configFilePath: null });
+
+  assert.equal(configuration.schemaVersion, CONFIG_SCHEMA_VERSION);
+  assert.equal(configuration.project.machineName, 'gulogulo');
+});
+
+test('empty Compose secret-reference placeholders remain unset', () => {
+  const configuration = loadConfiguration(
+    {
+      LDAP_BIND_SECRET_REF: '',
+      POSTGRES_DSN_SECRET_REF: '',
+    },
+    { configFilePath: null },
+  );
+
+  assert.equal(configuration.ldap.bindSecretRef, null);
+  assert.equal(configuration.postgres.dsnSecretRef, null);
+});
+
 test('environment variables override mounted file values with canonical names first', () => {
   withConfigFile(
     {

@@ -243,6 +243,14 @@ function readSecretReference(value, name) {
   return readString(value, name, SECRET_REFERENCE_PATTERN);
 }
 
+function readEnvironmentOptionalSecretReference(value, name) {
+  if (value === '') {
+    return null;
+  }
+
+  return readSecretReference(value, name);
+}
+
 function readDistinguishedName(value, name) {
   return readString(value, name, DISTINGUISHED_NAME_PATTERN);
 }
@@ -478,7 +486,7 @@ function buildConfiguration(fileConfiguration, environment) {
       applyEnvironmentValue(target, 'enabled', environment, variables.enabled, readEnvironmentBoolean);
       applyEnvironmentValue(target, 'url', environment, variables.url, readUrl);
       applyEnvironmentValue(target, 'startTls', environment, variables.startTls, readEnvironmentBoolean);
-      applyEnvironmentValue(target, 'bindSecretRef', environment, variables.bindSecretRef, readSecretReference);
+      applyEnvironmentValue(target, 'bindSecretRef', environment, variables.bindSecretRef, readEnvironmentOptionalSecretReference);
       applyEnvironmentValue(target, 'userBaseDn', environment, variables.userBaseDn, readDistinguishedName);
       applyEnvironmentValue(target, 'connectTimeoutMs', environment, variables.connectTimeoutMs, (value, name) => readEnvironmentInteger(value, name, 100, 120_000));
       continue;
@@ -491,7 +499,7 @@ function buildConfiguration(fileConfiguration, environment) {
       applyEnvironmentValue(target, 'database', environment, variables.database, (value, name) => readEnvironmentString(value, name, SAFE_NAME_PATTERN));
       applyEnvironmentValue(target, 'user', environment, variables.user, (value, name) => readEnvironmentString(value, name, SAFE_NAME_PATTERN));
       applyEnvironmentValue(target, 'sslMode', environment, variables.sslMode, (value, name) => readEnvironmentEnum(value, name, ['disable', 'allow', 'prefer', 'require', 'verify-ca', 'verify-full']));
-      applyEnvironmentValue(target, 'dsnSecretRef', environment, variables.dsnSecretRef, readSecretReference);
+      applyEnvironmentValue(target, 'dsnSecretRef', environment, variables.dsnSecretRef, readEnvironmentOptionalSecretReference);
       applyEnvironmentValue(target, 'connectTimeoutMs', environment, variables.connectTimeoutMs, (value, name) => readEnvironmentInteger(value, name, 100, 120_000));
       continue;
     }
@@ -629,15 +637,23 @@ function attachContractMetadata(legacyConfig, fullConfig) {
  * is mandatory and fails closed when it cannot be read or validated.
  */
 export function loadConfiguration(environment = process.env, options = {}) {
-  assertObject(environment, 'environment');
+  // Node exposes process.env as an environment-backed object rather than a
+  // normal plain object. Copy the default process environment before schema
+  // validation so the production entry point and direct test callers use the
+  // same contract without weakening the configuration-file checks.
+  const effectiveEnvironment = environment === process.env
+    ? Object.fromEntries(Object.entries(environment))
+    : environment;
+
+  assertObject(effectiveEnvironment, 'environment');
   assertObject(options, 'options');
 
-  const resolvedFile = resolveConfigurationFile(environment, options);
+  const resolvedFile = resolveConfigurationFile(effectiveEnvironment, options);
   const fileConfiguration = readConfigurationFile(resolvedFile.path, {
     optional: resolvedFile.optional,
     readFile: options.readFile,
   });
-  const configuration = buildConfiguration(fileConfiguration, environment);
+  const configuration = buildConfiguration(fileConfiguration, effectiveEnvironment);
   return deepFreeze(configuration);
 }
 
