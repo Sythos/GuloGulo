@@ -108,6 +108,21 @@ jobs:
           test -f src/dav/carddav/index.mjs
           test -f src/dav/discovery/index.mjs
           test -f src/dav/discovery/index.test.mjs
+          test -f src/admin/rbac.mjs
+          test -f src/admin/rbac.test.mjs
+          test -f src/admin/delegation.mjs
+          test -f src/admin/delegation.test.mjs
+          test -f src/admin/quota.mjs
+          test -f src/admin/quota.test.mjs
+          test -f src/admin/admin-tools.mjs
+          test -f src/admin/admin-tools.test.mjs
+          test -f src/auth/password-policy.mjs
+          test -f src/auth/password-hashing.mjs
+          test -f src/auth/totp.mjs
+          test -f src/auth/webauthn.mjs
+          test -f src/auth/recovery-codes.mjs
+          test -f src/auth/auth.test.mjs
+          test -f doc/rbac-admin-mfa.md
           grep -Fq 'profiles: ["local"]' compose.yaml
           grep -Fq 'profiles: ["test"]' compose.yaml
           grep -Fq 'profiles: ["fixture"]' compose.yaml
@@ -174,6 +189,13 @@ jobs:
           grep -Fq 'SCOPE_ROLE_DENIED' src/dav/carddav/carddav-store.mjs
           grep -Fq 'WELL_KNOWN_PATHS' src/dav/discovery/index.mjs
           grep -Fq 'PLAINTEXT_DISCOVERY_FORBIDDEN' src/dav/discovery/index.mjs
+          grep -Fq 'CONTENT_ACCESS_DENIED' src/admin/rbac.mjs
+          grep -Fq 'QUOTA_EXCEEDED' src/admin/quota.mjs
+          grep -Fq 'MASTER_LOG_ACCESS_DISABLED' src/admin/rbac.mjs
+          grep -Fq 'MAX_PASSWORD_EXPIRY_DAYS = 9999' src/auth/password-policy.mjs
+          grep -Fq 'replay' src/auth/totp.mjs
+          grep -Fq 'challenge' src/auth/webauthn.mjs
+          grep -Fq 'one-time' src/auth/recovery-codes.mjs
 
           grep -Fq 'SPDX-License-Identifier: MIT' config/schema.v1.json
           grep -Fq 'Sythos (https://www.sythos.net)' config/schema.v1.json

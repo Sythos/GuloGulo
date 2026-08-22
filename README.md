@@ -10,6 +10,9 @@ Author: Sythos (https://www.sythos.net)
 [![Last commit](https://img.shields.io/github/last-commit/Sythos/GuloGulo?label=last%20commit)](https://github.com/Sythos/GuloGulo/commits/main/)
 [![Commit tests](https://github.com/Sythos/GuloGulo/actions/workflows/commit-tests.yml/badge.svg)](https://github.com/Sythos/GuloGulo/actions/workflows/commit-tests.yml)
 [![PR validation](https://github.com/Sythos/GuloGulo/actions/workflows/pr-validation.yml/badge.svg)](https://github.com/Sythos/GuloGulo/actions/workflows/pr-validation.yml)
+[![HTML5](https://img.shields.io/badge/HTML5-E34F26?logo=html5&logoColor=white)](https://developer.mozilla.org/en-US/docs/Web/HTML)
+[![TypeScript](https://img.shields.io/badge/TypeScript-3178C6?logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
+[![Docker](https://img.shields.io/badge/Docker-2496ED?logo=docker&logoColor=white)](https://www.docker.com/)
 
 <p align="center">
   <img src="assets/gulo-gulo-calendar-mail.png" alt="Wolverine tearing through a calendar and paper correspondence" width="720">
@@ -18,11 +21,14 @@ Author: Sythos (https://www.sythos.net)
 Gulo Gulo is an OCI-native, mail-first, tenant-isolated groupware platform.
 The guiding animal is the wolverine (*Gulo gulo*). Human-facing text uses
 **Gulo Gulo**; file names, paths, package names, and other machine-facing
-identifiers use **gulogulo** without spaces. Documentation, source code,
-variables, configuration, tests, and notes are written in English.
+identifiers use **gulogulo** without spaces.
 
-The complete license text is available in [LICENSE](LICENSE). The authoritative
-product specification is maintained beside this checkout as `GULOGULO.md`.
+The complete license text is available in [LICENSE](LICENSE). A quick note from
+me, Sythos: I had the Gulo Gulo artwork made with AI because I am honestly
+hopeless on the artistic side. And, since I have not written a single line of
+code comments in roughly a third of a century, the documentation for this
+project is entrusted to Enya, my virtual AI agent. She keeps the paperwork
+tidy while I focus on making the wolverine do useful things.
 
 ## Production readiness checklist
 
@@ -42,7 +48,7 @@ where the item depends on external infrastructure.
 - [x] CSP, CSRF, and security headers;
 - [x] email HTML sanitization;
 - [ ] rate and abuse controls;
-- [ ] audit has no secrets;
+- [x] audit has no secrets;
 - [ ] images have SBOM and verified digest.
 
 ### Data
@@ -116,6 +122,7 @@ gulogulo/
 │   ├── dav-and-discovery.md
 │   ├── identity-and-postgres.md
 │   ├── mail-core.md
+│   ├── rbac-admin-mfa.md
 │   ├── observability.md
 │   ├── storage-and-quotas.md
 │   ├── upgrade-and-migration.md
@@ -123,6 +130,8 @@ gulogulo/
 ├── scripts/
 │   └── runtime, fixture, and patch utilities
 ├── src/
+│   ├── admin/
+│   ├── auth/
 │   ├── db/migrations/
 │   ├── foundation/
 │   ├── integrations/
@@ -159,14 +168,19 @@ gulogulo/
 
 ## Development and contribution
 
-Use the latest stable release of every package, library, action, runtime,
-image, and external software dependency. Exact resolved versions are recorded
-in the lockfile and in the relevant documentation. Never commit secrets,
-credentials, private keys, or real user data.
+If you want to work on Gulo Gulo, start with a normal checkout of `git/`, pick
+the smallest useful change, and let the repository checks do their job. We keep
+dependencies, actions, runtimes, images, and external tools on their latest
+stable releases; the lockfile and the companion docs record the exact versions
+that were resolved. Please keep secrets, credentials, private keys, and real
+user data out of commits entirely.
 
-GitHub Actions run the same read-only quality gates for pushed commits and pull
-requests from both internal branches and external forks. A contribution must
-pass the applicable checks, preserve tenant isolation and source-of-truth
-boundaries, and update this directory tree whenever files are added or moved.
+Every pushed commit and every pull request, whether it comes from an internal
+branch or an external fork, goes through the same read-only quality gates. A
+change is ready when those checks are green, tenant isolation and source-of-
+truth boundaries are still intact, and the repository tree in this README has
+been kept in sync with any files that were added or moved.
 
-Gulo Gulo is released under the MIT License.
+That is the whole spirit of the project: make a focused change, explain the
+interesting bits, run the checks, and leave the next person a tidy trail to
+follow. Gulo Gulo is released under the MIT License.
