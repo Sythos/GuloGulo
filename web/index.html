@@ -20,7 +20,14 @@ Author: Sythos (https://www.sythos.net)
     <link rel="stylesheet" href="/web/styles.css">
     <script type="module" src="/web/dist/app.js"></script>
   </head>
-  <body data-api-base="/api" data-events-path="/api/events">
+  <body
+    data-api-base="/api"
+    data-events-path="/api/events"
+    data-calendar-path="/calendar/events"
+    data-contacts-path="/contacts"
+    data-caldav-discovery-path="/discovery/caldav"
+    data-carddav-discovery-path="/discovery/carddav"
+  >
     <a class="skip-link" href="#main-content">Skip to main content</a>
 
     <div class="app-shell" id="app-shell">
@@ -117,14 +124,39 @@ Author: Sythos (https://www.sythos.net)
             </ul>
           </nav>
 
+          <nav class="module-navigation" aria-label="Workspace views">
+            <p class="section-label">Workspace</p>
+            <ul class="folder-list" id="module-list">
+              <li>
+                <button class="folder-link module-link is-active" type="button" data-view="mail" aria-current="page">
+                  <span aria-hidden="true">✉</span>
+                  <span>Mail</span>
+                </button>
+              </li>
+              <li>
+                <button class="folder-link module-link" type="button" data-view="calendar">
+                  <span aria-hidden="true">▦</span>
+                  <span>Calendar</span>
+                </button>
+              </li>
+              <li>
+                <button class="folder-link module-link" type="button" data-view="contacts">
+                  <span aria-hidden="true">♧</span>
+                  <span>Contacts</span>
+                </button>
+              </li>
+            </ul>
+          </nav>
+
           <div class="navigation-footer">
             <p class="section-label">Local time</p>
             <p class="timezone-readout" id="timezone-readout">Detecting timezone…</p>
           </div>
         </aside>
 
-        <main class="main-panel" id="main-content">
-          <section class="mailbox-panel" aria-labelledby="mailbox-heading">
+        <main class="main-content" id="main-content">
+          <section class="main-panel" data-view-panel="mail" aria-labelledby="mailbox-heading">
+            <section class="mailbox-panel" aria-labelledby="mailbox-heading">
             <div class="panel-heading">
               <div>
                 <p class="eyebrow" id="active-folder-label">Inbox</p>
@@ -148,9 +180,9 @@ Author: Sythos (https://www.sythos.net)
               <div class="list-state" id="list-state" role="status" aria-live="polite">Loading messages…</div>
               <ul class="message-list" id="message-list" aria-label="Messages"></ul>
             </div>
-          </section>
+            </section>
 
-          <article class="message-panel" aria-labelledby="message-heading" id="message-panel">
+            <article class="message-panel" aria-labelledby="message-heading" id="message-panel">
             <div class="message-empty" id="message-empty">
               <span class="empty-icon" aria-hidden="true">✉</span>
               <h2 id="message-heading">Select a message</h2>
@@ -184,7 +216,68 @@ Author: Sythos (https://www.sythos.net)
                 <ul class="attachment-list" id="attachment-list"></ul>
               </section>
             </div>
-          </article>
+            </article>
+          </section>
+
+          <section class="module-panel" data-view-panel="calendar" aria-labelledby="calendar-heading" hidden>
+            <div class="module-heading">
+              <div>
+                <p class="eyebrow">CalDAV</p>
+                <h2 id="calendar-heading">Calendar</h2>
+                <p class="module-description">Read-only events from the authenticated Calendar API.</p>
+              </div>
+              <button class="button button-quiet" id="calendar-refresh-button" type="button">Refresh</button>
+            </div>
+
+            <section class="service-status-card" aria-labelledby="calendar-connection-heading">
+              <div>
+                <p class="section-label">Connection</p>
+                <h3 id="calendar-connection-heading">Calendar service status</h3>
+              </div>
+              <p class="service-status" id="calendar-discovery-status" role="status" aria-live="polite">
+                Automatic CalDAV discovery has not been checked.
+              </p>
+              <p class="service-status service-status-secondary" id="calendar-manual-status" data-config-state="not-connected">
+                Manual configuration fallback is not connected in this browser shell; no DAV credentials are collected here.
+              </p>
+              <button class="button button-quiet" id="calendar-discovery-button" type="button">Check automatic discovery</button>
+            </section>
+
+            <div class="module-list-frame">
+              <div class="list-state" id="calendar-list-state" role="status" aria-live="polite">Calendar events have not been loaded.</div>
+              <ul class="module-list" id="calendar-list" aria-label="Calendar events"></ul>
+            </div>
+          </section>
+
+          <section class="module-panel" data-view-panel="contacts" aria-labelledby="contacts-heading" hidden>
+            <div class="module-heading">
+              <div>
+                <p class="eyebrow">CardDAV</p>
+                <h2 id="contacts-heading">Contacts</h2>
+                <p class="module-description">Read-only contacts from the authenticated Contacts API.</p>
+              </div>
+              <button class="button button-quiet" id="contacts-refresh-button" type="button">Refresh</button>
+            </div>
+
+            <section class="service-status-card" aria-labelledby="contacts-connection-heading">
+              <div>
+                <p class="section-label">Connection</p>
+                <h3 id="contacts-connection-heading">Contacts service status</h3>
+              </div>
+              <p class="service-status" id="contacts-discovery-status" role="status" aria-live="polite">
+                Automatic CardDAV discovery has not been checked.
+              </p>
+              <p class="service-status service-status-secondary" id="contacts-manual-status" data-config-state="not-connected">
+                Manual configuration fallback is not connected in this browser shell; no DAV credentials are collected here.
+              </p>
+              <button class="button button-quiet" id="contacts-discovery-button" type="button">Check automatic discovery</button>
+            </section>
+
+            <div class="module-list-frame">
+              <div class="list-state" id="contacts-list-state" role="status" aria-live="polite">Contacts have not been loaded.</div>
+              <ul class="module-list" id="contacts-list" aria-label="Contacts"></ul>
+            </div>
+          </section>
         </main>
       </div>
     </div>

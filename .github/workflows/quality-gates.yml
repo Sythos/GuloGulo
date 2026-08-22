@@ -72,6 +72,7 @@ jobs:
           test -f doc/mail-core.md
           test -f doc/upgrade-and-migration.md
           test -f doc/web-foundation.md
+          test -f doc/dav-and-discovery.md
           test -f tsconfig.json
           test -f web/index.html
           test -f web/styles.css
@@ -98,6 +99,13 @@ jobs:
           test -f .github/workflows/commit-tests.yml
           test -f .github/workflows/pr-validation.yml
           test -f .github/workflows/quality-gates.yml
+          test -f src/dav/caldav/caldav-contract.mjs
+          test -f src/dav/caldav/caldav-contract.test.mjs
+          test -f src/dav/carddav/carddav-store.mjs
+          test -f src/dav/carddav/carddav-store.test.mjs
+          test -f src/dav/carddav/index.mjs
+          test -f src/dav/discovery/index.mjs
+          test -f src/dav/discovery/index.test.mjs
           grep -Fq 'profiles: ["local"]' compose.yaml
           grep -Fq 'profiles: ["test"]' compose.yaml
           grep -Fq 'profiles: ["fixture"]' compose.yaml
@@ -157,6 +165,11 @@ jobs:
           grep -Fq "state === 'bounced'" src/mail/mail-queue.mjs
           grep -Fq 'eventId' src/mail/imap-idle.mjs
           grep -Fq 'fail-closed' doc/mail-core.md
+          grep -Fq 'CONTENT_SCOPE_REQUIRED' src/dav/caldav/caldav-contract.mjs
+          grep -Fq 'SYNC_SCOPE_DENIED' src/dav/caldav/caldav-contract.mjs
+          grep -Fq 'SCOPE_ROLE_DENIED' src/dav/carddav/carddav-store.mjs
+          grep -Fq 'WELL_KNOWN_PATHS' src/dav/discovery/index.mjs
+          grep -Fq 'PLAINTEXT_DISCOVERY_FORBIDDEN' src/dav/discovery/index.mjs
 
           grep -Fq 'SPDX-License-Identifier: MIT' config/schema.v1.json
           grep -Fq 'Sythos (https://www.sythos.net)' config/schema.v1.json

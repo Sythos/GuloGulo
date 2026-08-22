@@ -7,6 +7,7 @@ import { request } from 'node:http';
 import { PassThrough } from 'node:stream';
 import test from 'node:test';
 
+import { createDiscoveryContract } from '../dav/discovery/index.mjs';
 import { loadConfig } from './config.mjs';
 import { createLogger } from './logger.mjs';
 import { createRuntimeServer, startServer, stopServer } from './server.mjs';
@@ -154,6 +155,44 @@ test('runtime serves the HTML5 shell with defensive static headers and rejects t
 
     const traversal = await getJson(runtime, '/web/%2e%2e/src/runtime/server.mjs');
     assert.equal(traversal.statusCode, 404);
+  } finally {
+    await stopServer(runtime);
+  }
+});
+
+test('runtime serves only configured tenant-bound discovery resources', async () => {
+  const streams = createTestLogger();
+  const discoveryContract = createDiscoveryContract({
+    tenantId: 'acme',
+    domain: 'example.test',
+    origin: 'https://example.test',
+  });
+  const runtime = createRuntimeServer({
+    config: {
+      host: '127.0.0.1',
+      port: 0,
+      serviceName: 'gulogulo-test',
+      environment: 'test',
+      shutdownTimeoutMs: 1_000,
+    },
+    logger: streams.logger,
+    discoveryContract,
+    discoveryTenantId: 'acme',
+  });
+  await startServer(runtime);
+
+  try {
+    const caldav = await getResponse(runtime, '/.well-known/caldav');
+    assert.equal(caldav.statusCode, 308);
+    assert.equal(caldav.headers.location, 'https://example.test/dav/');
+    assert.equal(caldav.headers['cache-control'], 'no-store');
+
+    const document = await getResponse(runtime, '/.well-known/gulogulo/discovery.json');
+    assert.equal(document.statusCode, 200);
+    const parsed = JSON.parse(document.body.toString('utf8'));
+    assert.equal(parsed.domain, 'example.test');
+    assert.equal(Object.hasOwn(parsed, 'tenantId'), false);
+    assert.match(document.headers['content-type'], /^application\/json/);
   } finally {
     await stopServer(runtime);
   }

@@ -14,6 +14,10 @@ Author: Sythos (https://www.sythos.net)
 const DEFAULT_WEB_CONFIG = Object.freeze({
   apiBase: '/api',
   eventsPath: '/api/events',
+  calendarPath: '/calendar/events',
+  contactsPath: '/contacts',
+  caldavDiscoveryPath: '/discovery/caldav',
+  carddavDiscoveryPath: '/discovery/carddav',
   locale: 'en',
 });
 
@@ -24,6 +28,39 @@ const FOLDER_LABELS = Object.freeze({
   drafts: 'Drafts',
   trash: 'Trash',
 });
+
+const VIEW_LABELS = Object.freeze({
+  mail: 'Mail',
+  calendar: 'Calendar',
+  contacts: 'Contacts',
+});
+
+const DISCOVERY_PATHS = Object.freeze({
+  calendar: 'caldavDiscoveryPath',
+  contacts: 'carddavDiscoveryPath',
+});
+
+const REALTIME_METADATA_KEYS = new Set([
+  'eventId',
+  'eventType',
+  'type',
+  'version',
+  'source',
+  'tenantId',
+  'userId',
+  'resourceId',
+  'resource',
+  'messageId',
+  'calendarId',
+  'contactId',
+  'folder',
+  'mailbox',
+  'operation',
+  'status',
+  'sequence',
+  'occurredAt',
+  'changedAt',
+]);
 
 const DANGEROUS_ELEMENTS = new Set([
   'base',
@@ -41,6 +78,28 @@ const SAFE_URL_PROTOCOLS = new Set(['cid:', 'https:', 'mailto:']);
 
 function asString(value, fallback = '') {
   return typeof value === 'string' ? value : fallback;
+}
+
+function parseRealtimeMetadata(value) {
+  let payload;
+  try {
+    payload = typeof value === 'string' ? JSON.parse(value) : value;
+  } catch {
+    return undefined;
+  }
+
+  if (!payload || typeof payload !== 'object' || Array.isArray(payload)) {
+    return undefined;
+  }
+
+  const metadata = {};
+  for (const key of REALTIME_METADATA_KEYS) {
+    const candidate = payload[key];
+    if (typeof candidate === 'string' || typeof candidate === 'number' || typeof candidate === 'boolean') {
+      metadata[key] = candidate;
+    }
+  }
+  return Object.keys(metadata).length > 0 ? metadata : undefined;
 }
 
 function normaliseTimeZone(value) {
@@ -183,6 +242,10 @@ function buildWebConfig(documentRef = globalThis.document) {
     ...DEFAULT_WEB_CONFIG,
     apiBase: asString(body?.dataset?.apiBase, DEFAULT_WEB_CONFIG.apiBase),
     eventsPath: asString(body?.dataset?.eventsPath, DEFAULT_WEB_CONFIG.eventsPath),
+    calendarPath: asString(body?.dataset?.calendarPath, DEFAULT_WEB_CONFIG.calendarPath),
+    contactsPath: asString(body?.dataset?.contactsPath, DEFAULT_WEB_CONFIG.contactsPath),
+    caldavDiscoveryPath: asString(body?.dataset?.caldavDiscoveryPath, DEFAULT_WEB_CONFIG.caldavDiscoveryPath),
+    carddavDiscoveryPath: asString(body?.dataset?.carddavDiscoveryPath, DEFAULT_WEB_CONFIG.carddavDiscoveryPath),
   });
 }
 
@@ -222,7 +285,14 @@ function createApiClient({ fetchFn = globalThis.fetch, documentRef = globalThis.
   return Object.freeze({ request });
 }
 
-function createEventStream({ windowRef = globalThis, path = DEFAULT_WEB_CONFIG.eventsPath, onMail, onState } = {}) {
+function createEventStream({
+  windowRef = globalThis,
+  path = DEFAULT_WEB_CONFIG.eventsPath,
+  onMail,
+  onCalendar,
+  onContacts,
+  onState,
+} = {}) {
   const EventSourceRef = windowRef.EventSource;
   if (typeof EventSourceRef !== 'function') {
     onState?.('unsupported');
@@ -232,13 +302,17 @@ function createEventStream({ windowRef = globalThis, path = DEFAULT_WEB_CONFIG.e
   const source = new EventSourceRef(path, { withCredentials: true });
   source.addEventListener('open', () => onState?.('connected'));
   source.addEventListener('error', () => onState?.('error'));
-  source.addEventListener('mail.new', (event) => {
-    try {
-      onMail?.(JSON.parse(event.data));
-    } catch {
+  const metadataEvent = (callback) => (event) => {
+    const metadata = parseRealtimeMetadata(event.data);
+    if (!metadata) {
       onState?.('error');
+      return;
     }
-  });
+    callback?.(metadata);
+  };
+  source.addEventListener('mail.new', metadataEvent(onMail));
+  source.addEventListener('calendar.changed', metadataEvent(onCalendar));
+  source.addEventListener('contacts.changed', metadataEvent(onContacts));
   return Object.freeze({ close: () => source.close() });
 }
 
@@ -246,8 +320,11 @@ function createWebApplication(documentRef = globalThis.document, windowRef = glo
   const config = { ...buildWebConfig(documentRef), ...injected };
   const api = injected.api ?? createApiClient({ fetchFn: windowRef.fetch?.bind(windowRef), documentRef, config });
   const state = {
+    activeView: 'mail',
     activeFolder: 'inbox',
     messages: [],
+    calendarEvents: [],
+    contacts: [],
     selectedMessage: undefined,
     timeZone: readManualTimeZone(windowRef) ?? detectBrowserTimeZone(windowRef),
     account: undefined,
@@ -278,6 +355,104 @@ function createWebApplication(documentRef = globalThis.document, windowRef = glo
     if (readout) readout.textContent = state.timeZone;
     const help = get('#timezone-help');
     if (help) help.textContent = `Times are shown in ${state.timeZone}. The sender's local equivalent is shown in parentheses when it differs.`;
+  }
+
+  function renderDiscoveryStatus(view, discovery, { checked = true, error = false } = {}) {
+    const service = view === 'calendar' ? 'CalDAV' : 'CardDAV';
+    const status = get(`#${view}-discovery-status`);
+    const manual = get(`#${view}-manual-status`);
+    if (!status || !manual || !checked) return;
+
+    status.dataset.state = error ? 'error' : 'pending';
+    if (error) {
+      status.textContent = `Automatic ${service} discovery is unavailable right now.`;
+      manual.dataset.configState = 'manual-fallback';
+      manual.textContent = 'Manual configuration remains the fallback; this browser shell does not collect DAV credentials.';
+      return;
+    }
+
+    const ready = discovery?.available === true || discovery?.status === 'ready' || discovery?.status === 'available';
+    const unavailable = discovery?.available === false || discovery?.status === 'unavailable' || discovery?.status === 'error';
+    if (ready) {
+      status.dataset.state = 'ready';
+      status.textContent = `Automatic ${service} discovery is available.`;
+    } else if (unavailable) {
+      status.dataset.state = 'error';
+      status.textContent = `Automatic ${service} discovery is unavailable.`;
+    } else {
+      status.textContent = `Automatic ${service} discovery responded without a readiness state.`;
+    }
+    manual.dataset.configState = 'manual-fallback';
+    manual.textContent = 'Manual configuration remains available through the authenticated server API; credentials stay server-side.';
+  }
+
+  function renderCalendarEvents(events = []) {
+    const list = get('#calendar-list');
+    const listState = get('#calendar-list-state');
+    if (!list || !listState) return;
+    list.replaceChildren();
+    listState.dataset.tone = '';
+    const safeEvents = Array.isArray(events) ? events.filter((event) => event && typeof event === 'object') : [];
+    if (!safeEvents.length) {
+      listState.textContent = 'No calendar events were returned by the server.';
+      return;
+    }
+    listState.textContent = `${safeEvents.length} event${safeEvents.length === 1 ? '' : 's'}`;
+    for (const event of safeEvents) {
+      const item = documentRef.createElement('li');
+      item.className = 'module-list-item';
+      const title = documentRef.createElement('strong');
+      title.textContent = asString(event.summary ?? event.title, 'Untitled event');
+      item.append(title);
+      const start = asString(event.start ?? event.startDate);
+      if (start) {
+        const time = documentRef.createElement('time');
+        time.dateTime = start;
+        time.textContent = formatDateTime(start, state.timeZone, config.locale);
+        item.append(time);
+      }
+      const location = asString(event.location);
+      if (location) {
+        const details = documentRef.createElement('span');
+        details.textContent = location;
+        item.append(details);
+      }
+      list.append(item);
+    }
+  }
+
+  function renderContacts(contacts = []) {
+    const list = get('#contacts-list');
+    const listState = get('#contacts-list-state');
+    if (!list || !listState) return;
+    list.replaceChildren();
+    listState.dataset.tone = '';
+    const safeContacts = Array.isArray(contacts) ? contacts.filter((contact) => contact && typeof contact === 'object') : [];
+    if (!safeContacts.length) {
+      listState.textContent = 'No contacts were returned by the server.';
+      return;
+    }
+    listState.textContent = `${safeContacts.length} contact${safeContacts.length === 1 ? '' : 's'}`;
+    for (const contact of safeContacts) {
+      const item = documentRef.createElement('li');
+      item.className = 'module-list-item';
+      const name = documentRef.createElement('strong');
+      name.textContent = asString(contact.displayName ?? contact.name, 'Unnamed contact');
+      item.append(name);
+      const email = asString(contact.email ?? contact.emailAddress);
+      if (email) {
+        const details = documentRef.createElement('span');
+        details.textContent = email;
+        item.append(details);
+      }
+      const organization = asString(contact.organization ?? contact.organizationName);
+      if (organization) {
+        const details = documentRef.createElement('span');
+        details.textContent = organization;
+        item.append(details);
+      }
+      list.append(item);
+    }
   }
 
   function renderMessages() {
@@ -395,6 +570,91 @@ function createWebApplication(documentRef = globalThis.document, windowRef = glo
     }
   }
 
+  async function loadCalendar() {
+    const listState = get('#calendar-list-state');
+    if (listState) {
+      listState.dataset.tone = '';
+      listState.textContent = 'Loading calendar events…';
+    }
+    try {
+      const payload = await api.request(config.calendarPath);
+      state.calendarEvents = Array.isArray(payload?.events) ? payload.events : [];
+      renderCalendarEvents(state.calendarEvents);
+      if (payload?.discovery !== undefined) renderDiscoveryStatus('calendar', payload.discovery);
+      announce('Calendar updated.');
+    } catch (error) {
+      state.calendarEvents = [];
+      renderCalendarEvents(state.calendarEvents);
+      if (listState) {
+        listState.textContent = 'Calendar events could not be loaded.';
+        listState.dataset.tone = 'error';
+      }
+      announce(asString(error?.message, 'Calendar events could not be loaded.'), 'error');
+    }
+  }
+
+  async function loadContacts() {
+    const listState = get('#contacts-list-state');
+    if (listState) {
+      listState.dataset.tone = '';
+      listState.textContent = 'Loading contacts…';
+    }
+    try {
+      const payload = await api.request(config.contactsPath);
+      state.contacts = Array.isArray(payload?.contacts) ? payload.contacts : [];
+      renderContacts(state.contacts);
+      if (payload?.discovery !== undefined) renderDiscoveryStatus('contacts', payload.discovery);
+      announce('Contacts updated.');
+    } catch (error) {
+      state.contacts = [];
+      renderContacts(state.contacts);
+      if (listState) {
+        listState.textContent = 'Contacts could not be loaded.';
+        listState.dataset.tone = 'error';
+      }
+      announce(asString(error?.message, 'Contacts could not be loaded.'), 'error');
+    }
+  }
+
+  async function checkDiscovery(view) {
+    const pathKey = DISCOVERY_PATHS[view];
+    if (!pathKey) return;
+    const status = get(`#${view}-discovery-status`);
+    const button = get(`#${view}-discovery-button`);
+    if (status) {
+      status.dataset.state = 'pending';
+      status.textContent = `Checking automatic ${view === 'calendar' ? 'CalDAV' : 'CardDAV'} discovery…`;
+    }
+    if (button) button.disabled = true;
+    try {
+      const payload = await api.request(config[pathKey]);
+      renderDiscoveryStatus(view, payload, { checked: true });
+    } catch {
+      renderDiscoveryStatus(view, undefined, { checked: true, error: true });
+    } finally {
+      if (button) button.disabled = false;
+    }
+  }
+
+  async function setView(view = 'mail') {
+    const nextView = VIEW_LABELS[view] ? view : 'mail';
+    state.activeView = nextView;
+    for (const button of documentRef.querySelectorAll('[data-view]')) {
+      const active = button.dataset.view === nextView;
+      button.classList.toggle('is-active', active);
+      if (active) button.setAttribute('aria-current', 'page');
+      else button.removeAttribute('aria-current');
+    }
+    for (const panel of documentRef.querySelectorAll('[data-view-panel]')) {
+      const active = panel.dataset.viewPanel === nextView;
+      panel.hidden = !active;
+      panel.setAttribute('aria-hidden', String(!active));
+    }
+    if (nextView === 'mail') await loadFolder(state.activeFolder);
+    if (nextView === 'calendar') await loadCalendar();
+    if (nextView === 'contacts') await loadContacts();
+  }
+
   async function selectMessage(message) {
     state.selectedMessage = message;
     renderMessages();
@@ -474,6 +734,13 @@ function createWebApplication(documentRef = globalThis.document, windowRef = glo
     for (const button of documentRef.querySelectorAll('[data-folder]')) {
       button.addEventListener('click', () => void loadFolder(button.dataset.folder));
     }
+    for (const button of documentRef.querySelectorAll('[data-view]')) {
+      button.addEventListener('click', () => void setView(button.dataset.view));
+    }
+    get('#calendar-refresh-button')?.addEventListener('click', () => void loadCalendar());
+    get('#contacts-refresh-button')?.addEventListener('click', () => void loadContacts());
+    get('#calendar-discovery-button')?.addEventListener('click', () => void checkDiscovery('calendar'));
+    get('#contacts-discovery-button')?.addEventListener('click', () => void checkDiscovery('contacts'));
     get('#navigation-toggle')?.addEventListener('click', (event) => {
       const navigation = get('#navigation');
       const open = navigation.classList.toggle('is-open');
@@ -511,6 +778,14 @@ function createWebApplication(documentRef = globalThis.document, windowRef = glo
       path: config.eventsPath,
       onState: setConnectionState,
       onMail: () => void loadFolder(state.activeFolder),
+      onCalendar: () => {
+        if (state.activeView === 'calendar') void loadCalendar();
+        else announce('Calendar changed. Open Calendar to refresh the view.');
+      },
+      onContacts: () => {
+        if (state.activeView === 'contacts') void loadContacts();
+        else announce('Contacts changed. Open Contacts to refresh the view.');
+      },
     });
     try {
       const payload = await api.request('/session');
@@ -522,10 +797,10 @@ function createWebApplication(documentRef = globalThis.document, windowRef = glo
       // The protected API decides whether the session is valid; do not cache identity locally.
     }
     await loadFolder('inbox');
-    return Object.freeze({ state, loadFolder, selectMessage, close: () => state.eventStream?.close() });
+    return Object.freeze({ state, loadFolder, loadCalendar, loadContacts, setView, selectMessage, close: () => state.eventStream?.close() });
   }
 
-  return Object.freeze({ state, start, loadFolder, selectMessage, sanitiseMessageHtml });
+  return Object.freeze({ state, start, loadFolder, loadCalendar, loadContacts, setView, selectMessage, sanitiseMessageHtml });
 }
 
 export {
@@ -537,6 +812,7 @@ export {
   formatDateTime,
   formatMessageTime,
   normaliseTimeZone,
+  parseRealtimeMetadata,
   sanitiseMessageHtml,
 };
 

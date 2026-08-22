@@ -58,11 +58,11 @@ where the item depends on external infrastructure.
 - [x] IMAP IDLE;
 - [x] Sieve;
 - [x] aliases;
-- [ ] CalDAV;
-- [ ] CardDAV;
-- [ ] .well-known;
-- [ ] autodiscovery;
-- [ ] ICS/vCard;
+  - [x] CalDAV contract and conditional object semantics;
+  - [x] CardDAV contract and conditional object semantics;
+  - [x] .well-known resources;
+  - [x] autodiscovery contract with safe manual fallback;
+  - [x] ICS/vCard validation and metadata export;
 - [x] timezone behavior.
 
 ### Operations
@@ -106,6 +106,7 @@ gulogulo/
 │   ├── compose-and-fixtures.md
 │   ├── configuration.md
 │   ├── container-patching.md
+│   ├── dav-and-discovery.md
 │   ├── identity-and-postgres.md
 │   ├── mail-core.md
 │   ├── observability.md
@@ -120,6 +121,10 @@ gulogulo/
 │   ├── integrations/
 │   ├── mail/
 │   ├── runtime/
+│   ├── dav/
+│   │   ├── caldav/
+│   │   ├── carddav/
+│   │   └── discovery/
 │   └── web/
 │       ├── backup/
 │       ├── content/

@@ -10,6 +10,7 @@ import { extname, join, relative, resolve } from 'node:path';
 import { loadConfig } from './config.mjs';
 import { createDependencyRegistry, createMetrics } from './metrics.mjs';
 import { createLogger } from './logger.mjs';
+import { getWellKnownResource, WELL_KNOWN_PATHS } from '../dav/discovery/index.mjs';
 
 const JSON_HEADERS = {
   'cache-control': 'no-store',
@@ -143,6 +144,25 @@ function writeStatic(response, statusCode, body, contentType, method, requestDet
   response.end();
 }
 
+function writeResource(response, resource, method, requestDetails) {
+  const body = Buffer.from(resource.body ?? '', 'utf8');
+  response.writeHead(resource.statusCode, {
+    ...STATIC_SECURITY_HEADERS,
+    ...resource.headers,
+    'content-length': body.length,
+    'content-type': resource.contentType,
+    'x-request-id': requestDetails.request_id,
+    'x-correlation-id': requestDetails.correlation_id,
+  });
+
+  if (method !== 'HEAD') {
+    response.end(body);
+    return;
+  }
+
+  response.end();
+}
+
 function requestPath(request) {
   try {
     return new URL(request.url ?? '/', 'http://gulogulo.invalid').pathname;
@@ -163,6 +183,9 @@ function routeName(path) {
   }
   if (path === '/ops/patch/status') {
     return '/ops/patch/status';
+  }
+  if (Object.values(WELL_KNOWN_PATHS).includes(path)) {
+    return '/discovery/well-known';
   }
   if (path === '/') {
     return '/';
@@ -294,6 +317,8 @@ export function createRuntimeServer({
   dependencies = {},
   dependencyRegistry,
   webRoot,
+  discoveryContract = config?.discoveryContract,
+  discoveryTenantId = config?.discoveryTenantId ?? config?.tenantId,
 } = {}) {
   const runtimeMetrics = metrics ?? createMetrics({ clock });
   const metadata = buildMetadata(config);
@@ -321,6 +346,8 @@ export function createRuntimeServer({
     state,
     clock,
     webRoot: webRoot ?? config?.webRoot ?? config?.web?.staticRoot ?? join(process.cwd(), 'web'),
+    discoveryContract,
+    discoveryTenantId,
     server: null,
   };
 
@@ -386,6 +413,36 @@ export function createRuntimeServer({
           allow: ['GET', 'HEAD'],
         }),
       );
+      return;
+    }
+
+    if (Object.values(WELL_KNOWN_PATHS).includes(path)) {
+      if (runtime.discoveryContract === undefined || runtime.discoveryTenantId === undefined) {
+        finish(404, responsePayload(runtime, 'not_found', requestDetails, {
+          reason: 'discovery_not_configured',
+        }));
+        return;
+      }
+      try {
+        const resource = getWellKnownResource(runtime.discoveryContract, path, {
+          tenantId: runtime.discoveryTenantId,
+        });
+        completed = true;
+        writeResource(response, resource, method, requestDetails);
+        const durationMs = elapsedMilliseconds(startedAt);
+        runtime.metrics.recordRequest({ method, route, statusCode: resource.statusCode, durationMs });
+        scopedLogger.info('request_completed', {
+          method,
+          route,
+          status_code: resource.statusCode,
+          duration_ms: Number(durationMs.toFixed(3)),
+          result: resource.statusCode < 400 ? 'success' : 'failure',
+        });
+      } catch (error) {
+        finish(404, responsePayload(runtime, 'not_found', requestDetails, {
+          reason: error?.code === 'SERVICE_DISABLED' ? 'discovery_service_disabled' : 'discovery_unavailable',
+        }));
+      }
       return;
     }
 

@@ -43,6 +43,11 @@ and rebuilt in CI and in the OCI image; it must never be edited by hand.
 - Attachment links are rendered only when the protected API supplies a safe
   `https:` or `cid:` URL. The API remains responsible for authorization,
   content disposition, malware scanning, and download expiry.
+- Calendar and Contacts are read-only API views. Their automatic CalDAV and
+  CardDAV checks use same-origin discovery endpoints, show an explicit manual
+  configuration fallback, and never connect directly to DAV storage.
+- `calendar.changed` and `contacts.changed` SSE events carry metadata only; the
+  corresponding view refreshes through the protected API after authorization.
 
 The shell intentionally does not implement authentication, authorization,
 session issuance, mailbox access, or message persistence. Those are server-side

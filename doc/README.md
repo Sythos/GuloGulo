@@ -37,7 +37,13 @@ normal workflow.
 - [Web foundation](web-foundation.md) — the HTML5/TypeScript shell, secure
   session and CSRF contracts, message sanitization, attachment policy,
   timezone display, realtime events, and browser/API boundaries.
+- [CalDAV, CardDAV, and discovery](dav-and-discovery.md) — user-scoped
+  calendar and address-book contracts, conditional writes, ETags, sync tokens,
+  iCalendar/vCard validation, `.well-known` responses, and safe manual
+  configuration fallback.
 
 The project is still intentionally small. The documents describe real behavior
-only; vendor mail-service wiring, DAV, and user-facing features remain separate
-milestones until their own implementation and interoperability tests land.
+only; the DAV contract is now implemented as a deterministic adapter boundary.
+Production deployment still needs a persistent DAV backend, authenticated HTTP
+method adapter, and standard-client interoperability rehearsal before it is
+treated as a complete external service.
