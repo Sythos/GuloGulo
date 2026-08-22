@@ -117,6 +117,11 @@ services:
       APP_ENV: test
       GULOGULO_ENV: test
       GULOGULO_FIXTURE_MODE: "true"
+    # The disposable test runner rebuilds the ignored browser output before
+    # executing the package contract. Keep the production service read-only,
+    # but allow this short-lived verification container to write its build
+    # output inside the image.
+    read_only: false
     volumes: []
     healthcheck:
       disable: true
@@ -137,6 +142,10 @@ services:
       APP_ENV: test
       GULOGULO_ENV: test
       GULOGULO_FIXTURE_MODE: "true"
+    # `npm test` invokes the browser build and therefore needs to regenerate
+    # the ignored `web/dist` output. This profile is disposable; the default
+    # runtime service above remains read-only.
+    read_only: false
     volumes: []
     healthcheck:
       disable: true
