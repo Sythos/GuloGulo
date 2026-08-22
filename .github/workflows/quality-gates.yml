@@ -134,6 +134,11 @@ jobs:
           test -f src/observability/alert-policy.mjs
           test -f src/observability/observability.test.mjs
           test -f doc/lifecycle-backup-dr.md
+          test -f src/ops/acme/index.mjs
+          test -f src/ops/acme/index.test.mjs
+          test -f src/ops/abuse/index.mjs
+          test -f src/ops/abuse/index.test.mjs
+          test -f doc/acme-abuse-deployment.md
           grep -Fq 'profiles: ["local"]' compose.yaml
           grep -Fq 'profiles: ["test"]' compose.yaml
           grep -Fq 'profiles: ["fixture"]' compose.yaml
@@ -213,6 +218,14 @@ jobs:
           grep -Fq 'createLogRotationPolicy' src/observability/log-policy.mjs
           grep -Fq 'createStructuredEvent' src/observability/structured-event.mjs
           grep -Fq 'createAlertPolicy' src/observability/alert-policy.mjs
+          grep -Fq 'LETSENCRYPT' src/ops/acme/index.mjs
+          grep -Fq 'HTTP_01' src/ops/acme/index.mjs
+          grep -Fq 'DNS_01' src/ops/acme/index.mjs
+          grep -Fq 'createSafeReloadPlan' src/ops/acme/index.mjs
+          grep -Fq 'DEFAULT_RATE_LIMITS' src/ops/abuse/index.mjs
+          grep -Fq 'createAbuseAuditEvent' src/ops/abuse/index.mjs
+          grep -Fq 'validateComposeProductionReadiness' src/ops/abuse/index.mjs
+          grep -Fq 'HOST_NAMESPACE_FORBIDDEN' src/ops/abuse/index.mjs
 
           grep -Fq 'SPDX-License-Identifier: MIT' config/schema.v1.json
           grep -Fq 'Sythos (https://www.sythos.net)' config/schema.v1.json
