@@ -104,6 +104,13 @@ function Write-ComposeFailureContext {
         }
         $statusArguments += @('ps', '-a')
         & docker @statusArguments
+        Write-Host 'Docker Compose logs:'
+        $logArguments = @('compose', '--project-name', $ProjectName, '--file', $resolvedComposeFile)
+        if (-not [string]::IsNullOrWhiteSpace($resolvedEnvFile)) {
+            $logArguments += @('--env-file', $resolvedEnvFile)
+        }
+        $logArguments += @('logs', '--no-color', '--tail', '100', 'gulogulo')
+        & docker @logArguments
     }
     catch {
         Write-Warning "Unable to collect Docker Compose status: $($_.Exception.Message)"
