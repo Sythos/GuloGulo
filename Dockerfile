@@ -10,7 +10,7 @@
 FROM ubuntu:26.04
 
 ARG NODE_VERSION=26.7.0
-ARG TARGETARCH=amd64
+ARG TARGETARCH
 
 ENV NODE_ENV=production \
     HOST=0.0.0.0 \
@@ -25,13 +25,19 @@ SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 # Ubuntu package manager. TARGETARCH keeps the image usable on the OCI
 # architectures supported by the Node.js release.
 RUN set -eux; \
-    case "${TARGETARCH}" in \
+    debian_arch="$(dpkg --print-architecture)"; \
+    target_arch="${TARGETARCH:-${debian_arch}}"; \
+    if [ "${target_arch}" != "${debian_arch}" ]; then \
+      echo "TARGETARCH ${target_arch} does not match the Ubuntu target architecture ${debian_arch}" >&2; \
+      exit 1; \
+    fi; \
+    case "${target_arch}" in \
       amd64) node_arch='x64' ;; \
       arm64) node_arch='arm64' ;; \
       arm) node_arch='armv7l' ;; \
       ppc64le) node_arch='ppc64le' ;; \
       s390x) node_arch='s390x' ;; \
-      *) echo "Unsupported TARGETARCH: ${TARGETARCH}" >&2; exit 1 ;; \
+      *) echo "Unsupported TARGETARCH: ${target_arch}" >&2; exit 1 ;; \
     esac; \
     export DEBIAN_FRONTEND=noninteractive; \
     apt-get update; \
