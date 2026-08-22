@@ -81,9 +81,9 @@ RUN set -eux; \
       exit 1; \
     fi; \
     if [ -f package-lock.json ]; then \
-      npm ci --ignore-scripts --no-audit --no-fund; \
+      npm ci --include=dev --ignore-scripts --no-audit --no-fund; \
     else \
-      npm install --ignore-scripts --no-audit --no-fund; \
+      npm install --include=dev --ignore-scripts --no-audit --no-fund; \
     fi; \
     if [ -f web/src/app.ts ]; then \
       npm run build:web; \
