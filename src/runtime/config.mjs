@@ -2,90 +2,657 @@
 // SPDX-FileCopyrightText: 2026 Sythos (https://www.sythos.net)
 // Author: Sythos (https://www.sythos.net)
 
+import { readFileSync } from 'node:fs';
 import { isIP } from 'node:net';
 
+export const CONFIG_SCHEMA_VERSION = 1;
+export const DEFAULT_CONFIG_FILE = '/etc/gulogulo/config.json';
+export const CONFIG_FILE_ENVIRONMENT_VARIABLE = 'GULOGULO_CONFIG_FILE';
+
+const PRODUCT_DISPLAY_NAME = 'Gulo Gulo';
+const PRODUCT_MACHINE_NAME = 'gulogulo';
+const DEFAULT_BUILD_VERSION = '0.0.0';
+const DEFAULT_BUILD_DIGEST = 'development';
 const DEFAULT_HOST = '0.0.0.0';
 const DEFAULT_PORT = 8080;
 const DEFAULT_SERVICE_NAME = 'gulogulo-runtime';
 const DEFAULT_ENVIRONMENT = 'development';
 const DEFAULT_SHUTDOWN_TIMEOUT_MS = 10_000;
+const DEFAULT_PATCH_STATUS_FILE = '/var/lib/gulogulo/patch/status.json';
 
 const HOSTNAME_PATTERN = /^(?=.{1,253}$)(?:[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?)(?:\.(?:[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?))*$/;
 const SAFE_NAME_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/;
+const SAFE_VERSION_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._+-]{0,63}$/;
+const SAFE_BUILD_DIGEST_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._:+/-]{0,127}$/;
+const PATCH_STATUS_PATH_PATTERN = /^\/[A-Za-z0-9._/-]{1,255}$/;
+const SECRET_REFERENCE_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._/-]{0,127}$/;
+const DISTINGUISHED_NAME_PATTERN = /^[\x20-\x7E]{1,512}$/;
+const SECRET_KEY_PATTERN = /(password|passphrase|token|private[_-]?key|credential|authorization|cookie|api[_-]?key|secret(?!ref)|(^|[_-])dsn($|[_-]))/i;
+const MAX_CONFIGURATION_FILE_BYTES = 1024 * 1024;
 
-function readText(value, name, pattern) {
-  if (typeof value !== 'string' || value.length === 0 || !pattern.test(value)) {
-    throw new Error(`${name} must be a non-empty value using the supported characters`);
+const TOP_LEVEL_KEYS = new Set([
+  '$schema',
+  'schemaVersion',
+  'buildVersion',
+  'buildDigest',
+  'project',
+  'runtime',
+  'ldap',
+  'postgres',
+  'mail',
+  'certificates',
+  'webAuth',
+  'retention',
+  'api',
+  'upgrade',
+  'patching',
+]);
+
+const SECTION_KEYS = Object.freeze({
+  project: new Set(['displayName', 'machineName']),
+  runtime: new Set(['host', 'port', 'serviceName', 'environment', 'shutdownTimeoutMs']),
+  ldap: new Set(['enabled', 'url', 'startTls', 'bindSecretRef', 'userBaseDn', 'connectTimeoutMs']),
+  postgres: new Set([
+    'enabled',
+    'host',
+    'port',
+    'database',
+    'user',
+    'sslMode',
+    'dsnSecretRef',
+    'connectTimeoutMs',
+  ]),
+  mail: new Set(['imapIdle', 'pop3sEnabled', 'catchAll', 'userForwarding']),
+  certificates: new Set(['provider', 'autoRenew']),
+  webAuth: new Set(['totp', 'webauthn', 'recoveryCodes']),
+  retention: new Set(['trashDays']),
+  api: new Set(['readOnly']),
+  upgrade: new Set(['strategy']),
+  patching: new Set(['mode', 'statusFile']),
+});
+
+const ENVIRONMENT_VARIABLES = Object.freeze({
+  schemaVersion: ['GULOGULO_SCHEMA_VERSION'],
+  buildVersion: ['GULOGULO_VERSION', 'GULOGULO_BUILD_VERSION'],
+  buildDigest: ['GULOGULO_BUILD_DIGEST'],
+  runtime: {
+    host: ['GULOGULO_HOST', 'HOST'],
+    port: ['GULOGULO_PORT', 'PORT'],
+    serviceName: ['GULOGULO_SERVICE_NAME'],
+    environment: ['GULOGULO_ENV', 'APP_ENV'],
+    shutdownTimeoutMs: ['GULOGULO_SHUTDOWN_TIMEOUT_MS'],
+  },
+  ldap: {
+    enabled: ['GULOGULO_LDAP_ENABLED', 'LDAP_ENABLED'],
+    url: ['GULOGULO_LDAP_URL', 'LDAP_URL'],
+    startTls: ['GULOGULO_LDAP_STARTTLS', 'LDAP_STARTTLS'],
+    bindSecretRef: ['GULOGULO_LDAP_BIND_SECRET_REF', 'LDAP_BIND_SECRET_REF'],
+    userBaseDn: ['GULOGULO_LDAP_USER_BASE_DN', 'LDAP_USER_BASE_DN'],
+    connectTimeoutMs: ['GULOGULO_LDAP_CONNECT_TIMEOUT_MS', 'LDAP_CONNECT_TIMEOUT_MS'],
+  },
+  postgres: {
+    enabled: ['GULOGULO_POSTGRES_ENABLED', 'POSTGRES_ENABLED'],
+    host: ['GULOGULO_POSTGRES_HOST', 'POSTGRES_HOST'],
+    port: ['GULOGULO_POSTGRES_PORT', 'POSTGRES_PORT'],
+    database: ['GULOGULO_POSTGRES_DB', 'POSTGRES_DB'],
+    user: ['GULOGULO_POSTGRES_USER', 'POSTGRES_USER'],
+    sslMode: ['GULOGULO_POSTGRES_SSLMODE', 'POSTGRES_SSLMODE'],
+    dsnSecretRef: ['GULOGULO_POSTGRES_DSN_SECRET_REF', 'POSTGRES_DSN_SECRET_REF'],
+    connectTimeoutMs: ['GULOGULO_POSTGRES_CONNECT_TIMEOUT_MS', 'POSTGRES_CONNECT_TIMEOUT_MS'],
+  },
+  mail: {
+    imapIdle: ['GULOGULO_MAIL_IMAP_IDLE', 'MAIL_IMAP_IDLE'],
+    pop3sEnabled: ['GULOGULO_MAIL_POP3S_ENABLED', 'MAIL_POP3S_ENABLED'],
+    catchAll: ['GULOGULO_MAIL_CATCH_ALL', 'MAIL_CATCH_ALL'],
+    userForwarding: ['GULOGULO_MAIL_USER_FORWARDING', 'MAIL_USER_FORWARDING'],
+  },
+  certificates: {
+    provider: ['GULOGULO_CERTIFICATE_PROVIDER', 'CERTIFICATE_PROVIDER'],
+    autoRenew: ['GULOGULO_CERTIFICATE_AUTO_RENEW', 'CERTIFICATE_AUTO_RENEW'],
+  },
+  webAuth: {
+    totp: ['GULOGULO_WEB_AUTH_TOTP', 'WEB_AUTH_TOTP'],
+    webauthn: ['GULOGULO_WEB_AUTH_WEBAUTHN', 'WEB_AUTH_WEBAUTHN'],
+    recoveryCodes: ['GULOGULO_WEB_AUTH_RECOVERY_CODES', 'WEB_AUTH_RECOVERY_CODES'],
+  },
+  retention: {
+    trashDays: ['GULOGULO_RETENTION_TRASH_DAYS', 'RETENTION_TRASH_DAYS'],
+  },
+  api: {
+    readOnly: ['GULOGULO_API_READ_ONLY', 'API_READ_ONLY'],
+  },
+  upgrade: {
+    strategy: ['GULOGULO_UPGRADE_STRATEGY', 'UPGRADE_STRATEGY'],
+  },
+  patching: {
+    mode: ['GULOGULO_PATCH_MODE'],
+    statusFile: ['GULOGULO_PATCH_STATUS_FILE'],
+  },
+});
+
+function isPlainObject(value) {
+  if (value === null || typeof value !== 'object' || Array.isArray(value)) {
+    return false;
+  }
+
+  const prototype = Object.getPrototypeOf(value);
+  return prototype === Object.prototype || prototype === null;
+}
+
+function configurationError(message) {
+  return new Error(`Configuration error: ${message}`);
+}
+
+function assertObject(value, name) {
+  if (!isPlainObject(value)) {
+    throw configurationError(`${name} must be an object`);
+  }
+}
+
+function assertKnownKeys(value, allowedKeys, path) {
+  for (const key of Object.keys(value)) {
+    const keyPath = `${path}.${key}`;
+    if (SECRET_KEY_PATTERN.test(key)) {
+      throw configurationError(`${keyPath} is not allowed; use an external secret reference`);
+    }
+
+    if (!allowedKeys.has(key)) {
+      throw configurationError(`${keyPath} is unknown`);
+    }
+  }
+}
+
+function readString(value, name, pattern = null) {
+  if (typeof value !== 'string' || value.length === 0 || (pattern !== null && !pattern.test(value))) {
+    throw configurationError(`${name} must be a non-empty value using the supported characters`);
   }
 
   return value;
 }
 
-function readPort(value) {
-  if (typeof value !== 'string' || !/^\d+$/.test(value)) {
-    throw new Error('GULOGULO_PORT must be an integer between 1 and 65535');
+function readBoolean(value, name) {
+  if (typeof value !== 'boolean') {
+    throw configurationError(`${name} must be a boolean`);
   }
 
-  const port = Number(value);
-  if (!Number.isSafeInteger(port) || port < 1 || port > 65_535) {
-    throw new Error('GULOGULO_PORT must be an integer between 1 and 65535');
-  }
-
-  return port;
+  return value;
 }
 
-function readShutdownTimeout(value) {
-  if (typeof value !== 'string' || !/^\d+$/.test(value)) {
-    throw new Error('GULOGULO_SHUTDOWN_TIMEOUT_MS must be an integer between 1000 and 60000');
+function readInteger(value, name, minimum, maximum) {
+  if (
+    (typeof value !== 'number' && typeof value !== 'string') ||
+    (typeof value === 'string' && !/^\d+$/.test(value)) ||
+    (typeof value === 'number' && !Number.isInteger(value))
+  ) {
+    throw configurationError(`${name} must be an integer between ${minimum} and ${maximum}`);
   }
 
-  const timeout = Number(value);
-  if (!Number.isSafeInteger(timeout) || timeout < 1_000 || timeout > 60_000) {
-    throw new Error('GULOGULO_SHUTDOWN_TIMEOUT_MS must be an integer between 1000 and 60000');
+  const integer = Number(value);
+  if (!Number.isSafeInteger(integer) || integer < minimum || integer > maximum) {
+    throw configurationError(`${name} must be an integer between ${minimum} and ${maximum}`);
   }
 
-  return timeout;
+  return integer;
 }
 
-function readHost(value) {
+function readPort(value, name = 'runtime.port') {
+  return readInteger(value, name, 1, 65_535);
+}
+
+function readShutdownTimeout(value, name = 'runtime.shutdownTimeoutMs') {
+  return readInteger(value, name, 1_000, 60_000);
+}
+
+function readHost(value, name = 'runtime.host') {
   if (typeof value !== 'string' || value.length === 0) {
-    throw new Error('GULOGULO_HOST must be a valid IP address or hostname');
+    throw configurationError(`${name} must be a valid IP address or hostname`);
   }
 
   if (isIP(value) !== 0 || HOSTNAME_PATTERN.test(value)) {
     return value;
   }
 
-  throw new Error('GULOGULO_HOST must be a valid IP address or hostname');
+  throw configurationError(`${name} must be a valid IP address or hostname`);
+}
+
+function readEnum(value, name, values) {
+  if (typeof value !== 'string' || !values.includes(value)) {
+    throw configurationError(`${name} must be one of: ${values.join(', ')}`);
+  }
+
+  return value;
+}
+
+function readUrl(value, name) {
+  const url = readString(value, name);
+  let parsed;
+  try {
+    parsed = new URL(url);
+  } catch {
+    throw configurationError(`${name} must be a valid LDAP URL`);
+  }
+
+  if (!['ldap:', 'ldaps:'].includes(parsed.protocol) || parsed.username || parsed.password) {
+    throw configurationError(`${name} must use ldap:// or ldaps:// without embedded credentials`);
+  }
+
+  return url;
+}
+
+function readSecretReference(value, name) {
+  return readString(value, name, SECRET_REFERENCE_PATTERN);
+}
+
+function readDistinguishedName(value, name) {
+  return readString(value, name, DISTINGUISHED_NAME_PATTERN);
+}
+
+function readPatchStatusFile(value, name) {
+  return readString(value, name, PATCH_STATUS_PATH_PATTERN);
+}
+
+function readConfigurationFile(filePath, { optional, readFile = readFileSync } = {}) {
+  if (filePath === null || filePath === false) {
+    return {};
+  }
+
+  if (typeof filePath !== 'string' || filePath.length === 0) {
+    throw configurationError(`${CONFIG_FILE_ENVIRONMENT_VARIABLE} must be a non-empty path`);
+  }
+
+  let contents;
+  try {
+    contents = readFile(filePath, 'utf8');
+  } catch (error) {
+    if (optional && error?.code === 'ENOENT') {
+      return {};
+    }
+
+    throw configurationError(`cannot read ${filePath}: ${error?.message ?? 'unknown file error'}`);
+  }
+
+  if (typeof contents !== 'string') {
+    throw configurationError(`${filePath} must be read as UTF-8 text`);
+  }
+
+  if (Buffer.byteLength(contents, 'utf8') > MAX_CONFIGURATION_FILE_BYTES) {
+    throw configurationError(`${filePath} exceeds the ${MAX_CONFIGURATION_FILE_BYTES}-byte limit`);
+  }
+
+  let parsed;
+  try {
+    parsed = JSON.parse(contents);
+  } catch (error) {
+    throw configurationError(`cannot parse ${filePath} as JSON: ${error.message}`);
+  }
+
+  assertObject(parsed, filePath);
+  return parsed;
+}
+
+function getEnvironmentValue(environment, names) {
+  for (const name of names) {
+    if (environment[name] !== undefined) {
+      return { name, value: environment[name] };
+    }
+  }
+
+  return undefined;
+}
+
+function applyEnvironmentValue(target, key, environment, names, parser) {
+  const found = getEnvironmentValue(environment, names);
+  if (found === undefined) {
+    return;
+  }
+
+  target[key] = parser(found.value, found.name);
+}
+
+function readEnvironmentString(value, name, pattern = null) {
+  return readString(value, name, pattern);
+}
+
+function readEnvironmentBoolean(value, name) {
+  if (typeof value !== 'string') {
+    throw configurationError(`${name} must be true or false`);
+  }
+
+  const normalized = value.trim().toLowerCase();
+  if (normalized === 'true') {
+    return true;
+  }
+  if (normalized === 'false') {
+    return false;
+  }
+
+  throw configurationError(`${name} must be true or false`);
+}
+
+function readEnvironmentInteger(value, name, minimum, maximum) {
+  return readInteger(value, name, minimum, maximum);
+}
+
+function readEnvironmentEnum(value, name, values) {
+  return readEnum(value, name, values);
+}
+
+function readSection(source, name) {
+  const value = source[name];
+  if (value === undefined) {
+    return {};
+  }
+
+  assertObject(value, name);
+  assertKnownKeys(value, SECTION_KEYS[name], name);
+  return value;
+}
+
+function buildConfiguration(fileConfiguration, environment) {
+  assertKnownKeys(fileConfiguration, TOP_LEVEL_KEYS, 'config');
+
+  const runtimeFile = readSection(fileConfiguration, 'runtime');
+  const ldapFile = readSection(fileConfiguration, 'ldap');
+  const postgresFile = readSection(fileConfiguration, 'postgres');
+  const mailFile = readSection(fileConfiguration, 'mail');
+  const certificatesFile = readSection(fileConfiguration, 'certificates');
+  const webAuthFile = readSection(fileConfiguration, 'webAuth');
+  const retentionFile = readSection(fileConfiguration, 'retention');
+  const apiFile = readSection(fileConfiguration, 'api');
+  const upgradeFile = readSection(fileConfiguration, 'upgrade');
+  const patchingFile = readSection(fileConfiguration, 'patching');
+  const projectFile = readSection(fileConfiguration, 'project');
+
+  const schemaVersion = fileConfiguration.schemaVersion ?? CONFIG_SCHEMA_VERSION;
+  const buildVersion = fileConfiguration.buildVersion ?? DEFAULT_BUILD_VERSION;
+  const buildDigest = fileConfiguration.buildDigest ?? DEFAULT_BUILD_DIGEST;
+
+  const config = {
+    schemaVersion: readInteger(schemaVersion, 'schemaVersion', CONFIG_SCHEMA_VERSION, CONFIG_SCHEMA_VERSION),
+    buildVersion: readString(buildVersion, 'buildVersion', SAFE_VERSION_PATTERN),
+    buildDigest: readString(buildDigest, 'buildDigest', SAFE_BUILD_DIGEST_PATTERN),
+    project: {
+      displayName: readString(projectFile.displayName ?? PRODUCT_DISPLAY_NAME, 'project.displayName'),
+      machineName: readString(projectFile.machineName ?? PRODUCT_MACHINE_NAME, 'project.machineName', SAFE_NAME_PATTERN),
+    },
+    runtime: {
+      host: readHost(runtimeFile.host ?? DEFAULT_HOST),
+      port: readPort(runtimeFile.port ?? DEFAULT_PORT),
+      serviceName: readString(runtimeFile.serviceName ?? DEFAULT_SERVICE_NAME, 'runtime.serviceName', SAFE_NAME_PATTERN),
+      environment: readString(runtimeFile.environment ?? DEFAULT_ENVIRONMENT, 'runtime.environment', SAFE_NAME_PATTERN),
+      shutdownTimeoutMs: readShutdownTimeout(runtimeFile.shutdownTimeoutMs ?? DEFAULT_SHUTDOWN_TIMEOUT_MS),
+    },
+    ldap: {
+      enabled: readBoolean(ldapFile.enabled ?? false, 'ldap.enabled'),
+      url: readUrl(ldapFile.url ?? 'ldaps://ldap.example.invalid:636', 'ldap.url'),
+      startTls: readBoolean(ldapFile.startTls ?? false, 'ldap.startTls'),
+      bindSecretRef: ldapFile.bindSecretRef === undefined ? null : readSecretReference(ldapFile.bindSecretRef, 'ldap.bindSecretRef'),
+      userBaseDn: ldapFile.userBaseDn === undefined ? null : readDistinguishedName(ldapFile.userBaseDn, 'ldap.userBaseDn'),
+      connectTimeoutMs: readInteger(ldapFile.connectTimeoutMs ?? 3_000, 'ldap.connectTimeoutMs', 100, 120_000),
+    },
+    postgres: {
+      enabled: readBoolean(postgresFile.enabled ?? false, 'postgres.enabled'),
+      host: readHost(postgresFile.host ?? 'postgres.example.invalid', 'postgres.host'),
+      port: readPort(postgresFile.port ?? 5432, 'postgres.port'),
+      database: readString(postgresFile.database ?? PRODUCT_MACHINE_NAME, 'postgres.database', SAFE_NAME_PATTERN),
+      user: readString(postgresFile.user ?? PRODUCT_MACHINE_NAME, 'postgres.user', SAFE_NAME_PATTERN),
+      sslMode: readEnum(
+        postgresFile.sslMode ?? 'verify-full',
+        'postgres.sslMode',
+        ['disable', 'allow', 'prefer', 'require', 'verify-ca', 'verify-full'],
+      ),
+      dsnSecretRef: postgresFile.dsnSecretRef === undefined ? null : readSecretReference(postgresFile.dsnSecretRef, 'postgres.dsnSecretRef'),
+      connectTimeoutMs: readInteger(postgresFile.connectTimeoutMs ?? 3_000, 'postgres.connectTimeoutMs', 100, 120_000),
+    },
+    mail: {
+      imapIdle: readBoolean(mailFile.imapIdle ?? true, 'mail.imapIdle'),
+      pop3sEnabled: readBoolean(mailFile.pop3sEnabled ?? false, 'mail.pop3sEnabled'),
+      catchAll: readBoolean(mailFile.catchAll ?? false, 'mail.catchAll'),
+      userForwarding: readBoolean(mailFile.userForwarding ?? false, 'mail.userForwarding'),
+    },
+    certificates: {
+      provider: readEnum(certificatesFile.provider ?? 'letsencrypt', 'certificates.provider', ['letsencrypt', 'acme']),
+      autoRenew: readBoolean(certificatesFile.autoRenew ?? true, 'certificates.autoRenew'),
+    },
+    webAuth: {
+      totp: readEnum(webAuthFile.totp ?? 'optional', 'webAuth.totp', ['disabled', 'optional', 'required']),
+      webauthn: readEnum(webAuthFile.webauthn ?? 'optional', 'webAuth.webauthn', ['disabled', 'optional', 'required']),
+      recoveryCodes: readBoolean(webAuthFile.recoveryCodes ?? true, 'webAuth.recoveryCodes'),
+    },
+    retention: {
+      trashDays: readInteger(retentionFile.trashDays ?? 28, 'retention.trashDays', 28, 28),
+    },
+    api: {
+      readOnly: readBoolean(apiFile.readOnly ?? true, 'api.readOnly'),
+    },
+    upgrade: {
+      strategy: readEnum(upgradeFile.strategy ?? 'blue_green', 'upgrade.strategy', ['blue_green']),
+    },
+    patching: {
+      mode: readEnum(
+        patchingFile.mode ?? 'build_and_operator',
+        'patching.mode',
+        ['build_and_operator'],
+      ),
+      statusFile: readPatchStatusFile(
+        patchingFile.statusFile ?? DEFAULT_PATCH_STATUS_FILE,
+        'patching.statusFile',
+      ),
+    },
+  };
+
+  applyEnvironmentValue(config, 'schemaVersion', environment, ENVIRONMENT_VARIABLES.schemaVersion, (value, name) =>
+    readEnvironmentInteger(value, name, CONFIG_SCHEMA_VERSION, CONFIG_SCHEMA_VERSION),
+  );
+  applyEnvironmentValue(config, 'buildVersion', environment, ENVIRONMENT_VARIABLES.buildVersion, (value, name) =>
+    readEnvironmentString(value, name, SAFE_VERSION_PATTERN),
+  );
+  applyEnvironmentValue(config, 'buildDigest', environment, ENVIRONMENT_VARIABLES.buildDigest, (value, name) =>
+    readEnvironmentString(value, name, SAFE_BUILD_DIGEST_PATTERN),
+  );
+
+  const environmentSections = [
+    ['runtime', config.runtime, ENVIRONMENT_VARIABLES.runtime],
+    ['ldap', config.ldap, ENVIRONMENT_VARIABLES.ldap],
+    ['postgres', config.postgres, ENVIRONMENT_VARIABLES.postgres],
+    ['mail', config.mail, ENVIRONMENT_VARIABLES.mail],
+    ['certificates', config.certificates, ENVIRONMENT_VARIABLES.certificates],
+    ['webAuth', config.webAuth, ENVIRONMENT_VARIABLES.webAuth],
+    ['retention', config.retention, ENVIRONMENT_VARIABLES.retention],
+    ['api', config.api, ENVIRONMENT_VARIABLES.api],
+    ['upgrade', config.upgrade, ENVIRONMENT_VARIABLES.upgrade],
+    ['patching', config.patching, ENVIRONMENT_VARIABLES.patching],
+  ];
+
+  for (const [sectionName, target, variables] of environmentSections) {
+    if (sectionName === 'runtime') {
+      applyEnvironmentValue(target, 'host', environment, variables.host, readHost);
+      applyEnvironmentValue(target, 'port', environment, variables.port, (value, name) => readEnvironmentInteger(value, name, 1, 65_535));
+      applyEnvironmentValue(target, 'serviceName', environment, variables.serviceName, (value, name) => readEnvironmentString(value, name, SAFE_NAME_PATTERN));
+      applyEnvironmentValue(target, 'environment', environment, variables.environment, (value, name) => readEnvironmentString(value, name, SAFE_NAME_PATTERN));
+      applyEnvironmentValue(target, 'shutdownTimeoutMs', environment, variables.shutdownTimeoutMs, (value, name) => readEnvironmentInteger(value, name, 1_000, 60_000));
+      continue;
+    }
+
+    if (sectionName === 'ldap') {
+      applyEnvironmentValue(target, 'enabled', environment, variables.enabled, readEnvironmentBoolean);
+      applyEnvironmentValue(target, 'url', environment, variables.url, readUrl);
+      applyEnvironmentValue(target, 'startTls', environment, variables.startTls, readEnvironmentBoolean);
+      applyEnvironmentValue(target, 'bindSecretRef', environment, variables.bindSecretRef, readSecretReference);
+      applyEnvironmentValue(target, 'userBaseDn', environment, variables.userBaseDn, readDistinguishedName);
+      applyEnvironmentValue(target, 'connectTimeoutMs', environment, variables.connectTimeoutMs, (value, name) => readEnvironmentInteger(value, name, 100, 120_000));
+      continue;
+    }
+
+    if (sectionName === 'postgres') {
+      applyEnvironmentValue(target, 'enabled', environment, variables.enabled, readEnvironmentBoolean);
+      applyEnvironmentValue(target, 'host', environment, variables.host, readHost);
+      applyEnvironmentValue(target, 'port', environment, variables.port, (value, name) => readEnvironmentInteger(value, name, 1, 65_535));
+      applyEnvironmentValue(target, 'database', environment, variables.database, (value, name) => readEnvironmentString(value, name, SAFE_NAME_PATTERN));
+      applyEnvironmentValue(target, 'user', environment, variables.user, (value, name) => readEnvironmentString(value, name, SAFE_NAME_PATTERN));
+      applyEnvironmentValue(target, 'sslMode', environment, variables.sslMode, (value, name) => readEnvironmentEnum(value, name, ['disable', 'allow', 'prefer', 'require', 'verify-ca', 'verify-full']));
+      applyEnvironmentValue(target, 'dsnSecretRef', environment, variables.dsnSecretRef, readSecretReference);
+      applyEnvironmentValue(target, 'connectTimeoutMs', environment, variables.connectTimeoutMs, (value, name) => readEnvironmentInteger(value, name, 100, 120_000));
+      continue;
+    }
+
+    if (sectionName === 'mail') {
+      applyEnvironmentValue(target, 'imapIdle', environment, variables.imapIdle, readEnvironmentBoolean);
+      applyEnvironmentValue(target, 'pop3sEnabled', environment, variables.pop3sEnabled, readEnvironmentBoolean);
+      applyEnvironmentValue(target, 'catchAll', environment, variables.catchAll, readEnvironmentBoolean);
+      applyEnvironmentValue(target, 'userForwarding', environment, variables.userForwarding, readEnvironmentBoolean);
+      continue;
+    }
+
+    if (sectionName === 'certificates') {
+      applyEnvironmentValue(target, 'provider', environment, variables.provider, (value, name) => readEnvironmentEnum(value, name, ['letsencrypt', 'acme']));
+      applyEnvironmentValue(target, 'autoRenew', environment, variables.autoRenew, readEnvironmentBoolean);
+      continue;
+    }
+
+    if (sectionName === 'webAuth') {
+      applyEnvironmentValue(target, 'totp', environment, variables.totp, (value, name) => readEnvironmentEnum(value, name, ['disabled', 'optional', 'required']));
+      applyEnvironmentValue(target, 'webauthn', environment, variables.webauthn, (value, name) => readEnvironmentEnum(value, name, ['disabled', 'optional', 'required']));
+      applyEnvironmentValue(target, 'recoveryCodes', environment, variables.recoveryCodes, readEnvironmentBoolean);
+      continue;
+    }
+
+    if (sectionName === 'retention') {
+      applyEnvironmentValue(target, 'trashDays', environment, variables.trashDays, (value, name) => readEnvironmentInteger(value, name, 28, 28));
+      continue;
+    }
+
+    if (sectionName === 'api') {
+      applyEnvironmentValue(target, 'readOnly', environment, variables.readOnly, readEnvironmentBoolean);
+      continue;
+    }
+
+    if (sectionName === 'upgrade') {
+      applyEnvironmentValue(target, 'strategy', environment, variables.strategy, (value, name) => readEnvironmentEnum(value, name, ['blue_green']));
+      continue;
+    }
+
+    if (sectionName === 'patching') {
+      applyEnvironmentValue(target, 'mode', environment, variables.mode, (value, name) => readEnvironmentEnum(value, name, ['build_and_operator']));
+      applyEnvironmentValue(target, 'statusFile', environment, variables.statusFile, readPatchStatusFile);
+    }
+  }
+
+  if (config.project.displayName !== PRODUCT_DISPLAY_NAME || config.project.machineName !== PRODUCT_MACHINE_NAME) {
+    throw configurationError('project identity must remain Gulo Gulo / gulogulo');
+  }
+
+  if (config.ldap.enabled && config.ldap.bindSecretRef === null) {
+    throw configurationError('ldap.bindSecretRef is required when ldap.enabled is true');
+  }
+
+  if (config.ldap.startTls && config.ldap.url.startsWith('ldaps:')) {
+    throw configurationError('ldap.startTls cannot be enabled for an ldaps:// URL');
+  }
+
+  if (config.postgres.enabled && config.postgres.dsnSecretRef === null) {
+    throw configurationError('postgres.dsnSecretRef is required when postgres.enabled is true');
+  }
+
+  if (config.mail.catchAll) {
+    throw configurationError('mail.catchAll is a V1 invariant and must remain false');
+  }
+
+  if (config.mail.userForwarding) {
+    throw configurationError('mail.userForwarding is a V1 invariant and must remain false');
+  }
+
+  if (!config.api.readOnly) {
+    throw configurationError('api.readOnly is a V1 invariant and must remain true');
+  }
+
+  return config;
+}
+
+function deepFreeze(value) {
+  if (value !== null && typeof value === 'object' && !Object.isFrozen(value)) {
+    for (const nestedValue of Object.values(value)) {
+      deepFreeze(nestedValue);
+    }
+    Object.freeze(value);
+  }
+
+  return value;
+}
+
+function resolveConfigurationFile(environment, options) {
+  if (Object.hasOwn(options, 'configFilePath')) {
+    return {
+      path: options.configFilePath,
+      optional: options.configFilePath === DEFAULT_CONFIG_FILE,
+    };
+  }
+
+  if (environment[CONFIG_FILE_ENVIRONMENT_VARIABLE] !== undefined) {
+    return {
+      path: environment[CONFIG_FILE_ENVIRONMENT_VARIABLE],
+      optional: false,
+    };
+  }
+
+  return { path: DEFAULT_CONFIG_FILE, optional: true };
+}
+
+function attachContractMetadata(legacyConfig, fullConfig) {
+  for (const [key, value] of Object.entries(fullConfig)) {
+    if (key === 'runtime') {
+      continue;
+    }
+
+    Object.defineProperty(legacyConfig, key, {
+      configurable: false,
+      enumerable: false,
+      value,
+      writable: false,
+    });
+  }
+
+  Object.defineProperty(legacyConfig, 'contract', {
+    configurable: false,
+    enumerable: false,
+    value: fullConfig,
+    writable: false,
+  });
+
+  return legacyConfig;
 }
 
 /**
- * Read only the runtime settings that are safe to expose to the process.
- * Secrets and external-service credentials are intentionally not part of this
- * scaffold configuration object.
+ * Load the complete, versioned, secret-free Gulo Gulo configuration contract.
+ * Environment variables override the mounted JSON file, which overrides safe
+ * defaults. A missing default mount is allowed; an explicitly requested file
+ * is mandatory and fails closed when it cannot be read or validated.
  */
-export function loadConfig(environment = process.env) {
-  const host = readHost(environment.GULOGULO_HOST ?? environment.HOST ?? DEFAULT_HOST);
-  const port = readPort(environment.GULOGULO_PORT ?? environment.PORT ?? String(DEFAULT_PORT));
-  const serviceName = readText(
-    environment.GULOGULO_SERVICE_NAME ?? DEFAULT_SERVICE_NAME,
-    'GULOGULO_SERVICE_NAME',
-    SAFE_NAME_PATTERN,
-  );
-  const runtimeEnvironment = readText(
-    environment.GULOGULO_ENV ?? environment.APP_ENV ?? DEFAULT_ENVIRONMENT,
-    'GULOGULO_ENV',
-    SAFE_NAME_PATTERN,
-  );
-  const shutdownTimeoutMs = readShutdownTimeout(
-    environment.GULOGULO_SHUTDOWN_TIMEOUT_MS ?? String(DEFAULT_SHUTDOWN_TIMEOUT_MS),
-  );
+export function loadConfiguration(environment = process.env, options = {}) {
+  assertObject(environment, 'environment');
+  assertObject(options, 'options');
 
-  return Object.freeze({
-    host,
-    port,
-    serviceName,
-    environment: runtimeEnvironment,
-    shutdownTimeoutMs,
+  const resolvedFile = resolveConfigurationFile(environment, options);
+  const fileConfiguration = readConfigurationFile(resolvedFile.path, {
+    optional: resolvedFile.optional,
+    readFile: options.readFile,
   });
+  const configuration = buildConfiguration(fileConfiguration, environment);
+  return deepFreeze(configuration);
+}
+
+/**
+ * Preserve the M0 runtime shape while exposing the complete M1 contract as
+ * non-enumerable metadata. Existing runtime callers therefore keep receiving
+ * host, port, serviceName, environment, and shutdownTimeoutMs, while new code
+ * can use loadConfiguration() or config.contract without losing compatibility.
+ */
+export function loadConfig(environment = process.env, options = {}) {
+  const fullConfig = loadConfiguration(environment, options);
+  const legacyConfig = {
+    ...fullConfig.runtime,
+  };
+
+  attachContractMetadata(legacyConfig, fullConfig);
+  return Object.freeze(legacyConfig);
 }

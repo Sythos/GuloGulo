@@ -1,0 +1,129 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://www.sythos.net/gulogulo/schemas/config-v1.json",
+  "$comment": "SPDX-License-Identifier: MIT; SPDX-FileCopyrightText: 2026 Sythos (https://www.sythos.net); Author: Sythos (https://www.sythos.net)",
+  "title": "Gulo Gulo configuration contract",
+  "description": "Versioned, secret-free deployment configuration. Environment variables override this mounted file.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion"],
+  "properties": {
+    "$schema": {
+      "type": "string",
+      "const": "https://json-schema.org/draft/2020-12/schema"
+    },
+    "schemaVersion": {
+      "type": "integer",
+      "const": 1
+    },
+    "buildVersion": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._+-]{0,63}$"
+    },
+    "buildDigest": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:+/-]{0,127}$"
+    },
+    "project": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "displayName": { "type": "string", "const": "Gulo Gulo" },
+        "machineName": { "type": "string", "const": "gulogulo" }
+      }
+    },
+    "runtime": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "host": { "type": "string" },
+        "port": { "type": "integer", "minimum": 1, "maximum": 65535 },
+        "serviceName": { "type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$" },
+        "environment": { "type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$" },
+        "shutdownTimeoutMs": { "type": "integer", "minimum": 1000, "maximum": 60000 }
+      }
+    },
+    "ldap": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "enabled": { "type": "boolean", "default": false },
+        "url": { "type": "string", "pattern": "^ldaps?://" },
+        "startTls": { "type": "boolean", "default": false },
+        "bindSecretRef": { "type": ["string", "null"], "pattern": "^[A-Za-z0-9][A-Za-z0-9._/-]{0,127}$" },
+        "userBaseDn": { "type": ["string", "null"] },
+        "connectTimeoutMs": { "type": "integer", "minimum": 100, "maximum": 120000, "default": 3000 }
+      }
+    },
+    "postgres": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "enabled": { "type": "boolean", "default": false },
+        "host": { "type": "string" },
+        "port": { "type": "integer", "minimum": 1, "maximum": 65535 },
+        "database": { "type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$" },
+        "user": { "type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$" },
+        "sslMode": { "type": "string", "enum": ["disable", "allow", "prefer", "require", "verify-ca", "verify-full"], "default": "verify-full" },
+        "dsnSecretRef": { "type": ["string", "null"], "pattern": "^[A-Za-z0-9][A-Za-z0-9._/-]{0,127}$" },
+        "connectTimeoutMs": { "type": "integer", "minimum": 100, "maximum": 120000, "default": 3000 }
+      }
+    },
+    "mail": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "imapIdle": { "type": "boolean", "default": true },
+        "pop3sEnabled": { "type": "boolean", "const": false },
+        "catchAll": { "type": "boolean", "const": false },
+        "userForwarding": { "type": "boolean", "const": false }
+      }
+    },
+    "certificates": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "provider": { "type": "string", "enum": ["letsencrypt", "acme"], "default": "letsencrypt" },
+        "autoRenew": { "type": "boolean", "default": true }
+      }
+    },
+    "webAuth": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "totp": { "type": "string", "enum": ["disabled", "optional", "required"], "default": "optional" },
+        "webauthn": { "type": "string", "enum": ["disabled", "optional", "required"], "default": "optional" },
+        "recoveryCodes": { "type": "boolean", "default": true }
+      }
+    },
+    "retention": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "trashDays": { "type": "integer", "const": 28 }
+      }
+    },
+    "api": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "readOnly": { "type": "boolean", "const": true }
+      }
+    },
+    "upgrade": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "strategy": { "type": "string", "const": "blue_green" }
+      }
+    },
+    "patching": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "mode": { "type": "string", "const": "build_and_operator", "default": "build_and_operator" },
+        "statusFile": { "type": "string", "pattern": "^/[A-Za-z0-9._/-]{1,255}$", "default": "/var/lib/gulogulo/patch/status.json" }
+      }
+    }
+  }
+}

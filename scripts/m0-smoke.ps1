@@ -170,7 +170,7 @@ try {
 
     if (-not $SkipBuild) {
         Write-Host 'Building Compose services.'
-        Invoke-Compose -Arguments @('build', '--pull=false')
+        Invoke-Compose -Arguments @('build', '--pull')
     }
     else {
         Write-Host 'Skipping image build by request.'

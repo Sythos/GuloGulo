@@ -13,6 +13,6 @@
   },
   "scripts": {
     "start": "node src/runtime/index.mjs",
-    "test": "node src/runtime/runtime.test.mjs"
+    "test": "node src/runtime/runtime.test.mjs && node src/foundation/config.test.mjs && node src/runtime/observability.test.mjs"
   }
 }

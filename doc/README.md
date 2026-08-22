@@ -1,0 +1,30 @@
+# Gulo Gulo documentation
+
+<!--
+SPDX-License-Identifier: MIT
+SPDX-FileCopyrightText: 2026 Sythos (https://www.sythos.net)
+Author: Sythos (https://www.sythos.net)
+-->
+
+This folder is the running, hands-on manual for the pieces that actually exist
+in the repository. It is deliberately written for a person who is setting up,
+testing, or operating Gulo Gulo, not for a generated API catalogue. Every new
+component gets its own practical notes here before it is treated as part of the
+normal workflow.
+
+## What is documented today
+
+- [Configuration](configuration.md) — the versioned configuration contract,
+  precedence rules, safe defaults, and secret references.
+- [Runtime and observability](observability.md) — health, logs, request IDs,
+  metrics, and the small HTTP surface used by the scaffold.
+- [Compose and fixtures](compose-and-fixtures.md) — local profiles,
+  deterministic test data, and the smoke harness.
+- [Container patching](container-patching.md) — Ubuntu 26.04 LTS image policy,
+  build-time security updates, and controlled maintenance operations.
+- [API and MCP operations](api-and-mcp.md) — the read-only monitoring contract,
+  safe examples, and the boundary between monitoring and deployment control.
+
+The project is still intentionally small. The documents describe real behavior
+only; LDAP, PostgreSQL, mail, DAV, and user-facing features remain future
+milestones until their own implementation and tests land.

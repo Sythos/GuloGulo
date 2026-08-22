@@ -19,7 +19,7 @@ jobs:
   repository-quality:
     name: Repository quality gates (${{ inputs.context }})
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 30
     steps:
       - name: Checkout
         uses: actions/checkout@v6
@@ -54,9 +54,25 @@ jobs:
           test -f README.md
           grep -Fxq '# Gulo Gulo' README.md
           test -f scripts/m0-smoke.ps1
+          test -f scripts/m1-fixture-smoke.ps1
+          test -f test/fixtures/manifest.json
+          test -f test/fixtures/tenant.json
+          test -f test/fixtures/failure-modes.json
+          test -f test/fixtures/README.md
+          test -f scripts/container-patch.sh
+          test -f config/schema.v1.json
+          test -f doc/README.md
+          test -f doc/configuration.md
+          test -f doc/observability.md
+          test -f doc/compose-and-fixtures.md
+          test -f doc/container-patching.md
+          test -f doc/api-and-mcp.md
           test -f .github/workflows/commit-tests.yml
           test -f .github/workflows/pr-validation.yml
           test -f .github/workflows/quality-gates.yml
+          grep -Fq 'profiles: ["local"]' compose.yaml
+          grep -Fq 'profiles: ["test"]' compose.yaml
+          grep -Fq 'profiles: ["fixture"]' compose.yaml
 
       - name: Validate MIT and SPDX metadata
         shell: bash
@@ -70,11 +86,8 @@ jobs:
             .env.example \
             .dockerignore \
             scripts/m0-smoke.ps1 \
-            src/runtime/config.mjs \
-            src/runtime/index.mjs \
-            src/runtime/logger.mjs \
-            src/runtime/server.mjs \
-            src/runtime/runtime.test.mjs \
+            scripts/m1-fixture-smoke.ps1 \
+            scripts/container-patch.sh \
             .github/workflows/commit-tests.yml \
             .github/workflows/pr-validation.yml \
             .github/workflows/quality-gates.yml; do
@@ -82,7 +95,40 @@ jobs:
             grep -Fq 'Author: Sythos (https://www.sythos.net)' "$file"
           done
 
+          while IFS= read -r file; do
+            grep -Fq 'SPDX-License-Identifier: MIT' "$file"
+            grep -Fq 'Author: Sythos (https://www.sythos.net)' "$file"
+          done < <(find src -type f \( -name '*.mjs' -o -name '*.cjs' -o -name '*.js' -o -name '*.ts' \) -print)
+
+          grep -Fq 'SPDX-License-Identifier: MIT' test/fixtures/README.md
+          grep -Fq 'Author: Sythos (https://www.sythos.net)' test/fixtures/README.md
+
+          for file in doc/*.md; do
+            grep -Fq 'SPDX-License-Identifier: MIT' "$file"
+            grep -Fq 'Author: Sythos (https://www.sythos.net)' "$file"
+          done
+
+          grep -Fq 'SPDX-License-Identifier: MIT' config/schema.v1.json
+          grep -Fq 'Sythos (https://www.sythos.net)' config/schema.v1.json
+          grep -Fq 'FROM ubuntu:26.04' Dockerfile
+          grep -Fq 'apt-get update' Dockerfile
+          grep -Fq 'apt-get upgrade -y' Dockerfile
+          grep -Fq 'GULOGULO_PATCH_STATUS_FILE' compose.yaml
+          bash -n scripts/container-patch.sh
+
+          for file in test/fixtures/*.json; do
+            node -e "const fs=require('fs'); const data=JSON.parse(fs.readFileSync(process.argv[1], 'utf8')); if (data.spdxLicenseIdentifier !== 'MIT' || data.author !== 'Sythos (https://www.sythos.net)' || data.deterministic !== true) process.exit(1);" "$file"
+          done
+
+          if grep -Eq '^(LDAP_BIND_PASSWORD|POSTGRES_PASSWORD|[A-Z_]*(TOKEN|PASSWORD|PRIVATE_KEY))=' .env.example; then
+            echo 'Credential values must not be present in .env.example.' >&2
+            exit 1
+          fi
+
           node -e "const p=require('./package.json'); if (p.license !== 'MIT' || p.author !== 'Sythos (https://www.sythos.net)' || p.spdxLicenseIdentifier !== 'MIT') process.exit(1)"
+          node -e "const p=require('./package-lock.json'); const root=p.packages && p.packages['']; if (!root || root.license !== 'MIT' || root.author !== 'Sythos (https://www.sythos.net)' || root.spdxLicenseIdentifier !== 'MIT') process.exit(1)"
+          node -e "const s=require('./config/schema.v1.json'); if (!s.properties.buildDigest || !s.properties.patching) process.exit(1)"
+          test -f package-lock.json
 
       - name: Set up Node.js when package metadata exists
         if: hashFiles('package.json') != ''
@@ -98,15 +144,16 @@ jobs:
           set -euo pipefail
 
           if [[ -f package-lock.json ]]; then
-            npm ci --ignore-scripts
+            npm ci --ignore-scripts --no-audit --no-fund
           elif [[ -f pnpm-lock.yaml ]]; then
             corepack enable
-            corepack pnpm install --frozen-lockfile --ignore-scripts
+            corepack pnpm install --frozen-lockfile --ignore-scripts --config.auto-install-peers=false
           elif [[ -f yarn.lock ]]; then
             corepack enable
-            yarn install --immutable
+            yarn install --immutable --mode=skip-builds
           else
-            npm install --ignore-scripts --no-package-lock
+            node -e "const p=require('./package.json'); if (Object.keys(p.dependencies || {}).length || Object.keys(p.devDependencies || {}).length || Object.keys(p.optionalDependencies || {}).length) { console.error('A lockfile is required when package dependencies are declared.'); process.exit(1); }"
+            npm install --ignore-scripts --no-package-lock --no-audit --no-fund
           fi
 
           if node -e "const packageData = require('./package.json'); process.exit(packageData.scripts && packageData.scripts.test ? 0 : 1)"; then
@@ -119,6 +166,56 @@ jobs:
         if: hashFiles('compose.yaml') != '' || hashFiles('compose.yml') != '' || hashFiles('docker-compose.yml') != '' || hashFiles('docker-compose.yaml') != ''
         shell: pwsh
         run: ./scripts/m0-smoke.ps1
+
+      - name: Set up QEMU for Ubuntu multi-architecture builds
+        if: hashFiles('Dockerfile') != ''
+        uses: docker/setup-qemu-action@v4.2.0
+        with:
+          platforms: amd64,arm64
+
+      - name: Set up Docker Buildx
+        if: hashFiles('Dockerfile') != ''
+        uses: docker/setup-buildx-action@v4.2.0
+
+      - name: Validate Ubuntu 26.04 LTS amd64 and arm64 images
+        if: hashFiles('Dockerfile') != ''
+        shell: bash
+        run: |
+          set -euo pipefail
+          output="$RUNNER_TEMP/gulogulo-ubuntu-26.04.oci.tar"
+          docker buildx build \
+            --platform linux/amd64,linux/arm64 \
+            --pull \
+            --build-arg NODE_VERSION=26.7.0 \
+            --provenance=false \
+            --sbom=false \
+            --tag gulogulo:ci-ubuntu-26.04 \
+            --output "type=oci,dest=$output" \
+            .
+          test -s "$output"
+
+      - name: Run Compose test profile
+        if: hashFiles('compose.yaml') != '' || hashFiles('compose.yml') != '' || hashFiles('docker-compose.yml') != '' || hashFiles('docker-compose.yaml') != ''
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          project="gulogulo-ci-test-${GITHUB_RUN_ID}"
+          compose=(docker compose --project-name "$project" --file compose.yaml --env-file .env.example)
+          cleanup() {
+            "${compose[@]}" --profile test down --volumes --remove-orphans >/dev/null 2>&1 || true
+          }
+          trap cleanup EXIT
+
+          "${compose[@]}" --profile local config --quiet
+          "${compose[@]}" --profile test config --quiet
+          "${compose[@]}" --profile test build --pull gulogulo-test
+          "${compose[@]}" --profile test run --rm --no-deps gulogulo-test
+
+      - name: Run M1 fixture, health, and metrics smoke checks
+        if: hashFiles('compose.yaml') != '' || hashFiles('compose.yml') != '' || hashFiles('docker-compose.yml') != '' || hashFiles('docker-compose.yaml') != ''
+        shell: pwsh
+        run: ./scripts/m1-fixture-smoke.ps1 -RequireMetrics
 
       - name: Report Docker smoke-check status when Compose is not defined
         if: hashFiles('compose.yaml') == '' && hashFiles('compose.yml') == '' && hashFiles('docker-compose.yml') == '' && hashFiles('docker-compose.yaml') == ''

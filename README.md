@@ -50,6 +50,16 @@ configuration placeholders. The accepted Gulo Gulo runtime and frontend
 architecture is recorded in ADR-001-gulogulo-runtime-and-frontend-architecture.md
 in the document folder.
 
+M1 adds the versioned configuration contract, structured logs, metrics,
+deterministic fixtures, and read-only patch status. The hands-on manual for
+each implemented component lives in [doc/](doc/README.md).
+
+Gulo Gulo-owned images target Ubuntu 26.04 LTS on `linux/amd64` and
+`linux/arm64`. The Docker build runs `apt-get update` and
+`apt-get upgrade -y`, verifies the official Node.js tarball checksum, and
+keeps runtime patch control in the deployment pipeline rather than mutating a
+live non-root container.
+
 ## Core architecture
 
 The V1 platform is designed around:
@@ -183,6 +193,19 @@ gulogulo/
 │       ├── commit-tests.yml
 │       ├── pr-validation.yml
 │       └── quality-gates.yml
+├── config/
+│   └── schema.v1.json
+├── doc/
+│   ├── README.md
+│   ├── api-and-mcp.md
+│   ├── compose-and-fixtures.md
+│   ├── configuration.md
+│   ├── container-patching.md
+│   └── observability.md
+├── scripts/
+│   ├── container-patch.sh
+│   ├── m0-smoke.ps1
+│   └── m1-fixture-smoke.ps1
 ├── README.md
 └── future application, infrastructure, and documentation directories
 ~~~

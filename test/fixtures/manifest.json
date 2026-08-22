@@ -1,0 +1,11 @@
+{
+  "spdxLicenseIdentifier": "MIT",
+  "spdxFileCopyrightText": "2026 Sythos (https://www.sythos.net)",
+  "author": "Sythos (https://www.sythos.net)",
+  "schemaVersion": 1,
+  "fixtureSet": "m1-foundation",
+  "deterministic": true,
+  "secretPolicy": "Fixtures contain no credentials, tokens, cookies, private keys, or message content.",
+  "tenantFixture": "tenant.json",
+  "failureFixture": "failure-modes.json"
+}

@@ -1,0 +1,38 @@
+{
+  "spdxLicenseIdentifier": "MIT",
+  "spdxFileCopyrightText": "2026 Sythos (https://www.sythos.net)",
+  "author": "Sythos (https://www.sythos.net)",
+  "schemaVersion": 1,
+  "fixtureId": "tenant-fixture-001",
+  "deterministic": true,
+  "tenant": {
+    "id": "tenant-fixture-001",
+    "domain": "tenant.fixture.invalid",
+    "grossQuotaBytes": 1073741824,
+    "catchAllEnabled": false,
+    "automaticForwardingEnabled": false
+  },
+  "users": [
+    {
+      "id": "user-fixture-001",
+      "localPart": "alice",
+      "email": "alice@tenant.fixture.invalid",
+      "quotaBytes": 268435456,
+      "enabled": true
+    },
+    {
+      "id": "user-fixture-002",
+      "localPart": "bob",
+      "email": "bob@tenant.fixture.invalid",
+      "quotaBytes": 268435456,
+      "enabled": true
+    }
+  ],
+  "aliases": [
+    {
+      "id": "alias-fixture-001",
+      "source": "support@tenant.fixture.invalid",
+      "target": "alice@tenant.fixture.invalid"
+    }
+  ]
+}

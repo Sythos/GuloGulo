@@ -1,0 +1,44 @@
+{
+  "spdxLicenseIdentifier": "MIT",
+  "spdxFileCopyrightText": "2026 Sythos (https://www.sythos.net)",
+  "author": "Sythos (https://www.sythos.net)",
+  "schemaVersion": 1,
+  "fixtureSet": "m1-failure-modes",
+  "deterministic": true,
+  "cases": [
+    {
+      "id": "ldap-unavailable",
+      "kind": "dependency-outage",
+      "environment": {
+        "LDAP_ENABLED": "true",
+        "LDAP_URL": "ldaps://127.0.0.1:9",
+        "LDAP_BIND_SECRET_REF": "fixture/ldap-bind"
+      },
+      "expectedBehavior": "fail-closed",
+      "networkAccess": "loopback-only"
+    },
+    {
+      "id": "postgres-unavailable",
+      "kind": "dependency-outage",
+      "environment": {
+        "POSTGRES_ENABLED": "true",
+        "POSTGRES_HOST": "127.0.0.1",
+        "POSTGRES_PORT": "9",
+        "POSTGRES_PASSWORD_SECRET_REF": "fixture/postgres-password"
+      },
+      "expectedBehavior": "fail-closed",
+      "networkAccess": "loopback-only"
+    },
+    {
+      "id": "fixture-mode-no-external-dependencies",
+      "kind": "safe-default",
+      "environment": {
+        "LDAP_ENABLED": "false",
+        "POSTGRES_ENABLED": "false",
+        "GULOGULO_FIXTURE_MODE": "true"
+      },
+      "expectedBehavior": "run-without-production-credentials",
+      "networkAccess": "none"
+    }
+  ]
+}

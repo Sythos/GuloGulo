@@ -9,9 +9,18 @@ import { createRuntimeServer, startServer, stopServer } from './server.mjs';
 let runtime;
 let stopping = false;
 
+function loggerOptions(config) {
+  const contract = config?.contract ?? config ?? {};
+  return {
+    ...config,
+    version: contract.buildVersion ?? config?.buildVersion ?? '0.0.0',
+    build: contract.buildDigest ?? config?.buildDigest ?? 'development',
+  };
+}
+
 async function main() {
   const config = loadConfig();
-  const logger = createLogger(config);
+  const logger = createLogger(loggerOptions(config));
   runtime = createRuntimeServer({ config, logger });
   await startServer(runtime);
 
