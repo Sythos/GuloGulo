@@ -5,6 +5,7 @@
 import { createHash } from 'node:crypto';
 import { readdir, readFile } from 'node:fs/promises';
 import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 const MIGRATION_FILE_PATTERN = /^(\d{4}_[A-Za-z0-9_-]+)\.sql$/;
 const LOCK_KEY = 'gulogulo.schema';
@@ -38,7 +39,7 @@ export function createMigrationRunner({ client, migrationDirectory = new URL('..
   if (!client || typeof client.query !== 'function') {
     throw migrationError('a PostgreSQL client is required');
   }
-  const directory = migrationDirectory instanceof URL ? migrationDirectory : String(migrationDirectory);
+  const directory = migrationDirectory instanceof URL ? fileURLToPath(migrationDirectory) : String(migrationDirectory);
 
   return {
     async run() {
