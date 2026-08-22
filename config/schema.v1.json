@@ -83,7 +83,22 @@
         "imapIdle": { "type": "boolean", "default": true },
         "pop3sEnabled": { "type": "boolean", "const": false },
         "catchAll": { "type": "boolean", "const": false },
-        "userForwarding": { "type": "boolean", "const": false }
+        "userForwarding": { "type": "boolean", "const": false },
+        "smtpInboundPort": { "type": "integer", "minimum": 1, "maximum": 65535, "default": 25 },
+        "smtpSubmissionPort": { "type": "integer", "minimum": 1, "maximum": 65535, "default": 587 },
+        "smtpImplicitTlsPort": { "type": "integer", "minimum": 1, "maximum": 65535, "default": 465 },
+        "imapsPort": { "type": "integer", "minimum": 1, "maximum": 65535, "default": 993 },
+        "lmtpSocket": { "type": "string", "pattern": "^/[A-Za-z0-9._/-]{1,255}$", "default": "/var/run/dovecot/lmtp" },
+        "mailboxRoot": { "type": "string", "pattern": "^/[A-Za-z0-9._/-]{1,255}$", "default": "/var/lib/gulogulo/mail" },
+        "rspamdEnabled": { "type": "boolean", "default": true },
+        "clamavEnabled": { "type": "boolean", "default": true },
+        "scanFailureMode": { "type": "string", "const": "fail_closed", "default": "fail_closed" },
+        "maxMessageBytes": { "type": "integer", "minimum": 1, "maximum": 1073741824, "default": 52428800 },
+        "maxRecipients": { "type": "integer", "minimum": 1, "maximum": 1000, "default": 100 },
+        "maxConnectionsPerIp": { "type": "integer", "minimum": 1, "maximum": 10000, "default": 20 },
+        "maxMessagesPerUserPerMinute": { "type": "integer", "minimum": 1, "maximum": 100000, "default": 60 },
+        "queueMaxAttempts": { "type": "integer", "minimum": 1, "maximum": 100, "default": 5 },
+        "queueRetryBaseMs": { "type": "integer", "minimum": 1000, "maximum": 86400000, "default": 60000 }
       }
     },
     "certificates": {

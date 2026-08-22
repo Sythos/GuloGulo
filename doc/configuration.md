@@ -52,6 +52,11 @@ PostgreSQL: disabled
 IMAP IDLE: enabled
 catch-all: false
 automatic user forwarding: false
+SMTP inbound: 25/TCP
+SMTP submission: 587/TCP (465/TCP optional)
+IMAPS: 993/TCP
+scanner failure mode: fail_closed
+mailbox root: /var/lib/gulogulo/mail
 trash retention: 28 days
 API/MCP: read-only
 upgrade strategy: blue_green
@@ -61,6 +66,13 @@ patching mode: build_and_operator
 The parser rejects attempts to enable catch-all, user forwarding, or a
 write-capable API. Enabling LDAP requires `ldap.bindDn`, `ldap.bindSecretRef`,
 and `ldap.userBaseDn`; enabling PostgreSQL requires `postgres.dsnSecretRef`.
+The M3 mail limits (`maxMessageBytes`, `maxRecipients`, submission rate, and
+queue retry settings) are bounded integers. The Rspamd and ClamAV flags describe
+required adapter wiring; they do not place a scanner credential or endpoint in
+the configuration file. A scanner failure cannot be configured as permissive.
+
+The full mail behavior, adapter interfaces, queue states, Sieve rules, and
+vendor-wiring checklist are in [M3 mail core](mail-core.md).
 
 ## Secrets
 

@@ -69,10 +69,17 @@ jobs:
           test -f doc/api-and-mcp.md
           test -f doc/identity-and-postgres.md
           test -f doc/storage-and-quotas.md
+          test -f doc/mail-core.md
           test -f src/integrations/tenant-context.mjs
           test -f src/integrations/ldap-client.mjs
           test -f src/integrations/postgres-store.mjs
           test -f src/db/migrations/0001_m2_foundation.sql
+          test -f src/mail/mail-policy.mjs
+          test -f src/mail/mail-scanners.mjs
+          test -f src/mail/mail-queue.mjs
+          test -f src/mail/imap-idle.mjs
+          test -f src/mail/mail-core.mjs
+          test -f src/mail/mail-core.test.mjs
           test -f .github/workflows/commit-tests.yml
           test -f .github/workflows/pr-validation.yml
           test -f .github/workflows/quality-gates.yml
@@ -119,6 +126,11 @@ jobs:
           grep -Fq 'FORCE ROW LEVEL SECURITY' src/db/migrations/0001_m2_foundation.sql
           grep -Fq "set_config('gulogulo.tenant_id'" src/integrations/postgres-store.mjs
           grep -Fq 'rejectUnauthorized: true' src/integrations/ldap-client.mjs
+          grep -Fq 'OPEN_RELAY_DISABLED' src/mail/mail-policy.mjs
+          grep -Fq 'FORWARDING_DISABLED' src/mail/mail-policy.mjs
+          grep -Fq "state === 'bounced'" src/mail/mail-queue.mjs
+          grep -Fq 'eventId' src/mail/imap-idle.mjs
+          grep -Fq 'fail-closed' doc/mail-core.md
 
           grep -Fq 'SPDX-License-Identifier: MIT' config/schema.v1.json
           grep -Fq 'Sythos (https://www.sythos.net)' config/schema.v1.json
@@ -129,6 +141,8 @@ jobs:
           grep -Fq 'apt-get update' Dockerfile
           grep -Fq 'apt-get upgrade -y' Dockerfile
           grep -Fq 'GULOGULO_PATCH_STATUS_FILE' compose.yaml
+          grep -Fq 'GULOGULO_MAIL_SCAN_FAILURE_MODE' compose.yaml
+          grep -Fq 'GULOGULO_MAILBOX_ROOT' compose.yaml
           bash -n scripts/container-patch.sh
 
           for file in test/fixtures/*.json; do

@@ -28,7 +28,10 @@ normal workflow.
   PostgreSQL, migrations, tenant isolation, and transactional quota checks.
 - [Persistent storage and quotas](storage-and-quotas.md) — external volumes,
   blue/green mounts, backup boundaries, and durable gross-quota accounting.
+- [M3 mail core](mail-core.md) — explicit mailbox and alias delivery, closed
+  submission, scanner verdicts, LMTP retry/bounce behavior, queue visibility,
+  Sieve forwarding protection, and deterministic IMAP IDLE events.
 
 The project is still intentionally small. The documents describe real behavior
-only; mail, DAV, and user-facing features remain future milestones until their
-own implementation and tests land.
+only; vendor mail-service wiring, DAV, and user-facing features remain separate
+milestones until their own implementation and interoperability tests land.

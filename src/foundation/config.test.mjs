@@ -41,6 +41,13 @@ test('configuration defaults are versioned, deterministic, and secret-free', () 
   assert.equal(first.mail.imapIdle, true);
   assert.equal(first.mail.catchAll, false);
   assert.equal(first.mail.userForwarding, false);
+  assert.equal(first.mail.smtpInboundPort, 25);
+  assert.equal(first.mail.smtpSubmissionPort, 587);
+  assert.equal(first.mail.imapsPort, 993);
+  assert.equal(first.mail.mailboxRoot, '/var/lib/gulogulo/mail');
+  assert.equal(first.mail.scanFailureMode, 'fail_closed');
+  assert.equal(first.mail.maxMessageBytes, 52_428_800);
+  assert.equal(first.mail.queueMaxAttempts, 5);
   assert.equal(first.retention.trashDays, 28);
   assert.equal(first.api.readOnly, true);
   assert.equal(first.upgrade.strategy, 'blue_green');
@@ -115,6 +122,7 @@ test('environment variables override mounted file values with canonical names fi
       assert.equal(configuration.buildDigest, 'sha256:environment-digest');
       assert.equal(configuration.patching.statusFile, '/tmp/gulogulo-patch-status.json');
       assert.equal(configuration.mail.imapIdle, false);
+      assert.equal(configuration.mail.smtpSubmissionPort, 587);
     },
   );
 });
@@ -202,6 +210,9 @@ test('secret references are allowed but secret values and unsafe cross-field set
 
   withConfigFile({ schemaVersion: 1, mail: { catchAll: true } }, (filePath) => {
     assert.throws(() => loadConfiguration({}, { configFilePath: filePath }), /mail\.catchAll.*must remain false/);
+  });
+  withConfigFile({ schemaVersion: 1, mail: { scanFailureMode: 'permissive' } }, (filePath) => {
+    assert.throws(() => loadConfiguration({}, { configFilePath: filePath }), /mail\.scanFailureMode must be one of: fail_closed/);
   });
   withConfigFile({ schemaVersion: 1, api: { readOnly: false } }, (filePath) => {
     assert.throws(() => loadConfiguration({}, { configFilePath: filePath }), /api\.readOnly.*must remain true/);

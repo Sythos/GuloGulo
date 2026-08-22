@@ -53,8 +53,11 @@ in the document folder.
 M1 adds the versioned configuration contract, structured logs, metrics,
 deterministic fixtures, and read-only patch status. M2 adds the first external
 identity and application-state adapters: LDAP lookups, PostgreSQL migrations,
-tenant RLS, and transactional gross-quota enforcement. The hands-on manual for
-each implemented component lives in [doc/](doc/README.md).
+tenant RLS, and transactional gross-quota enforcement. M3 adds the mail-core
+contracts for closed SMTP submission, explicit aliases, fail-closed Rspamd and
+ClamAV verdicts, LMTP retry/bounce behavior, queue metadata, Sieve forwarding
+protection, and deterministic IMAP IDLE events. The hands-on manual for each
+implemented component lives in [doc/](doc/README.md).
 
 Gulo Gulo-owned images target Ubuntu 26.04 LTS on `linux/amd64` and
 `linux/arm64`. The Docker build runs `apt-get update` and
@@ -204,6 +207,7 @@ gulogulo/
 │   ├── configuration.md
 │   ├── container-patching.md
 │   ├── identity-and-postgres.md
+│   ├── mail-core.md
 │   ├── observability.md
 │   └── storage-and-quotas.md
 ├── scripts/

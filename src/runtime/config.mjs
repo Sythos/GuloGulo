@@ -25,6 +25,7 @@ const SAFE_NAME_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/;
 const SAFE_VERSION_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._+-]{0,63}$/;
 const SAFE_BUILD_DIGEST_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._:+/-]{0,127}$/;
 const PATCH_STATUS_PATH_PATTERN = /^\/[A-Za-z0-9._/-]{1,255}$/;
+const MAILBOX_PATH_PATTERN = /^\/[A-Za-z0-9._/-]{1,255}$/;
 const SECRET_REFERENCE_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._/-]{0,127}$/;
 const DISTINGUISHED_NAME_PATTERN = /^[\x20-\x7E]{1,512}$/;
 const SECRET_KEY_PATTERN = /(password|passphrase|token|private[_-]?key|credential|authorization|cookie|api[_-]?key|secret(?!ref)|(^|[_-])dsn($|[_-]))/i;
@@ -76,7 +77,27 @@ const SECTION_KEYS = Object.freeze({
     'poolMax',
     'retryAttempts',
   ]),
-  mail: new Set(['imapIdle', 'pop3sEnabled', 'catchAll', 'userForwarding']),
+  mail: new Set([
+    'imapIdle',
+    'pop3sEnabled',
+    'catchAll',
+    'userForwarding',
+    'smtpInboundPort',
+    'smtpSubmissionPort',
+    'smtpImplicitTlsPort',
+    'imapsPort',
+    'lmtpSocket',
+    'mailboxRoot',
+    'rspamdEnabled',
+    'clamavEnabled',
+    'scanFailureMode',
+    'maxMessageBytes',
+    'maxRecipients',
+    'maxConnectionsPerIp',
+    'maxMessagesPerUserPerMinute',
+    'queueMaxAttempts',
+    'queueRetryBaseMs',
+  ]),
   certificates: new Set(['provider', 'autoRenew']),
   webAuth: new Set(['totp', 'webauthn', 'recoveryCodes']),
   retention: new Set(['trashDays']),
@@ -126,6 +147,21 @@ const ENVIRONMENT_VARIABLES = Object.freeze({
     pop3sEnabled: ['GULOGULO_MAIL_POP3S_ENABLED', 'MAIL_POP3S_ENABLED'],
     catchAll: ['GULOGULO_MAIL_CATCH_ALL', 'MAIL_CATCH_ALL'],
     userForwarding: ['GULOGULO_MAIL_USER_FORWARDING', 'MAIL_USER_FORWARDING'],
+    smtpInboundPort: ['GULOGULO_MAIL_SMTP_INBOUND_PORT', 'MAIL_SMTP_INBOUND_PORT'],
+    smtpSubmissionPort: ['GULOGULO_MAIL_SMTP_SUBMISSION_PORT', 'MAIL_SMTP_SUBMISSION_PORT'],
+    smtpImplicitTlsPort: ['GULOGULO_MAIL_SMTP_IMPLICIT_TLS_PORT', 'MAIL_SMTP_IMPLICIT_TLS_PORT'],
+    imapsPort: ['GULOGULO_MAIL_IMAPS_PORT', 'MAIL_IMAPS_PORT'],
+    lmtpSocket: ['GULOGULO_MAIL_LMTP_SOCKET', 'MAIL_LMTP_SOCKET'],
+    mailboxRoot: ['GULOGULO_MAILBOX_ROOT', 'MAILBOX_ROOT'],
+    rspamdEnabled: ['GULOGULO_MAIL_RSPAMD_ENABLED', 'MAIL_RSPAMD_ENABLED'],
+    clamavEnabled: ['GULOGULO_MAIL_CLAMAV_ENABLED', 'MAIL_CLAMAV_ENABLED'],
+    scanFailureMode: ['GULOGULO_MAIL_SCAN_FAILURE_MODE', 'MAIL_SCAN_FAILURE_MODE'],
+    maxMessageBytes: ['GULOGULO_MAIL_MAX_MESSAGE_BYTES', 'MAIL_MAX_MESSAGE_BYTES'],
+    maxRecipients: ['GULOGULO_MAIL_MAX_RECIPIENTS', 'MAIL_MAX_RECIPIENTS'],
+    maxConnectionsPerIp: ['GULOGULO_MAIL_MAX_CONNECTIONS_PER_IP', 'MAIL_MAX_CONNECTIONS_PER_IP'],
+    maxMessagesPerUserPerMinute: ['GULOGULO_MAIL_MAX_MESSAGES_PER_USER_PER_MINUTE', 'MAIL_MAX_MESSAGES_PER_USER_PER_MINUTE'],
+    queueMaxAttempts: ['GULOGULO_MAIL_QUEUE_MAX_ATTEMPTS', 'MAIL_QUEUE_MAX_ATTEMPTS'],
+    queueRetryBaseMs: ['GULOGULO_MAIL_QUEUE_RETRY_BASE_MS', 'MAIL_QUEUE_RETRY_BASE_MS'],
   },
   certificates: {
     provider: ['GULOGULO_CERTIFICATE_PROVIDER', 'CERTIFICATE_PROVIDER'],
@@ -286,6 +322,10 @@ function readEnvironmentOptionalDistinguishedName(value, name) {
 
 function readPatchStatusFile(value, name) {
   return readString(value, name, PATCH_STATUS_PATH_PATTERN);
+}
+
+function readPath(value, name) {
+  return readString(value, name, MAILBOX_PATH_PATTERN);
 }
 
 function readConfigurationFile(filePath, { optional, readFile = readFileSync } = {}) {
@@ -453,6 +493,21 @@ function buildConfiguration(fileConfiguration, environment) {
       pop3sEnabled: readBoolean(mailFile.pop3sEnabled ?? false, 'mail.pop3sEnabled'),
       catchAll: readBoolean(mailFile.catchAll ?? false, 'mail.catchAll'),
       userForwarding: readBoolean(mailFile.userForwarding ?? false, 'mail.userForwarding'),
+      smtpInboundPort: readPort(mailFile.smtpInboundPort ?? 25, 'mail.smtpInboundPort'),
+      smtpSubmissionPort: readPort(mailFile.smtpSubmissionPort ?? 587, 'mail.smtpSubmissionPort'),
+      smtpImplicitTlsPort: readPort(mailFile.smtpImplicitTlsPort ?? 465, 'mail.smtpImplicitTlsPort'),
+      imapsPort: readPort(mailFile.imapsPort ?? 993, 'mail.imapsPort'),
+      lmtpSocket: readPath(mailFile.lmtpSocket ?? '/var/run/dovecot/lmtp', 'mail.lmtpSocket'),
+      mailboxRoot: readPath(mailFile.mailboxRoot ?? '/var/lib/gulogulo/mail', 'mail.mailboxRoot'),
+      rspamdEnabled: readBoolean(mailFile.rspamdEnabled ?? true, 'mail.rspamdEnabled'),
+      clamavEnabled: readBoolean(mailFile.clamavEnabled ?? true, 'mail.clamavEnabled'),
+      scanFailureMode: readEnum(mailFile.scanFailureMode ?? 'fail_closed', 'mail.scanFailureMode', ['fail_closed']),
+      maxMessageBytes: readInteger(mailFile.maxMessageBytes ?? 52_428_800, 'mail.maxMessageBytes', 1, 1_073_741_824),
+      maxRecipients: readInteger(mailFile.maxRecipients ?? 100, 'mail.maxRecipients', 1, 1000),
+      maxConnectionsPerIp: readInteger(mailFile.maxConnectionsPerIp ?? 20, 'mail.maxConnectionsPerIp', 1, 10_000),
+      maxMessagesPerUserPerMinute: readInteger(mailFile.maxMessagesPerUserPerMinute ?? 60, 'mail.maxMessagesPerUserPerMinute', 1, 100_000),
+      queueMaxAttempts: readInteger(mailFile.queueMaxAttempts ?? 5, 'mail.queueMaxAttempts', 1, 100),
+      queueRetryBaseMs: readInteger(mailFile.queueRetryBaseMs ?? 60_000, 'mail.queueRetryBaseMs', 1_000, 86_400_000),
     },
     certificates: {
       provider: readEnum(certificatesFile.provider ?? 'letsencrypt', 'certificates.provider', ['letsencrypt', 'acme']),
@@ -552,6 +607,21 @@ function buildConfiguration(fileConfiguration, environment) {
       applyEnvironmentValue(target, 'pop3sEnabled', environment, variables.pop3sEnabled, readEnvironmentBoolean);
       applyEnvironmentValue(target, 'catchAll', environment, variables.catchAll, readEnvironmentBoolean);
       applyEnvironmentValue(target, 'userForwarding', environment, variables.userForwarding, readEnvironmentBoolean);
+      applyEnvironmentValue(target, 'smtpInboundPort', environment, variables.smtpInboundPort, (value, name) => readEnvironmentInteger(value, name, 1, 65_535));
+      applyEnvironmentValue(target, 'smtpSubmissionPort', environment, variables.smtpSubmissionPort, (value, name) => readEnvironmentInteger(value, name, 1, 65_535));
+      applyEnvironmentValue(target, 'smtpImplicitTlsPort', environment, variables.smtpImplicitTlsPort, (value, name) => readEnvironmentInteger(value, name, 1, 65_535));
+      applyEnvironmentValue(target, 'imapsPort', environment, variables.imapsPort, (value, name) => readEnvironmentInteger(value, name, 1, 65_535));
+      applyEnvironmentValue(target, 'lmtpSocket', environment, variables.lmtpSocket, readPath);
+      applyEnvironmentValue(target, 'mailboxRoot', environment, variables.mailboxRoot, readPath);
+      applyEnvironmentValue(target, 'rspamdEnabled', environment, variables.rspamdEnabled, readEnvironmentBoolean);
+      applyEnvironmentValue(target, 'clamavEnabled', environment, variables.clamavEnabled, readEnvironmentBoolean);
+      applyEnvironmentValue(target, 'scanFailureMode', environment, variables.scanFailureMode, (value, name) => readEnvironmentEnum(value, name, ['fail_closed']));
+      applyEnvironmentValue(target, 'maxMessageBytes', environment, variables.maxMessageBytes, (value, name) => readEnvironmentInteger(value, name, 1, 1_073_741_824));
+      applyEnvironmentValue(target, 'maxRecipients', environment, variables.maxRecipients, (value, name) => readEnvironmentInteger(value, name, 1, 1000));
+      applyEnvironmentValue(target, 'maxConnectionsPerIp', environment, variables.maxConnectionsPerIp, (value, name) => readEnvironmentInteger(value, name, 1, 10_000));
+      applyEnvironmentValue(target, 'maxMessagesPerUserPerMinute', environment, variables.maxMessagesPerUserPerMinute, (value, name) => readEnvironmentInteger(value, name, 1, 100_000));
+      applyEnvironmentValue(target, 'queueMaxAttempts', environment, variables.queueMaxAttempts, (value, name) => readEnvironmentInteger(value, name, 1, 100));
+      applyEnvironmentValue(target, 'queueRetryBaseMs', environment, variables.queueRetryBaseMs, (value, name) => readEnvironmentInteger(value, name, 1_000, 86_400_000));
       continue;
     }
 

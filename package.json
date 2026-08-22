@@ -13,7 +13,7 @@
   },
   "scripts": {
     "start": "node src/runtime/index.mjs",
-    "test": "node src/runtime/runtime.test.mjs && node src/foundation/config.test.mjs && node src/runtime/observability.test.mjs && node src/integrations/tenant-context.test.mjs && node src/integrations/ldap-client.test.mjs && node src/integrations/postgres-store.test.mjs",
+    "test": "node src/runtime/runtime.test.mjs && node src/foundation/config.test.mjs && node src/runtime/observability.test.mjs && node src/integrations/tenant-context.test.mjs && node src/integrations/ldap-client.test.mjs && node src/integrations/postgres-store.test.mjs && node src/mail/mail-core.test.mjs",
     "test:m2:postgres": "node src/integrations/postgres.integration.test.mjs"
   },
   "dependencies": {
