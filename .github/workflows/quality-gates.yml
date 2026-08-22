@@ -193,9 +193,9 @@ jobs:
           grep -Fq 'QUOTA_EXCEEDED' src/admin/quota.mjs
           grep -Fq 'MASTER_LOG_ACCESS_DISABLED' src/admin/rbac.mjs
           grep -Fq 'MAX_PASSWORD_EXPIRY_DAYS = 9999' src/auth/password-policy.mjs
-          grep -Fq 'replay' src/auth/totp.mjs
+          grep -Fq 'REPLAYED_CODE' src/auth/totp.mjs
           grep -Fq 'challenge' src/auth/webauthn.mjs
-          grep -Fq 'one-time' src/auth/recovery-codes.mjs
+          grep -Fq 'One-time recovery' src/auth/recovery-codes.mjs
 
           grep -Fq 'SPDX-License-Identifier: MIT' config/schema.v1.json
           grep -Fq 'Sythos (https://www.sythos.net)' config/schema.v1.json
