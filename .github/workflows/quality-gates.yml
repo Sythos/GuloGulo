@@ -111,6 +111,9 @@ jobs:
           grep -Fq 'SPDX-License-Identifier: MIT' config/schema.v1.json
           grep -Fq 'Sythos (https://www.sythos.net)' config/schema.v1.json
           grep -Fq 'FROM ubuntu:26.04' Dockerfile
+          grep -Fq 'ARG TARGETARCH' Dockerfile
+          grep -Fq 'dpkg --print-architecture' Dockerfile
+          grep -Fq 'node-v${NODE_VERSION}-linux-${node_arch}.tar.xz' Dockerfile
           grep -Fq 'apt-get update' Dockerfile
           grep -Fq 'apt-get upgrade -y' Dockerfile
           grep -Fq 'GULOGULO_PATCH_STATUS_FILE' compose.yaml

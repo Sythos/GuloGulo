@@ -6,11 +6,17 @@ SPDX-FileCopyrightText: 2026 Sythos (https://www.sythos.net)
 Author: Sythos (https://www.sythos.net)
 -->
 
-Gulo Gulo-owned images target Ubuntu 26.04 LTS (Resolute Raccoon). The current
-runtime image installs the current stable Node.js release on top of Ubuntu and
-runs `apt-get update` followed by `apt-get upgrade` during the image build.
-That makes the build repeatable enough to audit while keeping the running
-container immutable.
+Gulo Gulo-owned images target Ubuntu 26.04 LTS (Resolute Raccoon) on both
+`linux/amd64` (x86_64) and `linux/arm64` (ARM64). The current runtime image
+installs the current stable Node.js release on top of Ubuntu and runs
+`apt-get update` followed by `apt-get upgrade` during the image build. That
+makes the build repeatable enough to audit while keeping the running container
+immutable.
+
+The Dockerfile validates the BuildKit `TARGETARCH` value against
+`dpkg --print-architecture` inside the Ubuntu target rootfs before selecting the
+official Node.js archive. This catches accidental x86/ARM mismatches instead
+of producing an image that only fails when it starts.
 
 The base image and Node release are recorded in the Dockerfile and rechecked
 against authoritative upstream sources when they change. A clean security
@@ -18,6 +24,14 @@ rebuild uses a fresh base and avoids stale builder cache:
 
 ```powershell
 docker build --pull --no-cache --build-arg NODE_VERSION=26.7.0 -t gulogulo:local .
+```
+
+To exercise both supported OCI targets with Buildx (the same shape used by
+GitHub Actions):
+
+```powershell
+docker buildx build --pull --platform linux/amd64,linux/arm64 `
+  --build-arg NODE_VERSION=26.7.0 --provenance=false --sbom=false .
 ```
 
 ## Why updates happen at build time
