@@ -1,0 +1,87 @@
+name: Quality gates
+
+on:
+  workflow_call:
+    inputs:
+      context:
+        description: Execution context for the quality gates
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  repository-quality:
+    name: Repository quality gates (${{ inputs.context }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Check changed lines for whitespace errors
+        shell: bash
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          BASE_REF: ${{ github.base_ref }}
+          EVENT_BEFORE: ${{ github.event.before }}
+          COMMIT_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+
+          if [[ "$EVENT_NAME" == "pull_request" ]]; then
+            git diff --check "origin/$BASE_REF...$COMMIT_SHA"
+          elif [[ "$EVENT_NAME" == "push" && -n "$EVENT_BEFORE" && ! "$EVENT_BEFORE" =~ ^0{40}$ ]]; then
+            git diff --check "$EVENT_BEFORE" "$COMMIT_SHA"
+          else
+            git show --check --pretty= "$COMMIT_SHA"
+          fi
+
+      - name: Validate repository entry points
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -f README.md
+          grep -Fxq '# Gulo Gulo' README.md
+          test -f .github/workflows/commit-tests.yml
+          test -f .github/workflows/pr-validation.yml
+          test -f .github/workflows/quality-gates.yml
+
+      - name: Set up Node.js when package metadata exists
+        if: hashFiles('package.json') != ''
+        uses: actions/setup-node@v6
+        with:
+          node-version: lts/*
+
+      - name: Install dependencies and run the test script when available
+        if: hashFiles('package.json') != ''
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if [[ -f package-lock.json ]]; then
+            npm ci --ignore-scripts
+          elif [[ -f pnpm-lock.yaml ]]; then
+            corepack enable
+            corepack pnpm install --frozen-lockfile --ignore-scripts
+          elif [[ -f yarn.lock ]]; then
+            corepack enable
+            yarn install --immutable
+          else
+            npm install --ignore-scripts --no-package-lock
+          fi
+
+          if node -e "const packageData = require('./package.json'); process.exit(packageData.scripts && packageData.scripts.test ? 0 : 1)"; then
+            npm test
+          else
+            echo "No package test script is defined; repository checks remain active."
+          fi
+
+      - name: Report package-test status when no package exists
+        if: hashFiles('package.json') == ''
+        shell: bash
+        run: echo "No package.json exists yet; package tests are deferred until implementation is added."
