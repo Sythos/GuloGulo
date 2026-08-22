@@ -43,7 +43,7 @@ function Invoke-Compose {
     $exitCode = $LASTEXITCODE
     if ($exitCode -ne 0) {
         $renderedArguments = $commandArguments -join ' '
-        throw "Docker Compose command failed with exit code \${exitCode}: docker $renderedArguments"
+        throw "Docker Compose command failed with exit code ${exitCode}: docker $renderedArguments"
     }
 }
 
@@ -63,7 +63,7 @@ function Get-ComposeOutput {
     $exitCode = $LASTEXITCODE
     if ($exitCode -ne 0) {
         $renderedArguments = $commandArguments -join ' '
-        throw "Docker Compose command failed with exit code \${exitCode}: docker $renderedArguments"
+        throw "Docker Compose command failed with exit code ${exitCode}: docker $renderedArguments"
     }
     return @($output)
 }
