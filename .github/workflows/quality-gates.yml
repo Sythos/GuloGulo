@@ -75,6 +75,9 @@ jobs:
           test -f doc/upgrade-and-migration.md
           test -f doc/web-foundation.md
           test -f doc/dav-and-discovery.md
+          test -f doc/release-readiness.md
+          test -f release/v1-release-evidence.template.json
+          test -f scripts/m10-release-audit.mjs
           test -f tsconfig.json
           test -f web/index.html
           test -f web/styles.css
@@ -144,6 +147,9 @@ jobs:
           test -f src/upgrade/rollout.mjs
           test -f src/upgrade/index.mjs
           test -f src/upgrade/upgrade-contract.test.mjs
+          test -f src/release/index.mjs
+          test -f src/release/release-evidence.mjs
+          test -f src/release/release-evidence.test.mjs
           test -f doc/upgrade-and-migration.md
           grep -Fq 'profiles: ["local"]' compose.yaml
           grep -Fq 'profiles: ["test"]' compose.yaml
@@ -163,6 +169,7 @@ jobs:
             scripts/m0-smoke.ps1 \
             scripts/m1-fixture-smoke.ps1 \
             scripts/container-patch.sh \
+            scripts/m10-release-audit.mjs \
             .gitignore \
             .github/workflows/commit-tests.yml \
             .github/workflows/pr-validation.yml \
@@ -240,6 +247,9 @@ jobs:
           grep -Fq 'createDockerReplacementPlan' src/upgrade/rollout.mjs
           grep -Fq 'createKubernetesBlueGreenPlan' src/upgrade/rollout.mjs
           grep -Fq 'ACTION_NOT_ALLOWLISTED' src/upgrade/rollout.mjs
+          grep -Fq 'REQUIRED_SECTION30_ITEMS' src/release/release-evidence.mjs
+          grep -Fq 'M10_REVIEWS_INCOMPLETE' src/release/release-evidence.mjs
+          grep -Fq 'productionReady' src/release/release-evidence.mjs
 
           grep -Fq 'SPDX-License-Identifier: MIT' config/schema.v1.json
           grep -Fq 'Sythos (https://www.sythos.net)' config/schema.v1.json
@@ -269,6 +279,7 @@ jobs:
           node -e "const p=require('./package-lock.json'); const root=p.packages && p.packages['']; if (!root || root.license !== 'MIT' || root.author !== 'Sythos (https://www.sythos.net)' || root.spdxLicenseIdentifier !== 'MIT') process.exit(1)"
           node -e "const s=require('./config/schema.v1.json'); if (!s.properties.buildDigest || !s.properties.patching) process.exit(1)"
           test -f package-lock.json
+          node -e "const e=require('./release/v1-release-evidence.template.json'); if (e.spdxLicenseIdentifier !== 'MIT' || e.author !== 'Sythos (https://www.sythos.net)' || e.product !== 'Gulo Gulo') process.exit(1)"
 
       - name: Set up Node.js when package metadata exists
         if: hashFiles('package.json') != ''
