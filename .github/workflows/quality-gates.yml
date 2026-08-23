@@ -139,6 +139,12 @@ jobs:
           test -f src/ops/abuse/index.mjs
           test -f src/ops/abuse/index.test.mjs
           test -f doc/acme-abuse-deployment.md
+          test -f src/upgrade/compatibility.mjs
+          test -f src/upgrade/control-plane.mjs
+          test -f src/upgrade/rollout.mjs
+          test -f src/upgrade/index.mjs
+          test -f src/upgrade/upgrade-contract.test.mjs
+          test -f doc/upgrade-and-migration.md
           grep -Fq 'profiles: ["local"]' compose.yaml
           grep -Fq 'profiles: ["test"]' compose.yaml
           grep -Fq 'profiles: ["fixture"]' compose.yaml
@@ -226,6 +232,14 @@ jobs:
           grep -Fq 'createAbuseAuditEvent' src/ops/abuse/index.mjs
           grep -Fq 'validateComposeProductionReadiness' src/ops/abuse/index.mjs
           grep -Fq 'HOST_NAMESPACE_FORBIDDEN' src/ops/abuse/index.mjs
+          grep -Fq 'MIGRATION_PHASES' src/upgrade/compatibility.mjs
+          grep -Fq 'createSchemaMigrationPlan' src/upgrade/compatibility.mjs
+          grep -Fq 'createUpgradeController' src/upgrade/control-plane.mjs
+          grep -Fq 'TENANT_CONTROL_PLANE_FORBIDDEN' src/upgrade/control-plane.mjs
+          grep -Fq 'PREFLIGHT_FAILED' src/upgrade/control-plane.mjs
+          grep -Fq 'createDockerReplacementPlan' src/upgrade/rollout.mjs
+          grep -Fq 'createKubernetesBlueGreenPlan' src/upgrade/rollout.mjs
+          grep -Fq 'ACTION_NOT_ALLOWLISTED' src/upgrade/rollout.mjs
 
           grep -Fq 'SPDX-License-Identifier: MIT' config/schema.v1.json
           grep -Fq 'Sythos (https://www.sythos.net)' config/schema.v1.json
@@ -238,6 +252,8 @@ jobs:
           grep -Fq 'GULOGULO_PATCH_STATUS_FILE' compose.yaml
           grep -Fq 'GULOGULO_MAIL_SCAN_FAILURE_MODE' compose.yaml
           grep -Fq 'GULOGULO_MAILBOX_ROOT' compose.yaml
+          grep -Fq 'providerOnly' config/schema.v1.json
+          grep -Fq 'arbitraryCommands' config/schema.v1.json
           bash -n scripts/container-patch.sh
 
           for file in test/fixtures/*.json; do

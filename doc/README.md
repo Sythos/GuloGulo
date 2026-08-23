@@ -40,8 +40,9 @@ normal workflow.
 - [ACME, abuse, and production deployment](acme-abuse-deployment.md) —
   Let's Encrypt and generic ACME configuration, renewal/reload health,
   metadata-only rate and abuse controls, and fail-closed Compose readiness.
-- [Upgrade and migration operations](upgrade-and-migration.md) — the planned
-  provider-only API/MCP command contract, Docker-to-Docker replacement, and
+- [Upgrade and migration operations](upgrade-and-migration.md) — the
+  provider-only API/MCP command contract, expand/backfill/switch/contract
+  compatibility window, Docker-to-Docker replacement, connection drain, and
   Kubernetes blue/green cutover and rollback runbook.
 - [Web foundation](web-foundation.md) — the HTML5/TypeScript shell, secure
   session and CSRF contracts, message sanitization, attachment policy,
@@ -54,7 +55,8 @@ normal workflow.
 The project is still intentionally small. The documents describe real behavior
 only: DAV, administration, lifecycle, backup, observability, ACME, and abuse
 are deterministic contract boundaries until their external adapters and
-rehearsals are in place. Production deployment still needs a persistent DAV
-backend, authenticated HTTP method adapter, real ACME/DNS operations, measured
-RPO/RTO, and standard-client interoperability rehearsal before it is treated as
-a complete external service.
+rehearsals are in place. The M9 upgrade module adds the validation and state
+machine, but production deployment still needs a persistent DAV backend,
+authenticated HTTP method adapter, real ACME/DNS operations, measured RPO/RTO,
+an actual Docker/Kubernetes cutover, and standard-client interoperability
+rehearsal before it is treated as a complete external service.

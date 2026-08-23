@@ -7,10 +7,17 @@ Author: Sythos (https://www.sythos.net)
 -->
 
 This is the operator manual for replacing a Gulo Gulo container with a newer
-image and for preparing the Kubernetes zero-downtime path. The implementation
-is planned for M9; the current M3 repository exposes no write-capable upgrade
-endpoint. The examples below define the contract that future deployment
-controllers must implement and test.
+image and for preparing the Kubernetes zero-downtime path. M9 now provides a
+dependency-light, deterministic contract boundary in `src/upgrade/`. It
+validates the provider-only operation model, the expand/backfill/switch/contract
+schema window, shared external state, queue hand-off, connection draining,
+Docker replacement, Kubernetes readiness, rollback, and finalization gates.
+
+The contract is deliberately not a claim that this checkout can already mutate
+a live Docker host or Kubernetes cluster. A deployment controller still has to
+connect these validated plans to the approved operator runtime and to real
+external stores. Keeping that boundary explicit makes the local and CI tests
+useful without pretending that a fixture is a production rollout.
 
 ## Two API surfaces, two trust levels
 
@@ -24,7 +31,7 @@ idempotency store, timeout, and rollback policy. It must never expose the
 Docker socket, accept arbitrary shell input, or forward unrestricted
 `kubectl` arguments.
 
-The planned operations are:
+The operation contract is:
 
 | Operation | HTTP | MCP | Mutates deployment? |
 |---|---|---|---:|
@@ -57,6 +64,58 @@ The controller returns an `operationId`, state, sanitized checks, and a
 correlation ID. It does not return secrets, registry credentials, message
 content, or raw deployment command output. Repeating an idempotency key returns
 the original operation state instead of starting a second rollout.
+
+## Implemented M9 contract
+
+The implementation is split into three small modules:
+
+- `src/upgrade/compatibility.mjs` owns version/digest validation, the
+  expand/backfill/switch/contract sequence, forward-compatible checkpoints,
+  and the rollback-safe schema window;
+- `src/upgrade/rollout.mjs` owns external-state references, queue hand-off,
+  connection drain/reconnect behavior, Docker replacement plans, Kubernetes
+  blue/green readiness, and the action allowlist;
+- `src/upgrade/control-plane.mjs` owns provider/operator authorization,
+  idempotency, the operation state machine, sanitized status, and audit events.
+
+The public barrel is `src/upgrade/index.mjs`. Run the focused contract suite
+with:
+
+```text
+npm run test:m9
+```
+
+The state machine is intentionally boring and easy to inspect:
+
+```text
+planned
+  -> preflight_passed
+  -> prepared
+  -> serving_green
+  -> finalized
+
+prepared or serving_green -> rolled_back -> finalized
+any pre-cutover failure   -> failed      -> rolled_back
+```
+
+The controller refuses a tenant, master, user, or monitoring role; only the
+provider/operator audience can execute it. The tenant monitoring API and MCP
+remain read-only. Mutating provider calls require an idempotency key, the
+expected source version and digest, a target digest, a bounded deadline, and a
+validated platform. The returned objects contain no secret, raw shell text,
+Docker socket path, unrestricted `kubectl`, mailbox content, or registry
+credential.
+
+The M9 tests cover:
+
+- strict request and digest validation, including unsafe command rejection;
+- idempotent plans and provider-versus-tenant authorization;
+- forward-compatible schema phases and checkpoint evidence;
+- persistent queue and duplicate-delivery protection;
+- HTTP, WebSocket, IMAP IDLE, SMTP, and DAV drain ordering;
+- Docker external-volume replacement without mailbox copying;
+- Kubernetes readiness, zero `maxUnavailable`, PDB, and rollback readiness;
+- preflight, prepare, cutover, rollback, and observation/restore finalization.
 
 ## Docker-to-Docker replacement
 
@@ -146,7 +205,8 @@ traffic points to blue and the status endpoint confirms healthy dependencies.
 
 ## M9 acceptance evidence
 
-Before these commands are enabled, M9 must demonstrate:
+Before these commands are enabled against a real deployment, M9 must
+demonstrate:
 
 - Docker-to-Docker replacement with external volumes and no mailbox loss;
 - blue/green Compose or equivalent cutover and rollback;
@@ -157,3 +217,9 @@ Before these commands are enabled, M9 must demonstrate:
 - negative tests for arbitrary command, volume deletion, readiness bypass,
   unverified digest, and tenant-token escalation;
 - workflow artefacts showing the full rehearsal and its restore check.
+
+The current M9 milestone records the deterministic contract and all local/CI
+quality gates. Live CA/DNS, Postfix/Dovecot session behavior, a real external
+volume snapshot, Docker-host replacement, Kubernetes traffic switching, and a
+measured zero-downtime rehearsal remain operational evidence for the final
+release path.

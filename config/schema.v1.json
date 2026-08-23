@@ -136,7 +136,17 @@
       "type": "object",
       "additionalProperties": false,
       "properties": {
-        "strategy": { "type": "string", "const": "blue_green" }
+        "strategy": { "type": "string", "const": "blue_green" },
+        "providerOnly": { "type": "boolean", "const": true },
+        "platforms": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": { "type": "string", "enum": ["docker", "kubernetes"] },
+          "minItems": 1
+        },
+        "maxDeadlineSeconds": { "type": "integer", "minimum": 60, "maximum": 7200, "default": 1800 },
+        "externalStateRequired": { "type": "boolean", "const": true },
+        "arbitraryCommands": { "type": "boolean", "const": false }
       }
     },
     "patching": {
