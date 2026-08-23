@@ -305,7 +305,7 @@ jobs:
           test -f package-lock.json
           node -e "const e=require('./release/v1-release-evidence.template.json'); if (e.spdxLicenseIdentifier !== 'MIT' || e.author !== 'Sythos (https://www.sythos.net)' || e.product !== 'Gulo Gulo') process.exit(1)"
           node -e "const s=require('./release/local-proof-scope.json'); if (s.spdxLicenseIdentifier !== 'MIT' || s.author !== 'Sythos (https://www.sythos.net)' || s.proofType !== 'local' || s.networkPolicy !== 'offline_runtime' || s.syntheticDataOnly !== true || s.publicDnsRequired !== false || s.publicAcmeEnabled !== false || s.externalPhaseDeferred !== true) process.exit(1)"
-          node -e "const t=require('./release/local-proof-topology.json'); if (t.spdxLicenseIdentifier !== 'MIT' || t.author !== 'Sythos (https://www.sythos.net)' || t.milestone !== 'LP1' || t.networkPolicy !== 'offline_runtime' || t.internalNetwork !== true || t.publicDnsRequired !== false || t.publicAcmeEnabled !== false || t.dockerSocketMounted !== false) process.exit(1)"
+          node -e "const t=require('./release/local-proof-topology.json'); if (t.spdxLicenseIdentifier !== 'MIT' || t.author !== 'Sythos (https://www.sythos.net)' || t.milestone !== 'LP1' || t.networkPolicy !== 'offline_runtime' || t.internalNetwork !== true || t.ipFamilies?.join(',') !== 'ipv4,ipv6' || t.publicDnsRequired !== false || t.publicAcmeEnabled !== false || t.dockerSocketMounted !== false) process.exit(1)"
           bash -n docker/lp1-network/entrypoint-ca.sh
           bash -n docker/lp1-network/entrypoint-dns.sh
 

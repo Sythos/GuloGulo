@@ -13,13 +13,19 @@ exec dnsmasq \
   --no-resolv \
   --no-hosts \
   --listen-address=0.0.0.0 \
+  --listen-address=:: \
   --bind-interfaces \
   --port="$dns_port" \
   --address=/gulogulo.test/127.0.0.1 \
+  --address=/gulogulo.test/::1 \
   --address=/webmail.localhost/127.0.0.1 \
+  --address=/webmail.localhost/::1 \
   --address=/calendar.localhost/127.0.0.1 \
+  --address=/calendar.localhost/::1 \
   --address=/contacts.localhost/127.0.0.1 \
+  --address=/contacts.localhost/::1 \
   --address=/.localhost/127.0.0.1 \
+  --address=/.localhost/::1 \
   --log-facility=- \
   --user=nobody \
   --group=nogroup

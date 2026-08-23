@@ -8,8 +8,11 @@ import { resolve } from 'node:path';
 import { createLocalProofTopology } from '../src/release/local-proof-topology.mjs';
 
 const composePath = resolve(process.cwd(), 'compose.yaml');
+const dnsEntrypointPath = resolve(process.cwd(), 'docker/lp1-network/entrypoint-dns.sh');
 const manifestPath = resolve(process.cwd(), 'release/local-proof-topology.json');
 const compose = await readFile(composePath, 'utf8');
+const dnsEntrypoint = await readFile(dnsEntrypointPath, 'utf8');
+const topologySource = `${compose}\n${dnsEntrypoint}`;
 const manifest = JSON.parse(await readFile(manifestPath, 'utf8'));
 const topology = createLocalProofTopology(manifest);
 
@@ -21,6 +24,10 @@ const requiredMarkers = [
   'profiles: ["proof"]',
   'internal: true',
   '127.0.0.1:${GULOGULO_PROOF_HTTP_PORT:-18080}:8080',
+  '[::1]:${GULOGULO_PROOF_HTTP_PORT:-18080}:8080',
+  'enable_ipv6: true',
+  '--listen-address=::',
+  '--address=/gulogulo.test/::1',
   'lp1-ca-data:',
   'lp1-runtime-state:',
   'lp1-mail-data:',
@@ -32,7 +39,7 @@ const requiredMarkers = [
 ];
 
 for (const marker of requiredMarkers) {
-  if (!compose.includes(marker)) {
+  if (!topologySource.includes(marker)) {
     throw new Error(`LP1 Compose marker is missing: ${marker}`);
   }
 }
@@ -47,6 +54,7 @@ console.log(JSON.stringify({
   networkPolicy: topology.networkPolicy,
   networkName: topology.networkName,
   internalNetwork: topology.internalNetwork,
+  ipFamilies: topology.ipFamilies,
   localNames: topology.localNames,
   services: topology.services.map(({ name, role }) => ({ name, role })),
   hostBindings: topology.hostBindings,

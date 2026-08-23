@@ -184,8 +184,11 @@ services:
     profiles: ["proof"]
     ports:
       - "127.0.0.1:${GULOGULO_PROOF_HTTP_PORT:-18080}:8080"
+      - "[::1]:${GULOGULO_PROOF_HTTP_PORT:-18080}:8080"
     environment:
       <<: *gulogulo-environment
+      HOST: "${GULOGULO_PROOF_APP_HOST:-::}"
+      GULOGULO_HOST: "${GULOGULO_PROOF_APP_HOST:-::}"
       APP_ENV: local-proof
       GULOGULO_ENV: local-proof
       GULOGULO_FIXTURE_MODE: "true"
@@ -203,6 +206,12 @@ services:
       - lp1-mail-data:/var/lib/gulogulo/mail
       - lp1-dav-data:/var/lib/gulogulo/dav
       - lp1-backup-data:/var/lib/gulogulo/backups
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - "fetch('http://[::1]:'+(process.env.PORT||8080)+'/health/ready').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"
     labels:
       com.sythos.gulogulo.milestone: LP1
       com.sythos.gulogulo.proof: local
@@ -354,3 +363,7 @@ networks:
   proof-runtime:
     name: ${GULOGULO_PROOF_NETWORK:-gulogulo-local-proof}
     internal: true
+    enable_ipv6: true
+    ipam:
+      config:
+        - subnet: fd42:4755:756c:7031::/64

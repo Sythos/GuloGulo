@@ -57,10 +57,10 @@ normal workflow.
 - [LP0 local proof scope](local-proof-scope.md) — the reserved local names,
   synthetic-data rule, offline runtime boundary, disposable service inventory,
   architecture targets, and the explicit deferral of the external phase.
-- [LP1 isolated local topology](local-proof-topology.md) — the private Compose
-  network, disposable CA/DNS utilities, loopback-only application binding,
-  external-capable named volumes, restart continuity check, and Docker proof
-  harness.
+- [LP1 isolated local topology](local-proof-topology.md) — the private dual-stack
+  Compose network, disposable CA/DNS utilities, IPv4/IPv6 loopback-only
+  application bindings, external-capable named volumes, restart continuity
+  check, and Docker proof harness.
 
 The project is still intentionally small. The documents describe real behavior
 only: DAV, administration, lifecycle, backup, observability, ACME, abuse, and

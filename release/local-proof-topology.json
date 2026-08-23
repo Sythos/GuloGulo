@@ -15,8 +15,13 @@
   "hostNetwork": false,
   "dockerSocketMounted": false,
   "externalVolumesMode": "named_external_capable",
+  "ipFamilies": [
+    "ipv4",
+    "ipv6"
+  ],
   "hostBindings": [
-    "127.0.0.1:18080->8080/tcp"
+    "127.0.0.1:18080->8080/tcp",
+    "[::1]:18080->8080/tcp"
   ],
   "localNames": [
     "gulogulo.test",

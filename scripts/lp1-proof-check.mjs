@@ -5,7 +5,6 @@
 import { readFile, rename, writeFile } from 'node:fs/promises';
 import { lookup } from 'node:dns/promises';
 import { Resolver } from 'node:dns/promises';
-import { setTimeout as delay } from 'node:timers/promises';
 import { join, resolve } from 'node:path';
 import { X509Certificate } from 'node:crypto';
 import { createSecureContext } from 'node:tls';
@@ -49,36 +48,54 @@ requireCondition(leafKeyBytes.length > 0, 'the leaf private key is empty');
 requireCondition(process.env.NODE_EXTRA_CA_CERTS === join(caDir, 'ca.crt'), 'the test client did not install the local CA trust path');
 createSecureContext({ ca: caBytes });
 
-// Docker service discovery can expose both address families when IPv6 is
-// enabled. The disposable dnsmasq proof service deliberately binds IPv4 only,
-// so select an IPv4 endpoint explicitly instead of relying on resolver order.
-const dnsAddress = (await lookup(dnsService, { family: 4 })).address;
-const resolver = new Resolver();
-resolver.setServers([`${dnsAddress}:${dnsPort}`]);
-let answers;
-let lastDnsError;
-for (let attempt = 1; attempt <= 5; attempt += 1) {
+// Docker service discovery exposes both address families when the proof
+// network has IPv6 enabled. Query the disposable dnsmasq service over every
+// advertised endpoint and keep the loopback answer policy explicit.
+const dnsAddresses = (await lookup(dnsService, { all: true })).map(({ address }) => address);
+requireCondition(dnsAddresses.some((address) => !address.includes(':')), 'the local DNS service has no IPv4 endpoint');
+requireCondition(dnsAddresses.some((address) => address.includes(':')), 'the local DNS service has no IPv6 endpoint');
+
+const dnsAnswers = { ipv4: new Set(), ipv6: new Set() };
+const dnsErrors = [];
+for (const dnsAddress of dnsAddresses) {
+  const dnsServer = dnsAddress.includes(':') ? `[${dnsAddress}]:${dnsPort}` : `${dnsAddress}:${dnsPort}`;
+  const resolver = new Resolver();
+  resolver.setServers([dnsServer]);
   try {
-    answers = await resolver.resolve4('gulogulo.test');
-    break;
+    for (const address of await resolver.resolve4('gulogulo.test')) dnsAnswers.ipv4.add(address);
   } catch (error) {
-    lastDnsError = error;
-    if (attempt < 5) await delay(attempt * 250);
+    dnsErrors.push(`${dnsServer}/A: ${error.message}`);
+  }
+  try {
+    for (const address of await resolver.resolve6('gulogulo.test')) dnsAnswers.ipv6.add(address);
+  } catch (error) {
+    dnsErrors.push(`${dnsServer}/AAAA: ${error.message}`);
   }
 }
-if (!answers) {
-  throw new Error(`LP1 local DNS query failed for gulogulo.test via ${dnsAddress}:${dnsPort}`, {
-    cause: lastDnsError,
-  });
-}
-requireCondition(answers.length > 0 && answers.every((address) => address === '127.0.0.1'), 'reserved DNS names escaped the loopback-only answer policy');
 
-const response = await fetch(`http://${applicationService}:8080/health/ready`, {
-  signal: AbortSignal.timeout(5000),
-});
-requireCondition(response.ok, `the application readiness endpoint returned HTTP ${response.status}`);
-const readiness = await response.json();
-requireCondition(readiness.status === 'ready', 'the application readiness payload is not ready');
+const ipv4Answers = [...dnsAnswers.ipv4];
+const ipv6Answers = [...dnsAnswers.ipv6];
+if (ipv4Answers.length === 0 || ipv6Answers.length === 0) {
+  throw new Error(`LP1 local DNS dual-stack query failed: ${dnsErrors.join('; ')}`);
+}
+requireCondition(ipv4Answers.every((address) => address === '127.0.0.1'), 'reserved IPv4 DNS names escaped the loopback-only answer policy');
+requireCondition(ipv6Answers.every((address) => address === '::1'), 'reserved IPv6 DNS names escaped the loopback-only answer policy');
+
+const applicationAddresses = (await lookup(applicationService, { all: true })).map(({ address, family }) => ({ address, family }));
+requireCondition(applicationAddresses.some(({ family }) => family === 4), 'the application service has no IPv4 endpoint');
+requireCondition(applicationAddresses.some(({ family }) => family === 6), 'the application service has no IPv6 endpoint');
+
+let readiness;
+for (const { address, family } of applicationAddresses) {
+  const host = family === 6 ? `[${address}]` : address;
+  const response = await fetch(`http://${host}:8080/health/ready`, {
+    signal: AbortSignal.timeout(5000),
+  });
+  requireCondition(response.ok, `the application readiness endpoint returned HTTP ${response.status}`);
+  const currentReadiness = await response.json();
+  requireCondition(currentReadiness.status === 'ready', 'the application readiness payload is not ready');
+  readiness = currentReadiness;
+}
 
 let previous = null;
 try {
@@ -111,7 +128,9 @@ console.log(JSON.stringify({
   restartObserved: marker.restartObserved,
   caSubject: caCertificate.subject,
   leafSubject: leafCertificate.subject,
-  dnsAnswers: answers,
+  ipFamilies: ['ipv4', 'ipv6'],
+  dnsAnswers: { ipv4: ipv4Answers, ipv6: ipv6Answers },
+  applicationAddresses,
   readiness: readiness.status,
   networkPolicy: marker.networkPolicy,
   syntheticDataOnly: marker.syntheticDataOnly,

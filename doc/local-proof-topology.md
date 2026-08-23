@@ -25,20 +25,23 @@ The `proof` profile creates three long-running services on the named
 
 | Service | Purpose | Runtime boundary |
 |---|---|---|
-| `gulogulo-proof` | The existing non-root Gulo Gulo runtime | Published only on `127.0.0.1:18080`; read-only root filesystem; LP1 external-capable named volumes |
+| `gulogulo-proof` | The existing non-root Gulo Gulo runtime | Published only on IPv4 `127.0.0.1:18080` and IPv6 `[::1]:18080`; read-only root filesystem; LP1 external-capable named volumes |
 | `local-ca` | Disposable seven-day CA and leaf certificate generator | Writes only to `lp1-ca-data`; no host port; synthetic keys are destroyed with the project by default |
-| `local-dns` | `dnsmasq` responder on port 5353 | Answers the four reserved names only with `127.0.0.1`; has no upstream resolver and no Internet egress |
+| `local-dns` | `dnsmasq` responder on port 5353 | Listens on IPv4 and IPv6 and answers the four reserved names only with `127.0.0.1` and `::1`; has no upstream resolver and no Internet egress |
 
-The network is declared `internal: true`. The application also receives Docker
-network aliases for `gulogulo.test`, `webmail.localhost`,
+The network is declared `internal: true` with IPv6 enabled. The application
+listens on the dual-stack wildcard address and receives Docker network aliases
+for `gulogulo.test`, `webmail.localhost`,
 `calendar.localhost`, and `contacts.localhost`; the proof client queries the
-dedicated `local-dns` responder as an independent check.
+both IPv4 and IPv6 endpoints of the dedicated `local-dns` responder as an
+independent check.
 
 The `proof-check` profile is on-demand. Its Node.js client installs the CA via
 `NODE_EXTRA_CA_CERTS`, verifies the CA/leaf chain and SAN, resolves the reserved
-name through the local DNS service, checks `/health/ready`, and persists a
-small restart marker. The smoke harness runs that client before and after an
-application restart, proving that the marker volume survives replacement.
+name through both local DNS address families, checks `/health/ready` through
+both application address families, and persists a small restart marker. The
+smoke harness runs that client before and after an application restart, proving
+that the marker volume survives replacement.
 
 ## Volumes and lifecycle
 
@@ -68,8 +71,8 @@ npm run test:lp1
 ```
 
 It validates the topology manifest and checks that `compose.yaml` contains the
-internal network, proof services, loopback-only binding, labels, named volumes,
-and no Docker-socket, host-network, or privileged marker.
+internal dual-stack network, proof services, IPv4/IPv6 loopback-only bindings,
+labels, named volumes, and no Docker-socket, host-network, or privileged marker.
 
 ## Run the live local proof
 
@@ -127,5 +130,5 @@ application or checker access to the CA signing key.
 - No Docker socket, host network, privileged flag, or arbitrary shell control
   is exposed.
 - A green LP1 rehearsal proves topology isolation, health, trust material,
-  reserved-name resolution, and volume continuity only. It is not production
+  dual-stack reserved-name resolution, and volume continuity only. It is not production
   readiness or evidence of a complete mail provider.

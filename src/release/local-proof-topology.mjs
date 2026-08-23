@@ -78,6 +78,7 @@ export function createLocalProofTopology(input) {
   assertExact(input.hostNetwork, false, 'LP1_HOST_NETWORK_INVALID', 'hostNetwork');
   assertExact(input.dockerSocketMounted, false, 'LP1_SOCKET_INVALID', 'dockerSocketMounted');
   assertExact(input.externalVolumesMode, 'named_external_capable', 'LP1_VOLUME_POLICY_INVALID', 'externalVolumesMode');
+  assertExactList(input.ipFamilies, ['ipv4', 'ipv6'], 'LP1_IP_FAMILIES_INVALID', 'ipFamilies');
   assertExact(input.status, 'frozen', 'LP1_STATUS_INVALID', 'status');
 
   assertSafeName(input.networkName, 'LP1_NETWORK_NAME_INVALID', 'networkName');
@@ -90,9 +91,10 @@ export function createLocalProofTopology(input) {
     'com.sythos.gulogulo.network-policy',
   ], 'LP1_LABELS_INVALID', 'requiredLabels');
 
-  if (!Array.isArray(input.hostBindings) || input.hostBindings.length !== 1 ||
-      !/^127\.0\.0\.1:[0-9]+->8080\/tcp$/.test(input.hostBindings[0])) {
-    throw topologyError('LP1_HOST_BINDING_INVALID', 'LP1 must publish only the application on loopback.');
+  if (!Array.isArray(input.hostBindings) || input.hostBindings.length !== 2 ||
+      !/^127\.0\.0\.1:[0-9]+->8080\/tcp$/.test(input.hostBindings[0]) ||
+      !/^\[::1\]:[0-9]+->8080\/tcp$/.test(input.hostBindings[1])) {
+    throw topologyError('LP1_HOST_BINDING_INVALID', 'LP1 must publish the application on IPv4 and IPv6 loopback only.');
   }
 
   if (!Array.isArray(input.services) || input.services.length !== REQUIRED_SERVICES.length ||

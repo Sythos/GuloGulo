@@ -23,7 +23,8 @@ const VALID_TOPOLOGY = {
   hostNetwork: false,
   dockerSocketMounted: false,
   externalVolumesMode: 'named_external_capable',
-  hostBindings: ['127.0.0.1:18080->8080/tcp'],
+  ipFamilies: ['ipv4', 'ipv6'],
+  hostBindings: ['127.0.0.1:18080->8080/tcp', '[::1]:18080->8080/tcp'],
   localNames: ['gulogulo.test', 'webmail.localhost', 'calendar.localhost', 'contacts.localhost'],
   services: [
     { name: 'gulogulo-proof', role: 'application', health: 'GET /health/ready' },
@@ -36,12 +37,13 @@ const VALID_TOPOLOGY = {
   status: 'frozen',
 };
 
-test('LP1 accepts the frozen internal topology and loopback binding', () => {
+test('LP1 accepts the frozen internal dual-stack topology and loopback bindings', () => {
   const topology = createLocalProofTopology(VALID_TOPOLOGY);
 
   assert.equal(topology.networkPolicy, 'offline_runtime');
   assert.equal(topology.internalNetwork, true);
   assert.equal(topology.hostBindings[0], '127.0.0.1:18080->8080/tcp');
+  assert.equal(topology.hostBindings[1], '[::1]:18080->8080/tcp');
   assert(Object.isFrozen(topology));
   assert(Object.isFrozen(topology.services[0]));
 });
@@ -63,7 +65,7 @@ test('LP1 rejects public network, host network, and Docker socket claims', () =>
 
 test('LP1 rejects public host bindings and incomplete volumes', () => {
   assert.throws(
-    () => createLocalProofTopology({ ...VALID_TOPOLOGY, hostBindings: ['0.0.0.0:18080->8080/tcp'] }),
+    () => createLocalProofTopology({ ...VALID_TOPOLOGY, hostBindings: ['0.0.0.0:18080->8080/tcp', '[::1]:18080->8080/tcp'] }),
     (error) => error.code === 'LP1_HOST_BINDING_INVALID',
   );
   assert.throws(
