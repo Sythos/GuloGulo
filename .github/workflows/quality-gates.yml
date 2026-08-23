@@ -387,7 +387,7 @@ jobs:
             --tag gulogulo:ci-lp1-network-ubuntu-26.04 \
             --file docker/lp1-network/Dockerfile \
             --output "type=oci,dest=$output" \
-            .
+            docker/lp1-network
           test -s "$output"
 
       - name: Run Compose test profile
