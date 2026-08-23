@@ -79,6 +79,7 @@ where the item depends on external infrastructure.
 
 - [x] health and metrics;
 - [x] multi-architecture Docker images for Ubuntu 26.04 LTS on amd64 (x86_64) and arm64;
+- [x] dual-stack IPv4 and IPv6 network support;
 - [x] log rotation;
 - [x] alerts;
 - [x] Postfix queue visibility;
@@ -115,6 +116,11 @@ gulogulo/
 │   └── gulo-gulo-calendar-mail.png
 ├── config/
 │   └── schema.v1.json
+├── docker/
+│   └── lp1-network/
+│       ├── Dockerfile
+│       ├── entrypoint-ca.sh
+│       └── entrypoint-dns.sh
 ├── doc/
 │   ├── README.md
 │   ├── api-and-mcp.md
@@ -126,6 +132,7 @@ gulogulo/
 │   ├── identity-and-postgres.md
 │   ├── lifecycle-backup-dr.md
 │   ├── local-proof-scope.md
+│   ├── local-proof-topology.md
 │   ├── mail-core.md
 │   ├── rbac-admin-mfa.md
 │   ├── release-readiness.md
@@ -137,11 +144,15 @@ gulogulo/
 │   ├── m0-smoke.ps1
 │   ├── m1-fixture-smoke.ps1
 │   ├── lp0-scope-audit.mjs
+│   ├── lp1-compose-audit.mjs
+│   ├── lp1-proof-check.mjs
+│   ├── lp1-proof-smoke.mjs
 │   ├── m10-release-audit.mjs
 │   ├── container-patch.sh
 │   └── runtime, fixture, and patch utilities
 ├── release/
 │   ├── local-proof-scope.json
+│   ├── local-proof-topology.json
 │   └── v1-release-evidence.template.json
 ├── src/
 │   ├── admin/
@@ -157,6 +168,8 @@ gulogulo/
 │   │   ├── index.mjs
 │   │   ├── local-proof-scope.mjs
 │   │   ├── local-proof-scope.test.mjs
+│   │   ├── local-proof-topology.mjs
+│   │   ├── local-proof-topology.test.mjs
 │   │   ├── release-evidence.mjs
 │   │   └── release-evidence.test.mjs
 │   ├── ops/

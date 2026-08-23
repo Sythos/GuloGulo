@@ -37,8 +37,8 @@ validator and its tests live in `src/release/local-proof-scope.mjs` and
   replaced with a real public domain during LP1–LP9.
 - TLS is terminated with a locally trusted CA generated for the proof. Public
   Let's Encrypt and generic public ACME are explicitly disabled here.
-- Host-file or local DNS entries may point these names at loopback or the
-  private Compose/Kubernetes test network. No public DNS record is created.
+- Host-file or local DNS entries may point these names at IPv4/IPv6 loopback or
+  the private Compose/Kubernetes test network. No public DNS record is created.
 
 ### Data and identities
 

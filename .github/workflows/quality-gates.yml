@@ -138,6 +138,7 @@ jobs:
           test -f src/observability/observability.test.mjs
           test -f doc/lifecycle-backup-dr.md
           test -f doc/local-proof-scope.md
+          test -f doc/local-proof-topology.md
           test -f src/ops/acme/index.mjs
           test -f src/ops/acme/index.test.mjs
           test -f src/ops/abuse/index.mjs
@@ -154,7 +155,16 @@ jobs:
           test -f src/release/local-proof-scope.mjs
           test -f src/release/local-proof-scope.test.mjs
           test -f release/local-proof-scope.json
+          test -f release/local-proof-topology.json
           test -f scripts/lp0-scope-audit.mjs
+          test -f scripts/lp1-compose-audit.mjs
+          test -f scripts/lp1-proof-check.mjs
+          test -f scripts/lp1-proof-smoke.mjs
+          test -f docker/lp1-network/Dockerfile
+          test -f docker/lp1-network/entrypoint-ca.sh
+          test -f docker/lp1-network/entrypoint-dns.sh
+          test -f src/release/local-proof-topology.mjs
+          test -f src/release/local-proof-topology.test.mjs
           test -f doc/upgrade-and-migration.md
           grep -Fq 'profiles: ["local"]' compose.yaml
           grep -Fq 'profiles: ["test"]' compose.yaml
@@ -175,11 +185,19 @@ jobs:
             scripts/m1-fixture-smoke.ps1 \
             scripts/container-patch.sh \
             scripts/lp0-scope-audit.mjs \
+            scripts/lp1-compose-audit.mjs \
+            scripts/lp1-proof-check.mjs \
+            scripts/lp1-proof-smoke.mjs \
             scripts/m10-release-audit.mjs \
             .gitignore \
             .github/workflows/commit-tests.yml \
             .github/workflows/pr-validation.yml \
             .github/workflows/quality-gates.yml; do
+            grep -Fq 'SPDX-License-Identifier: MIT' "$file"
+            grep -Fq 'Author: Sythos (https://www.sythos.net)' "$file"
+          done
+
+          for file in docker/lp1-network/Dockerfile docker/lp1-network/entrypoint-ca.sh docker/lp1-network/entrypoint-dns.sh; do
             grep -Fq 'SPDX-License-Identifier: MIT' "$file"
             grep -Fq 'Author: Sythos (https://www.sythos.net)' "$file"
           done
@@ -287,6 +305,9 @@ jobs:
           test -f package-lock.json
           node -e "const e=require('./release/v1-release-evidence.template.json'); if (e.spdxLicenseIdentifier !== 'MIT' || e.author !== 'Sythos (https://www.sythos.net)' || e.product !== 'Gulo Gulo') process.exit(1)"
           node -e "const s=require('./release/local-proof-scope.json'); if (s.spdxLicenseIdentifier !== 'MIT' || s.author !== 'Sythos (https://www.sythos.net)' || s.proofType !== 'local' || s.networkPolicy !== 'offline_runtime' || s.syntheticDataOnly !== true || s.publicDnsRequired !== false || s.publicAcmeEnabled !== false || s.externalPhaseDeferred !== true) process.exit(1)"
+          node -e "const t=require('./release/local-proof-topology.json'); if (t.spdxLicenseIdentifier !== 'MIT' || t.author !== 'Sythos (https://www.sythos.net)' || t.milestone !== 'LP1' || t.networkPolicy !== 'offline_runtime' || t.internalNetwork !== true || t.ipFamilies?.join(',') !== 'ipv4,ipv6' || t.publicDnsRequired !== false || t.publicAcmeEnabled !== false || t.dockerSocketMounted !== false) process.exit(1)"
+          bash -n docker/lp1-network/entrypoint-ca.sh
+          bash -n docker/lp1-network/entrypoint-dns.sh
 
       - name: Set up Node.js when package metadata exists
         if: hashFiles('package.json') != ''
@@ -352,6 +373,23 @@ jobs:
             .
           test -s "$output"
 
+      - name: Validate LP1 network utility image on amd64 and arm64
+        if: hashFiles('docker/lp1-network/Dockerfile') != ''
+        shell: bash
+        run: |
+          set -euo pipefail
+          output="$RUNNER_TEMP/gulogulo-lp1-network-ubuntu-26.04.oci.tar"
+          docker buildx build \
+            --platform linux/amd64,linux/arm64 \
+            --pull \
+            --provenance=false \
+            --sbom=false \
+            --tag gulogulo:ci-lp1-network-ubuntu-26.04 \
+            --file docker/lp1-network/Dockerfile \
+            --output "type=oci,dest=$output" \
+            docker/lp1-network
+          test -s "$output"
+
       - name: Run Compose test profile
         if: hashFiles('compose.yaml') != '' || hashFiles('compose.yml') != '' || hashFiles('docker-compose.yml') != '' || hashFiles('docker-compose.yaml') != ''
         shell: bash
@@ -369,6 +407,11 @@ jobs:
           "${compose[@]}" --profile test config --quiet
           "${compose[@]}" --profile test build --pull gulogulo-test
           "${compose[@]}" --profile test run --rm --no-deps gulogulo-test
+
+      - name: Run LP1 isolated local proof topology
+        if: hashFiles('docker/lp1-network/Dockerfile') != '' && hashFiles('scripts/lp1-proof-smoke.mjs') != ''
+        shell: bash
+        run: npm run test:lp1:docker
 
       - name: Run disposable PostgreSQL M2 integration contract
         if: hashFiles('src/integrations/postgres.integration.test.mjs') != ''

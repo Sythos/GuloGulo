@@ -1,0 +1,68 @@
+{
+  "$comment": "SPDX-License-Identifier: MIT; SPDX-FileCopyrightText: 2026 Sythos (https://www.sythos.net); Author: Sythos (https://www.sythos.net)",
+  "spdxLicenseIdentifier": "MIT",
+  "spdxFileCopyrightText": "2026 Sythos (https://www.sythos.net)",
+  "author": "Sythos (https://www.sythos.net)",
+  "schemaVersion": 1,
+  "milestone": "LP1",
+  "proofType": "local",
+  "networkPolicy": "offline_runtime",
+  "networkName": "gulogulo-local-proof",
+  "internalNetwork": true,
+  "syntheticDataOnly": true,
+  "publicDnsRequired": false,
+  "publicAcmeEnabled": false,
+  "hostNetwork": false,
+  "dockerSocketMounted": false,
+  "externalVolumesMode": "named_external_capable",
+  "ipFamilies": [
+    "ipv4",
+    "ipv6"
+  ],
+  "hostBindings": [
+    "127.0.0.1:18080->8080/tcp",
+    "[::1]:18080->8080/tcp"
+  ],
+  "localNames": [
+    "gulogulo.test",
+    "webmail.localhost",
+    "calendar.localhost",
+    "contacts.localhost"
+  ],
+  "services": [
+    {
+      "name": "gulogulo-proof",
+      "role": "application",
+      "health": "GET /health/ready"
+    },
+    {
+      "name": "local-ca",
+      "role": "disposable certificate authority",
+      "health": "ca.crt and gulogulo.test.crt exist"
+    },
+    {
+      "name": "local-dns",
+      "role": "reserved-name resolver",
+      "health": "dnsmasq configuration check"
+    }
+  ],
+  "volumes": [
+    "lp1-ca-data",
+    "lp1-runtime-state",
+    "lp1-mail-data",
+    "lp1-dav-data",
+    "lp1-backup-data",
+    "lp1-proof-state"
+  ],
+  "caArtifacts": [
+    "ca.crt",
+    "gulogulo.test.crt",
+    "gulogulo.test.key"
+  ],
+  "requiredLabels": [
+    "com.sythos.gulogulo.milestone",
+    "com.sythos.gulogulo.proof",
+    "com.sythos.gulogulo.network-policy"
+  ],
+  "status": "frozen"
+}
