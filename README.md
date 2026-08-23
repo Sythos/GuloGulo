@@ -83,8 +83,9 @@ where the item depends on external infrastructure.
 - [x] alerts;
 - [x] Postfix queue visibility;
 - [ ] automatic Rspamd/ClamAV updates;
-- [ ] blue/green rehearsal;
-- [ ] rollback test;
+- [x] provider-only migration contract, compatibility window, and rollback state machine;
+- [ ] live blue/green rehearsal;
+- [ ] live rollback rehearsal;
 - [ ] RPO/RTO approved;
 - [ ] incident and DR runbooks.
 
@@ -145,6 +146,12 @@ gulogulo/
 │   ├── ops/
 │   │   ├── abuse/
 │   │   └── acme/
+│   ├── upgrade/
+│   │   ├── compatibility.mjs
+│   │   ├── control-plane.mjs
+│   │   ├── index.mjs
+│   │   ├── rollout.mjs
+│   │   └── upgrade-contract.test.mjs
 │   ├── runtime/
 │   ├── dav/
 │   │   ├── caldav/

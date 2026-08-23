@@ -16,10 +16,11 @@
     "build:web": "node web/build.mjs",
     "typecheck": "tsc --project tsconfig.json --noEmit",
     "test:web": "npm run build:web && node web/test/web-shell.test.mjs",
-    "test": "npm run test:web && npm run test:m6 && npm run test:m7 && npm run test:m8 && node src/runtime/runtime.test.mjs && node src/foundation/config.test.mjs && node src/runtime/observability.test.mjs && node src/integrations/tenant-context.test.mjs && node src/integrations/ldap-client.test.mjs && node src/integrations/postgres-store.test.mjs && node src/mail/mail-core.test.mjs && node src/web/security/security.test.mjs && node src/web/content/email-content.test.mjs && node src/web/content/attachment-policy.test.mjs && node src/web/content/timezone.test.mjs && node src/web/realtime/event-normalizer.test.mjs && node src/web/backup/backup-request.test.mjs && node src/dav/caldav/caldav-contract.test.mjs && node src/dav/carddav/carddav-store.test.mjs && node src/dav/discovery/index.test.mjs",
+    "test": "npm run test:web && npm run test:m6 && npm run test:m7 && npm run test:m8 && npm run test:m9 && node src/runtime/runtime.test.mjs && node src/foundation/config.test.mjs && node src/runtime/observability.test.mjs && node src/integrations/tenant-context.test.mjs && node src/integrations/ldap-client.test.mjs && node src/integrations/postgres-store.test.mjs && node src/mail/mail-core.test.mjs && node src/web/security/security.test.mjs && node src/web/content/email-content.test.mjs && node src/web/content/attachment-policy.test.mjs && node src/web/content/timezone.test.mjs && node src/web/realtime/event-normalizer.test.mjs && node src/web/backup/backup-request.test.mjs && node src/dav/caldav/caldav-contract.test.mjs && node src/dav/carddav/carddav-store.test.mjs && node src/dav/discovery/index.test.mjs",
     "test:m6": "node src/admin/rbac.test.mjs && node src/admin/delegation.test.mjs && node src/admin/quota.test.mjs && node src/admin/admin-tools.test.mjs && node src/auth/auth.test.mjs",
     "test:m7": "node src/lifecycle/retention.test.mjs && node src/lifecycle/account-lifecycle.test.mjs && node src/backup/backup-contract.test.mjs && node src/observability/observability.test.mjs",
     "test:m8": "node src/ops/acme/index.test.mjs && node src/ops/abuse/index.test.mjs",
+    "test:m9": "node src/upgrade/upgrade-contract.test.mjs",
     "test:m2:postgres": "node src/integrations/postgres.integration.test.mjs"
   },
   "dependencies": {

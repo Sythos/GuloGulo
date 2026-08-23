@@ -120,6 +120,7 @@ test('provider scope moves encrypted tenant data without sessions or plaintext a
     providerId: 'provider-a',
     tenantId: 'acme',
     encryptionKeyReference: 'kms/gulogulo/tenant-acme',
+    issuedAt: '2026-08-22T10:00:00Z',
     expiresAt: '2026-08-23T10:00:00Z',
   });
   assert.equal(scope.userId, null);

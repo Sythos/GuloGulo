@@ -70,11 +70,12 @@ rollback behavior, and negative tests before it becomes callable.
 
 ## Upgrade and migration command contract
 
-The owner has reserved a provider-only migration control plane for the M9
-upgrade milestone. It is intentionally separate from the tenant monitoring
-API/MCP described above. The tenant surface stays read-only; the provider
-surface may execute only the allowlisted deployment operations below after the
-M9 threat model and approval gates are accepted.
+M9 now provides a deterministic provider-only migration control-plane contract.
+It is intentionally separate from the tenant monitoring API/MCP described
+above. The tenant surface stays read-only; the provider surface may execute
+only the allowlisted deployment operations below after a real deployment
+controller supplies its own threat model, approval workflow, and runtime
+credentials.
 
 The command names are stable across Docker Compose and Kubernetes. A controller
 behind the API/MCP maps them to the selected deployment driver; it never passes
