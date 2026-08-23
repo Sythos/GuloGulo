@@ -54,6 +54,9 @@ normal workflow.
 - [Release readiness](release-readiness.md) — the Section 30 evidence object,
   hardening review matrix, sanitized provider API/MCP read surface, and the
   honest boundary between a usable contract preview and a production service.
+- [LP0 local proof scope](local-proof-scope.md) — the reserved local names,
+  synthetic-data rule, offline runtime boundary, disposable service inventory,
+  architecture targets, and the explicit deferral of the external phase.
 
 The project is still intentionally small. The documents describe real behavior
 only: DAV, administration, lifecycle, backup, observability, ACME, abuse, and

@@ -125,6 +125,7 @@ gulogulo/
 │   ├── dav-and-discovery.md
 │   ├── identity-and-postgres.md
 │   ├── lifecycle-backup-dr.md
+│   ├── local-proof-scope.md
 │   ├── mail-core.md
 │   ├── rbac-admin-mfa.md
 │   ├── release-readiness.md
@@ -135,10 +136,12 @@ gulogulo/
 ├── scripts/
 │   ├── m0-smoke.ps1
 │   ├── m1-fixture-smoke.ps1
+│   ├── lp0-scope-audit.mjs
 │   ├── m10-release-audit.mjs
 │   ├── container-patch.sh
 │   └── runtime, fixture, and patch utilities
 ├── release/
+│   ├── local-proof-scope.json
 │   └── v1-release-evidence.template.json
 ├── src/
 │   ├── admin/
@@ -152,6 +155,8 @@ gulogulo/
 │   ├── observability/
 │   ├── release/
 │   │   ├── index.mjs
+│   │   ├── local-proof-scope.mjs
+│   │   ├── local-proof-scope.test.mjs
 │   │   ├── release-evidence.mjs
 │   │   └── release-evidence.test.mjs
 │   ├── ops/
