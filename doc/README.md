@@ -51,12 +51,15 @@ normal workflow.
   calendar and address-book contracts, conditional writes, ETags, sync tokens,
   iCalendar/vCard validation, `.well-known` responses, and safe manual
   configuration fallback.
+- [Release readiness](release-readiness.md) — the Section 30 evidence object,
+  hardening review matrix, sanitized provider API/MCP read surface, and the
+  honest boundary between a usable contract preview and a production service.
 
 The project is still intentionally small. The documents describe real behavior
-only: DAV, administration, lifecycle, backup, observability, ACME, and abuse
-are deterministic contract boundaries until their external adapters and
-rehearsals are in place. The M9 upgrade module adds the validation and state
-machine, but production deployment still needs a persistent DAV backend,
-authenticated HTTP method adapter, real ACME/DNS operations, measured RPO/RTO,
-an actual Docker/Kubernetes cutover, and standard-client interoperability
-rehearsal before it is treated as a complete external service.
+only: DAV, administration, lifecycle, backup, observability, ACME, abuse, and
+upgrade are deterministic contract boundaries until their external adapters and
+rehearsals are in place. The release-readiness guide collects those limits in a
+machine-checkable decision, but production deployment still needs a persistent
+DAV backend, authenticated HTTP method adapter, real ACME/DNS operations,
+measured RPO/RTO, an actual Docker/Kubernetes cutover, and standard-client
+interoperability rehearsal before it is treated as a complete external service.

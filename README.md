@@ -127,12 +127,19 @@ gulogulo/
 │   ├── lifecycle-backup-dr.md
 │   ├── mail-core.md
 │   ├── rbac-admin-mfa.md
+│   ├── release-readiness.md
 │   ├── observability.md
 │   ├── storage-and-quotas.md
 │   ├── upgrade-and-migration.md
 │   └── web-foundation.md
 ├── scripts/
+│   ├── m0-smoke.ps1
+│   ├── m1-fixture-smoke.ps1
+│   ├── m10-release-audit.mjs
+│   ├── container-patch.sh
 │   └── runtime, fixture, and patch utilities
+├── release/
+│   └── v1-release-evidence.template.json
 ├── src/
 │   ├── admin/
 │   ├── auth/
@@ -143,6 +150,10 @@ gulogulo/
 │   ├── lifecycle/
 │   ├── mail/
 │   ├── observability/
+│   ├── release/
+│   │   ├── index.mjs
+│   │   ├── release-evidence.mjs
+│   │   └── release-evidence.test.mjs
 │   ├── ops/
 │   │   ├── abuse/
 │   │   └── acme/
