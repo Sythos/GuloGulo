@@ -79,6 +79,7 @@ where the item depends on external infrastructure.
 
 - [x] health and metrics;
 - [x] multi-architecture Docker images for Ubuntu 26.04 LTS on amd64 (x86_64) and arm64;
+- [x] dual-stack IPv4 and IPv6 network support;
 - [x] log rotation;
 - [x] alerts;
 - [x] Postfix queue visibility;
