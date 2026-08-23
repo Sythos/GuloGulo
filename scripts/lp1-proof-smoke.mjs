@@ -106,7 +106,7 @@ try {
   const ipv6LoopbackAliases = new Set(['::1', '0:0:0:0:0:0:0:1']);
   if (bindings.length !== 2 || loopbackBindings.get('127.0.0.1') !== environment.GULOGULO_PROOF_HTTP_PORT ||
       ![...ipv6LoopbackAliases].some((address) => loopbackBindings.get(address) === environment.GULOGULO_PROOF_HTTP_PORT)) {
-    throw new Error('LP1 application must expose exactly IPv4 and IPv6 loopback bindings.');
+    throw new Error(`LP1 application must expose exactly IPv4 and IPv6 loopback bindings; observed ${JSON.stringify(bindings)}`);
   }
 
   console.log(JSON.stringify({
