@@ -1,0 +1,38 @@
+{
+  "$comment": "SPDX-License-Identifier: MIT; SPDX-FileCopyrightText: 2026 Sythos (https://www.sythos.net); Author: Sythos (https://www.sythos.net)",
+  "spdxLicenseIdentifier": "MIT",
+  "spdxFileCopyrightText": "2026 Sythos (https://www.sythos.net)",
+  "author": "Sythos (https://www.sythos.net)",
+  "schemaVersion": 1,
+  "proofType": "local",
+  "releaseLabel": "v0.1.0-local-proof.1",
+  "networkPolicy": "offline_runtime",
+  "syntheticDataOnly": true,
+  "publicDnsRequired": false,
+  "publicAcmeEnabled": false,
+  "targetPlatforms": [
+    "linux/amd64",
+    "linux/arm64"
+  ],
+  "localNames": [
+    "gulogulo.test",
+    "webmail.localhost",
+    "calendar.localhost",
+    "contacts.localhost"
+  ],
+  "requiredServices": [
+    "gulogulo",
+    "ldap",
+    "postgresql",
+    "postfix",
+    "dovecot",
+    "rspamd",
+    "clamav",
+    "caldav",
+    "carddav",
+    "local-dns",
+    "local-ca"
+  ],
+  "externalPhaseDeferred": true,
+  "status": "frozen"
+}

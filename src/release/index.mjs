@@ -16,3 +16,10 @@ export {
   createReleaseEvidence,
   evaluateReleaseEvidence,
 } from './release-evidence.mjs';
+
+export {
+  LOCAL_PROOF_RELEASE_LABEL,
+  LOCAL_PROOF_REQUIRED_SERVICES,
+  PLATFORM_SET,
+  createLocalProofScope,
+} from './local-proof-scope.mjs';
