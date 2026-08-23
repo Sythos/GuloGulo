@@ -13,6 +13,7 @@ exec dnsmasq \
   --no-resolv \
   --no-hosts \
   --listen-address=0.0.0.0 \
+  --bind-interfaces \
   --port="$dns_port" \
   --address=/gulogulo.test/127.0.0.1 \
   --address=/webmail.localhost/127.0.0.1 \

@@ -5,6 +5,7 @@
 import { readFile, rename, writeFile } from 'node:fs/promises';
 import { lookup } from 'node:dns/promises';
 import { Resolver } from 'node:dns/promises';
+import { setTimeout as delay } from 'node:timers/promises';
 import { join, resolve } from 'node:path';
 import { X509Certificate } from 'node:crypto';
 import { createSecureContext } from 'node:tls';
@@ -48,10 +49,28 @@ requireCondition(leafKeyBytes.length > 0, 'the leaf private key is empty');
 requireCondition(process.env.NODE_EXTRA_CA_CERTS === join(caDir, 'ca.crt'), 'the test client did not install the local CA trust path');
 createSecureContext({ ca: caBytes });
 
-const dnsAddress = (await lookup(dnsService)).address;
+// Docker service discovery can expose both address families when IPv6 is
+// enabled. The disposable dnsmasq proof service deliberately binds IPv4 only,
+// so select an IPv4 endpoint explicitly instead of relying on resolver order.
+const dnsAddress = (await lookup(dnsService, { family: 4 })).address;
 const resolver = new Resolver();
 resolver.setServers([`${dnsAddress}:${dnsPort}`]);
-const answers = await resolver.resolve4('gulogulo.test');
+let answers;
+let lastDnsError;
+for (let attempt = 1; attempt <= 5; attempt += 1) {
+  try {
+    answers = await resolver.resolve4('gulogulo.test');
+    break;
+  } catch (error) {
+    lastDnsError = error;
+    if (attempt < 5) await delay(attempt * 250);
+  }
+}
+if (!answers) {
+  throw new Error(`LP1 local DNS query failed for gulogulo.test via ${dnsAddress}:${dnsPort}`, {
+    cause: lastDnsError,
+  });
+}
 requireCondition(answers.length > 0 && answers.every((address) => address === '127.0.0.1'), 'reserved DNS names escaped the loopback-only answer policy');
 
 const response = await fetch(`http://${applicationService}:8080/health/ready`, {
