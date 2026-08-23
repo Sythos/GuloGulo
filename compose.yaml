@@ -176,6 +176,146 @@ services:
     healthcheck:
       disable: true
 
+  # LP1 is a disposable, private proof topology. It deliberately uses a
+  # separate internal network, loopback-only publication, and named volumes
+  # that can be switched to externally managed storage by the operator.
+  gulogulo-proof:
+    <<: *gulogulo-service
+    profiles: ["proof"]
+    ports:
+      - "127.0.0.1:${GULOGULO_PROOF_HTTP_PORT:-18080}:8080"
+    environment:
+      <<: *gulogulo-environment
+      APP_ENV: local-proof
+      GULOGULO_ENV: local-proof
+      GULOGULO_FIXTURE_MODE: "true"
+      GULOGULO_SERVICE_NAME: gulogulo-lp1-proof
+    networks:
+      proof-runtime:
+        aliases:
+          - gulogulo-proof
+          - gulogulo.test
+          - webmail.localhost
+          - calendar.localhost
+          - contacts.localhost
+    volumes:
+      - lp1-runtime-state:/var/lib/gulogulo
+      - lp1-mail-data:/var/lib/gulogulo/mail
+      - lp1-dav-data:/var/lib/gulogulo/dav
+      - lp1-backup-data:/var/lib/gulogulo/backups
+    labels:
+      com.sythos.gulogulo.milestone: LP1
+      com.sythos.gulogulo.proof: local
+      com.sythos.gulogulo.network-policy: offline_runtime
+
+  local-ca:
+    build:
+      context: docker/lp1-network
+      dockerfile: Dockerfile
+    profiles: ["proof"]
+    user: "0:0"
+    command: ["/usr/local/sbin/gulogulo-lp1-ca"]
+    environment:
+      LP1_CA_DIR: /run/gulogulo-ca
+    volumes:
+      - lp1-ca-data:/run/gulogulo-ca
+    networks:
+      proof-runtime:
+        aliases:
+          - local-ca
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=16m
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    init: true
+    restart: "no"
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - test -s /run/gulogulo-ca/ca.crt && test -s /run/gulogulo-ca/gulogulo.test.crt && test -s /run/gulogulo-ca/gulogulo.test.key
+      interval: 2s
+      timeout: 2s
+      start_period: 2s
+      retries: 15
+    labels:
+      com.sythos.gulogulo.milestone: LP1
+      com.sythos.gulogulo.proof: local
+      com.sythos.gulogulo.network-policy: offline_runtime
+
+  local-dns:
+    build:
+      context: docker/lp1-network
+      dockerfile: Dockerfile
+    profiles: ["proof"]
+    command: ["/usr/local/sbin/gulogulo-lp1-dns"]
+    environment:
+      LP1_DNS_PORT: ${LP1_DNS_PORT:-5353}
+    networks:
+      proof-runtime:
+        aliases:
+          - local-dns
+    read_only: true
+    tmpfs:
+      - /run:rw,noexec,nosuid,size=16m
+      - /tmp:rw,noexec,nosuid,size=16m
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    init: true
+    restart: "no"
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - dnsmasq --test --no-resolv --no-hosts --address=/gulogulo.test/127.0.0.1
+      interval: 2s
+      timeout: 2s
+      start_period: 2s
+      retries: 15
+    labels:
+      com.sythos.gulogulo.milestone: LP1
+      com.sythos.gulogulo.proof: local
+      com.sythos.gulogulo.network-policy: offline_runtime
+
+  # This is an on-demand client. It is not started by the proof runtime; the
+  # LP1 smoke harness runs it twice, before and after an application restart.
+  gulogulo-proof-check:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        INSTALL_DEV: "true"
+    profiles: ["proof-check"]
+    command: ["node", "scripts/lp1-proof-check.mjs"]
+    environment:
+      LP1_CA_DIR: /run/gulogulo-ca
+      LP1_PROOF_STATE_DIR: /var/lib/gulogulo/lp1
+      LP1_DNS_SERVER: local-dns
+      LP1_DNS_PORT: ${LP1_DNS_PORT:-5353}
+      LP1_APPLICATION_SERVER: gulogulo-proof
+      NODE_EXTRA_CA_CERTS: /run/gulogulo-ca/ca.crt
+    volumes:
+      - lp1-ca-data:/run/gulogulo-ca:ro
+      - lp1-proof-state:/var/lib/gulogulo/lp1
+    networks:
+      - proof-runtime
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=16m
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    init: true
+    restart: "no"
+    labels:
+      com.sythos.gulogulo.milestone: LP1
+      com.sythos.gulogulo.proof: local
+      com.sythos.gulogulo.network-policy: offline_runtime
+
 volumes:
   runtime-state:
     name: ${GULOGULO_VOLUME_PREFIX:-gulogulo}-runtime-state
@@ -189,3 +329,26 @@ volumes:
   backup-data:
     name: ${GULOGULO_VOLUME_PREFIX:-gulogulo}-backup-data
     external: ${GULOGULO_VOLUMES_EXTERNAL:-false}
+  lp1-ca-data:
+    name: ${GULOGULO_VOLUME_PREFIX:-gulogulo}-lp1-ca-data
+    external: ${GULOGULO_LP1_VOLUMES_EXTERNAL:-false}
+  lp1-runtime-state:
+    name: ${GULOGULO_VOLUME_PREFIX:-gulogulo}-lp1-runtime-state
+    external: ${GULOGULO_LP1_VOLUMES_EXTERNAL:-false}
+  lp1-mail-data:
+    name: ${GULOGULO_VOLUME_PREFIX:-gulogulo}-lp1-mail-data
+    external: ${GULOGULO_LP1_VOLUMES_EXTERNAL:-false}
+  lp1-dav-data:
+    name: ${GULOGULO_VOLUME_PREFIX:-gulogulo}-lp1-dav-data
+    external: ${GULOGULO_LP1_VOLUMES_EXTERNAL:-false}
+  lp1-backup-data:
+    name: ${GULOGULO_VOLUME_PREFIX:-gulogulo}-lp1-backup-data
+    external: ${GULOGULO_LP1_VOLUMES_EXTERNAL:-false}
+  lp1-proof-state:
+    name: ${GULOGULO_VOLUME_PREFIX:-gulogulo}-lp1-proof-state
+    external: ${GULOGULO_LP1_VOLUMES_EXTERNAL:-false}
+
+networks:
+  proof-runtime:
+    name: ${GULOGULO_PROOF_NETWORK:-gulogulo-local-proof}
+    internal: true

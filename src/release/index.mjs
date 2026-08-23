@@ -23,3 +23,10 @@ export {
   PLATFORM_SET,
   createLocalProofScope,
 } from './local-proof-scope.mjs';
+
+export {
+  LOCAL_NAMES,
+  REQUIRED_SERVICES,
+  REQUIRED_VOLUMES,
+  createLocalProofTopology,
+} from './local-proof-topology.mjs';
