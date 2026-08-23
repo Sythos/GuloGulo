@@ -52,6 +52,10 @@ EOF
   rm -f "$ca_dir/gulogulo.test.csr" "$ca_dir/gulogulo.test.ext" "$ca_dir/ca.srl"
 fi
 
+# The CA service is the only writer and is granted CAP_CHOWN by Compose solely
+# to hand the verifier the explicitly shared artifacts. The signing key stays
+# root-owned and root-readable.
+chown 0:10001 "$ca_dir" "$ca_dir/ca.crt" "$ca_dir/gulogulo.test.crt" "$ca_dir/gulogulo.test.key"
 chmod 0600 "$ca_dir/ca.key"
 chmod 0640 "$ca_dir/ca.crt" "$ca_dir/gulogulo.test.crt" "$ca_dir/gulogulo.test.key"
 
