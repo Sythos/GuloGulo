@@ -109,6 +109,13 @@ will use the same trust boundary when an HTTPS web/DAV endpoint is added. The
 LP1 HTTP health endpoint remains plain HTTP inside the internal network because
 there is no reverse proxy in this milestone.
 
+The CA service runs with UID 0 but Gulo Gulo's runtime GID `10001`. Its signing
+key remains mode `0600` and is not readable by the proof client. The CA
+certificate, leaf certificate, and synthetic leaf key are mode `0640` on the
+shared volume and the proof client mounts that volume read-only as the
+non-root `gulogulo` user. This keeps the check executable without granting the
+application or checker access to the CA signing key.
+
 ## Security and non-goals
 
 - Runtime containers have no Internet egress through the internal network.

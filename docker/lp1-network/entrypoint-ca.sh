@@ -7,7 +7,11 @@ set -euo pipefail
 
 ca_dir="${LP1_CA_DIR:-/run/gulogulo-ca}"
 mkdir -p "$ca_dir"
-chmod 0700 "$ca_dir"
+# The application-side proof client runs as Gulo Gulo's non-root UID/GID
+# (10001). Only the public CA/leaf certificates and the synthetic leaf key are
+# group-readable; the CA signing key remains root-only.
+umask 0007
+chmod 0750 "$ca_dir"
 
 if [[ ! -s "$ca_dir/ca.key" || ! -s "$ca_dir/ca.crt" ]]; then
   rm -f "$ca_dir"/ca.key "$ca_dir"/ca.crt
@@ -48,8 +52,8 @@ EOF
   rm -f "$ca_dir/gulogulo.test.csr" "$ca_dir/gulogulo.test.ext" "$ca_dir/ca.srl"
 fi
 
-chmod 0600 "$ca_dir/ca.key" "$ca_dir/gulogulo.test.key"
-chmod 0644 "$ca_dir/ca.crt" "$ca_dir/gulogulo.test.crt"
+chmod 0600 "$ca_dir/ca.key"
+chmod 0640 "$ca_dir/ca.crt" "$ca_dir/gulogulo.test.crt" "$ca_dir/gulogulo.test.key"
 
 echo 'gulogulo-lp1-ca-ready'
 trap 'exit 0' TERM INT

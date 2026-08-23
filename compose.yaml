@@ -213,7 +213,7 @@ services:
       context: docker/lp1-network
       dockerfile: Dockerfile
     profiles: ["proof"]
-    user: "0:0"
+    user: "0:10001"
     command: ["/usr/local/sbin/gulogulo-lp1-ca"]
     environment:
       LP1_CA_DIR: /run/gulogulo-ca
