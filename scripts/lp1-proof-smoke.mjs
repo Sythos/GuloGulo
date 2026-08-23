@@ -101,12 +101,19 @@ try {
     assertSafeContainer(inspectContainer(serviceContainer(service)), service);
   }
   const applicationDetails = inspectContainer(application);
-  const bindings = applicationDetails.NetworkSettings?.Ports?.['8080/tcp'] || [];
+  // Docker Engine versions do not all populate NetworkSettings.Ports for an
+  // explicitly loopback-bound Compose service. HostConfig.PortBindings is the
+  // declared binding contract and remains available in that case; keep both
+  // values in the failure message so a future engine change cannot hide a
+  // publication regression.
+  const configuredBindings = applicationDetails.HostConfig?.PortBindings?.['8080/tcp'] || [];
+  const publishedBindings = applicationDetails.NetworkSettings?.Ports?.['8080/tcp'] || [];
+  const bindings = configuredBindings.length > 0 ? configuredBindings : publishedBindings;
   const loopbackBindings = new Map(bindings.map((binding) => [binding.HostIp, binding.HostPort]));
   const ipv6LoopbackAliases = new Set(['::1', '0:0:0:0:0:0:0:1']);
   if (bindings.length !== 2 || loopbackBindings.get('127.0.0.1') !== environment.GULOGULO_PROOF_HTTP_PORT ||
       ![...ipv6LoopbackAliases].some((address) => loopbackBindings.get(address) === environment.GULOGULO_PROOF_HTTP_PORT)) {
-    throw new Error(`LP1 application must expose exactly IPv4 and IPv6 loopback bindings; observed ${JSON.stringify(bindings)}`);
+    throw new Error(`LP1 application must expose exactly IPv4 and IPv6 loopback bindings; configured=${JSON.stringify(configuredBindings)} published=${JSON.stringify(publishedBindings)}`);
   }
 
   console.log(JSON.stringify({
