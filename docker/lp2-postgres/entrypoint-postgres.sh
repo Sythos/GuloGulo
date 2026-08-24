@@ -73,8 +73,15 @@ if [[ "${ready}" != true ]]; then
 fi
 
 runuser -u postgres -- psql --dbname=postgres --set=ON_ERROR_STOP=1 \
-  --command="DO \$\$ BEGIN IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = '${user_name}') THEN CREATE ROLE \"${user_name}\" LOGIN PASSWORD '${password}'; ELSE ALTER ROLE \"${user_name}\" LOGIN PASSWORD '${password}'; END IF; END \$\$;" \
-  --command="SELECT 'CREATE DATABASE \"${database}\" OWNER \"${user_name}\"' WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = '${database}')\\gexec" >/dev/null
+  --command="DO \$\$ BEGIN IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = '${user_name}') THEN CREATE ROLE \"${user_name}\" LOGIN PASSWORD '${password}'; ELSE ALTER ROLE \"${user_name}\" LOGIN PASSWORD '${password}'; END IF; END \$\$;" >/dev/null
+
+# `psql --command` executes SQL text; it does not run the `\\gexec` psql
+# meta-command.  Check the catalog explicitly and invoke `createdb` only when
+# the disposable fixture database is absent.
+if ! runuser -u postgres -- psql --dbname=postgres --tuples-only --no-align \
+  --command="SELECT 1 FROM pg_database WHERE datname = '${database}'" | grep -qx '1'; then
+  runuser -u postgres -- "${pg_bin_dir}/createdb" --owner="${user_name}" "${database}"
+fi
 
 runuser -u postgres -- psql --dbname="${database}" --set=ON_ERROR_STOP=1 \
   --command="CREATE TABLE IF NOT EXISTS lp2_probe (probe_key text PRIMARY KEY, probe_value text NOT NULL);" \
