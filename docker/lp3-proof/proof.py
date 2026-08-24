@@ -60,22 +60,30 @@ def smtp_to_lmtp():
 
 def imap_delivery_and_idle():
     deadline = time.time() + 25
+    last_error = None
     while time.time() < deadline:
         try:
             with imaplib.IMAP4("lp3-dovecot", 143) as client:
-                if "IDLE" not in client.capability()[1][0].decode().upper():
+                capability = client.capability()[1][0].decode().upper()
+                if "IDLE" not in capability:
                     raise RuntimeError("Dovecot IMAP capability does not include IDLE")
                 client.login(USER, PASSWORD)
-                client.select("INBOX")
+                status, mailbox_data = client.select("INBOX")
+                if status != "OK":
+                    raise RuntimeError(f"Dovecot IMAP INBOX select failed: {mailbox_data!r}")
                 status, data = client.search(None, "SUBJECT", '"LP3 synthetic delivery proof"')
                 if status == "OK" and data and data[0]:
                     client.logout()
                     return
                 client.logout()
-        except (imaplib.IMAP4.error, OSError):
-            pass
+                last_error = f"no matching message (capability={capability!r}, search={data!r})"
+        except (imaplib.IMAP4.error, OSError, RuntimeError) as error:
+            last_error = repr(error)
         time.sleep(1)
-    raise RuntimeError("SMTP message did not become visible through Dovecot IMAP")
+    raise RuntimeError(
+        "SMTP message did not become visible through Dovecot IMAP"
+        f"; last IMAP probe: {last_error or 'no response'}"
+    )
 
 
 def scanners():
