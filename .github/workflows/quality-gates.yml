@@ -40,7 +40,15 @@ jobs:
           if [[ "$EVENT_NAME" == "pull_request" ]]; then
             git diff --check "origin/$BASE_REF...$COMMIT_SHA"
           elif [[ "$EVENT_NAME" == "push" && -n "$EVENT_BEFORE" && ! "$EVENT_BEFORE" =~ ^0{40}$ ]]; then
-            git diff --check "$EVENT_BEFORE" "$COMMIT_SHA"
+            # A force-pushed milestone branch can legitimately remove the
+            # event's before-object from the Actions checkout. Fall back to
+            # checking the pushed commit instead of failing on a missing
+            # historical object.
+            if git cat-file -e "$EVENT_BEFORE^{commit}" 2>/dev/null; then
+              git diff --check "$EVENT_BEFORE" "$COMMIT_SHA"
+            else
+              git show --check --pretty= "$COMMIT_SHA"
+            fi
           else
             git show --check --pretty= "$COMMIT_SHA"
           fi
