@@ -17,7 +17,10 @@ if [[ ! -s "${ca_cert}" ]]; then
   openssl req -x509 -newkey rsa:2048 -nodes -sha256 -days 7 \
     -keyout "${ca_key}" \
     -out "${ca_cert}" \
-    -subj "/CN=GuloGulo LP2 Synthetic CA/O=Sythos"
+    -subj "/CN=GuloGulo LP2 Synthetic CA/O=Sythos" \
+    -addext "basicConstraints=critical,CA:TRUE,pathlen:1" \
+    -addext "keyUsage=critical,keyCertSign,cRLSign" \
+    -addext "subjectKeyIdentifier=hash"
 fi
 
 create_leaf() {
@@ -43,6 +46,7 @@ CN = ${name}
 O = Sythos
 
 [req_ext]
+basicConstraints = critical, CA:false
 subjectAltName = ${san}
 extendedKeyUsage = serverAuth
 keyUsage = digitalSignature, keyEncipherment
