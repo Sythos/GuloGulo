@@ -39,7 +39,7 @@ where the item depends on external infrastructure.
 
 ### Security
 
-- [ ] no open relay;
+- [x] no open relay;
 - [x] TLS and certificate health contract verified;
 - [x] ACME renewal state and safe-reload contract tested;
 - [ ] LDAP uses TLS and minimum bind privilege;
@@ -80,7 +80,10 @@ where the item depends on external infrastructure.
 - [x] health and metrics;
 - [x] multi-architecture Docker images for Ubuntu 26.04 LTS on amd64 (x86_64) and arm64;
 - [x] dual-stack IPv4 and IPv6 network support;
+- [x] persistent external mail volumes and restart continuity;
 - [x] offline synthetic LP2 LDAP and PostgreSQL dependency proof with verified TLS;
+- [x] offline synthetic mail proof with Postfix, Dovecot, Rspamd, and ClamAV;
+- [x] OCI build-provenance attestations generated and verified;
 - [x] log rotation;
 - [x] alerts;
 - [x] Postfix queue visibility;
@@ -132,11 +135,45 @@ gulogulo/
 │   │   ├── bootstrap.ldif
 │   │   ├── entrypoint-ldap.sh
 │   │   └── healthcheck-ldap.sh
-│   └── lp2-postgres/
+│   ├── lp2-postgres/
+│   │   ├── .dockerignore
+│   │   ├── Dockerfile
+│   │   ├── entrypoint-postgres.sh
+│   │   └── healthcheck-postgres.sh
+│   ├── lp3-clamav/
+│   │   ├── .dockerignore
+│   │   ├── Dockerfile
+│   │   ├── entrypoint-clamav.py
+│   │   └── healthcheck-clamav.sh
+│   ├── lp3-dovecot/
+│   │   ├── .dockerignore
+│   │   ├── Dockerfile
+│   │   ├── default.sieve
+│   │   ├── dovecot.conf
+│   │   ├── entrypoint-dovecot.sh
+│   │   ├── healthcheck-dovecot.sh
+│   │   └── users
+│   ├── lp3-postfix/
+│   │   ├── .dockerignore
+│   │   ├── Dockerfile
+│   │   ├── entrypoint-postfix.sh
+│   │   ├── healthcheck-postfix.sh
+│   │   ├── lp3-aliases.regexp
+│   │   ├── lp3-mailboxes.regexp
+│   │   └── main.cf
+│   ├── lp3-proof/
+│   │   ├── .dockerignore
+│   │   ├── Dockerfile
+│   │   └── proof.py
+│   ├── lp3-rspamd/
+│   │   ├── .dockerignore
+│   │   ├── Dockerfile
+│   │   ├── entrypoint-rspamd.py
+│   │   └── healthcheck-rspamd.sh
+│   └── lp3-tls/
 │       ├── .dockerignore
 │       ├── Dockerfile
-│       ├── entrypoint-postgres.sh
-│       └── healthcheck-postgres.sh
+│       └── entrypoint-tls.sh
 ├── doc/
 │   ├── README.md
 │   ├── api-and-mcp.md
@@ -150,6 +187,7 @@ gulogulo/
 │   ├── local-proof-scope.md
 │   ├── local-proof-topology.md
 │   ├── lp2-local-services.md
+│   ├── lp3-local-mail.md
 │   ├── mail-core.md
 │   ├── rbac-admin-mfa.md
 │   ├── release-readiness.md
@@ -168,6 +206,9 @@ gulogulo/
 │   ├── lp2-compose-audit.mjs
 │   ├── lp2-compose-smoke.mjs
 │   ├── lp2-proof-smoke.mjs
+│   ├── lp3-compose-audit.mjs
+│   ├── lp3-compose-smoke.mjs
+│   ├── lp3-proof-smoke.mjs
 │   ├── m10-release-audit.mjs
 │   ├── container-patch.sh
 │   └── runtime, fixture, and patch utilities
@@ -175,6 +216,7 @@ gulogulo/
 │   ├── local-proof-scope.json
 │   ├── local-proof-topology.json
 │   ├── lp2-local-services.json
+│   ├── lp3-local-mail.json
 │   └── v1-release-evidence.template.json
 ├── src/
 │   ├── admin/ (TypeScript RBAC, delegation, quota, and admin tools)
@@ -185,6 +227,20 @@ gulogulo/
 │   ├── integrations/ (TypeScript LDAP, PostgreSQL, tenant, and migration adapters)
 │   ├── lifecycle/
 │   ├── mail/
+│   │   ├── imap-idle.mjs
+│   │   ├── imap-idle.test.ts
+│   │   ├── imap-idle.ts
+│   │   ├── mail-core.mjs
+│   │   ├── mail-core.test.mjs
+│   │   ├── mail-core.test.ts
+│   │   ├── mail-core.ts
+│   │   ├── mail-policy.mjs
+│   │   ├── mail-policy.ts
+│   │   ├── mail-queue.mjs
+│   │   ├── mail-queue.ts
+│   │   ├── mail-scanners.mjs
+│   │   ├── mail-scanners.test.ts
+│   │   └── mail-scanners.ts
 │   ├── observability/
 │   ├── release/
 │   │   ├── index.mjs
