@@ -11,8 +11,10 @@ test -s "${tls_dir}/lp3-dovecot.key"
 test -s "${tls_dir}/ca.crt"
 
 mkdir -p /run/dovecot /var/lib/dovecot /var/mail/vhosts/gulogulo.test
+# Keep restarts idempotent: GNU install also chmods existing vmail-owned paths,
+# which requires CAP_FOWNER after the container drops all capabilities.
 for user in alice postmaster; do
-  install -d -o vmail -g vmail \
+  mkdir -p \
     "/var/mail/vhosts/gulogulo.test/${user}/Maildir/cur" \
     "/var/mail/vhosts/gulogulo.test/${user}/Maildir/new" \
     "/var/mail/vhosts/gulogulo.test/${user}/Maildir/tmp" \
