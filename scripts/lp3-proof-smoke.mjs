@@ -22,6 +22,8 @@ const lmtpPort = Number(process.env.LP3_LMTP_PORT || 24);
 const rspamdPort = Number(process.env.LP3_RSPAMD_PORT || 11333);
 const clamavPort = Number(process.env.LP3_CLAMAV_PORT || 3310);
 const timeoutMs = Number(process.env.LP3_PROBE_TIMEOUT_MS || 15_000);
+const imapUser = process.env.LP3_IMAP_USER || 'alice@gulogulo.test';
+const imapPassword = process.env.LP3_IMAP_PASSWORD || 'lp3-synthetic-password';
 
 function fail(message) {
   throw new Error(`LP3 mail proof failed: ${message}`);
@@ -165,23 +167,40 @@ async function probeInboundRecipients() {
   closeSocket(socket);
 }
 
+async function imapCommand(socket, reader, tag, command) {
+  socket.write(`${tag} ${command}\r\n`);
+  const lines = [];
+  while (true) {
+    const line = await reader.nextLine();
+    lines.push(line);
+    if (line.startsWith(`${tag} `)) return lines;
+  }
+}
+
+function imapCommandSucceeded(lines, tag) {
+  return new RegExp(`^${tag} OK\\b`, 'iu').test(lines.at(-1) || '');
+}
+
+function imapQuotedString(value) {
+  assert(!/[\r\n]/u.test(value), 'IMAP proof credentials contain a line break');
+  return `"${value.replaceAll('\\', '\\\\').replaceAll('"', '\\"')}"`;
+}
+
 async function probeImapIdleReconnect() {
   for (let attempt = 1; attempt <= 2; attempt += 1) {
     const socket = await connectSocket(dovecotHost, imapsPort, { secure: true });
     const reader = lineReader(socket);
     const greeting = await reader.nextLine();
     assert(/^\* OK\b/iu.test(greeting), `Dovecot IMAPS greeting is missing on reconnect ${attempt}`);
-    const capability = await (async () => {
-      socket.write(`a00${attempt} CAPABILITY\r\n`);
-      const lines = [];
-      while (true) {
-        const line = await reader.nextLine();
-        lines.push(line);
-        if (line.startsWith(`a00${attempt} `)) break;
-      }
-      return lines.join('\n');
-    })();
+    const capabilityTag = `a00${attempt}`;
+    const capability = (await imapCommand(socket, reader, capabilityTag, 'CAPABILITY')).join('\n');
     assert(/\bIDLE\b/iu.test(capability), `Dovecot did not advertise IMAP IDLE on reconnect ${attempt}`);
+    const loginTag = `l00${attempt}`;
+    const login = await imapCommand(socket, reader, loginTag, `LOGIN ${imapQuotedString(imapUser)} ${imapQuotedString(imapPassword)}`);
+    assert(imapCommandSucceeded(login, loginTag), `Dovecot IMAP login failed on reconnect ${attempt}`);
+    const selectTag = `s00${attempt}`;
+    const selected = await imapCommand(socket, reader, selectTag, 'SELECT INBOX');
+    assert(imapCommandSucceeded(selected, selectTag), `Dovecot IMAP INBOX select failed on reconnect ${attempt}`);
     socket.write(`b00${attempt} IDLE\r\n`);
     const idle = await reader.nextLine();
     assert(/^\+\s+idling/iu.test(idle), `Dovecot did not enter IMAP IDLE on reconnect ${attempt}`);
