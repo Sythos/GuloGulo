@@ -61,6 +61,13 @@ normal workflow.
   Compose network, disposable CA/DNS utilities, IPv4/IPv6 loopback-only
   application bindings, external-capable named volumes, restart continuity
   check, and Docker proof harness.
+- [LP2 local LDAP and PostgreSQL proof](lp2-local-services.md) — the
+  offline dual-stack dependency lab, verified LDAPS and PostgreSQL TLS,
+  deterministic fixtures, disposable volumes, and the multi-architecture
+  Compose rehearsal.
+- [Server TypeScript boundary](server-typescript.md) — compiler settings,
+  build and test commands, compiled production startup, and the temporary
+  compatibility-bridge rule.
 
 The project is still intentionally small. The documents describe real behavior
 only: DAV, administration, lifecycle, backup, observability, ACME, abuse, and

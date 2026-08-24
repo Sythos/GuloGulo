@@ -1,0 +1,83 @@
+{
+  "$comment": "SPDX-License-Identifier: MIT; SPDX-FileCopyrightText: 2026 Sythos (https://www.sythos.net); Author: Sythos (https://www.sythos.net)",
+  "spdxLicenseIdentifier": "MIT",
+  "spdxFileCopyrightText": "2026 Sythos (https://www.sythos.net)",
+  "author": "Sythos (https://www.sythos.net)",
+  "schemaVersion": 1,
+  "milestone": "LP2",
+  "proofType": "local_synthetic",
+  "networkPolicy": "offline_dependencies",
+  "networkName": "gulogulo-lp2-runtime",
+  "internalNetwork": true,
+  "enableIpv6": true,
+  "ipFamilies": [
+    "ipv4",
+    "ipv6"
+  ],
+  "syntheticDataOnly": true,
+  "publicDnsRequired": false,
+  "publicAcmeEnabled": false,
+  "hostNetwork": false,
+  "dockerSocketMounted": false,
+  "hostPortsPublished": false,
+  "tls": {
+    "mode": "ephemeral_local_ca",
+    "caService": "lp2-ca",
+    "caLifetimeDays": 7,
+    "ldapEndpoint": "ldaps://lp2-ldap:636",
+    "postgresEndpoint": "postgresql://lp2-postgres:5432/gulogulo",
+    "postgresSslMode": "verify-full"
+  },
+  "services": [
+    {
+      "name": "lp2-ca",
+      "role": "disposable synthetic certificate authority",
+      "health": "ca.crt and both leaf certificates exist"
+    },
+    {
+      "name": "lp2-ldap",
+      "role": "synthetic OpenLDAP identity source",
+      "health": "LDAPS root search succeeds with verified local CA"
+    },
+    {
+      "name": "lp2-postgres",
+      "role": "synthetic PostgreSQL application-state source",
+      "health": "verify-full TLS query succeeds"
+    },
+    {
+      "name": "gulogulo-lp2-proof-check",
+      "role": "deterministic dependency proof client",
+      "health": "LDAP fixture and PostgreSQL probe row are verified"
+    }
+  ],
+  "ldapFixture": {
+    "baseDn": "dc=gulogulo,dc=test",
+    "userBaseDn": "ou=users,dc=gulogulo,dc=test",
+    "deterministicUser": "uid=alice",
+    "deterministicMail": "alice@gulogulo.test"
+  },
+  "postgresFixture": {
+    "database": "gulogulo",
+    "user": "gulogulo",
+    "probeTable": "lp2_probe",
+    "probeKey": "deterministic",
+    "probeValue": "lp2-postgres-ready"
+  },
+  "volumes": [
+    "lp2-tls-data",
+    "lp2-ldap-data",
+    "lp2-postgres-data",
+    "lp2-proof-state"
+  ],
+  "requiredLabels": [
+    "com.sythos.gulogulo.milestone",
+    "com.sythos.gulogulo.proof",
+    "com.sythos.gulogulo.network-policy",
+    "com.sythos.gulogulo.tls"
+  ],
+  "targetPlatforms": [
+    "linux/amd64",
+    "linux/arm64"
+  ],
+  "status": "frozen"
+}

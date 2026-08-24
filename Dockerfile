@@ -77,7 +77,7 @@ COPY --chown=gulogulo:gulogulo . .
 
 RUN set -eux; \
     install -m 0755 scripts/container-patch.sh /usr/local/sbin/gulogulo-container-patch; \
-    install -d -o gulogulo -g gulogulo /var/lib/gulogulo/lp1; \
+    install -d -o gulogulo -g gulogulo /var/lib/gulogulo/lp1 /var/lib/gulogulo/lp2; \
     if [ ! -f package.json ]; then \
       echo 'Gulo Gulo requires package.json with an npm start script.' >&2; \
       exit 1; \
@@ -99,6 +99,7 @@ RUN set -eux; \
     if [ -f web/src/app.ts ]; then \
       npm run build:web; \
     fi; \
+    npm run build:server; \
     if [ "${INSTALL_DEV}" != "true" ]; then \
       npm prune --omit=dev; \
     fi; \
