@@ -14,6 +14,8 @@ on:
 
 permissions:
   contents: read
+  id-token: write
+  attestations: write
 
 jobs:
   repository-quality:
@@ -136,6 +138,9 @@ jobs:
           test -f .github/workflows/commit-tests.yml
           test -f .github/workflows/pr-validation.yml
           test -f .github/workflows/quality-gates.yml
+          grep -Fq 'uses: actions/attest@v4' .github/workflows/quality-gates.yml
+          grep -Fq 'id-token: write' .github/workflows/quality-gates.yml
+          grep -Fq 'attestations: write' .github/workflows/quality-gates.yml
           test -f src/dav/caldav/caldav-contract.mjs
           test -f src/dav/caldav/caldav-contract.test.mjs
           test -f src/dav/carddav/carddav-store.mjs
@@ -622,6 +627,27 @@ jobs:
           lp3-clamav|docker/lp3-clamav/Dockerfile|docker/lp3-clamav
           lp3-proof|docker/lp3-proof/Dockerfile|docker/lp3-proof
           EOF
+
+      - name: Generate OCI artifact attestations
+        if: (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && hashFiles('Dockerfile') != '' && hashFiles('docker/lp3-proof/Dockerfile') != ''
+        uses: actions/attest@v4
+        id: attest-oci
+        with:
+          subject-path: ${{ runner.temp }}/gulogulo-*.oci.tar
+
+      - name: Verify OCI artifact attestations with GitHub CLI
+        if: (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && hashFiles('Dockerfile') != '' && hashFiles('docker/lp3-proof/Dockerfile') != ''
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          artifacts=("$RUNNER_TEMP"/gulogulo-*.oci.tar)
+          ((${#artifacts[@]} > 0))
+          for artifact in "${artifacts[@]}"; do
+            gh attestation verify "$artifact" --repo "$GITHUB_REPOSITORY"
+          done
 
       - name: Run LP3 local mail Compose proof
         if: hashFiles('scripts/lp3-compose-smoke.mjs') != '' && hashFiles('compose.yaml') != ''

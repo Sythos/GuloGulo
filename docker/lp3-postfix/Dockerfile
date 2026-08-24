@@ -10,6 +10,10 @@ ARG TARGETARCH
 
 ENV DEBIAN_FRONTEND=noninteractive
 
+# Preserve the distribution's mixed Postfix queue ownership model. The
+# top-level queue roots must remain root-owned so an empty runtime volume
+# inherits a valid queue layout; `postfix set-permissions` below restores
+# the service-specific ownership for private, public, and drop directories.
 RUN set -eux; \
     printf '%s\n' '#!/bin/sh' 'exit 101' > /usr/sbin/policy-rc.d; \
     chmod 0755 /usr/sbin/policy-rc.d; \
@@ -20,7 +24,7 @@ RUN set -eux; \
     apt-get install -y --no-install-recommends ca-certificates netcat-openbsd postfix; \
     rm -f /usr/sbin/policy-rc.d; \
     rm -rf /var/lib/apt/lists/*; \
-    install -d -o postfix -g postdrop /var/lib/postfix /var/spool/postfix
+    install -d -o root -g root /var/lib/postfix /var/spool/postfix
 
 COPY main.cf /etc/postfix/main.cf
 COPY lp3-mailboxes.regexp /etc/postfix/lp3-mailboxes.regexp
@@ -44,6 +48,7 @@ EOF
 
 RUN chmod 0755 /usr/local/sbin/gulogulo-lp3-postfix /usr/local/sbin/gulogulo-lp3-postfix-health \
     && chmod 0644 /etc/postfix/main.cf /etc/postfix/lp3-mailboxes.regexp /etc/postfix/lp3-aliases.regexp \
+    && postfix set-permissions \
     && postfix check
 
 EXPOSE 25 587
