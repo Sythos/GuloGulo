@@ -12,12 +12,16 @@
     "node": ">=26.7.0"
   },
   "scripts": {
-    "start": "node src/runtime/index.mjs",
+    "start": "node dist/server/src/runtime/index.js",
+    "build:server": "tsc --project tsconfig.server.json",
     "build:web": "node web/build.mjs",
-    "typecheck": "tsc --project tsconfig.json --noEmit",
+    "typecheck:web": "tsc --project tsconfig.json --noEmit",
+    "typecheck:server": "tsc --project tsconfig.server.json --noEmit",
+    "typecheck": "npm run typecheck:web && npm run typecheck:server",
     "test:web": "npm run build:web && node web/test/web-shell.test.mjs",
-    "test": "npm run test:web && npm run test:m6 && npm run test:m7 && npm run test:m8 && npm run test:m9 && npm run test:m10 && npm run test:lp0 && npm run test:lp1 && node src/runtime/runtime.test.mjs && node src/foundation/config.test.mjs && node src/runtime/observability.test.mjs && node src/integrations/tenant-context.test.mjs && node src/integrations/ldap-client.test.mjs && node src/integrations/postgres-store.test.mjs && node src/mail/mail-core.test.mjs && node src/web/security/security.test.mjs && node src/web/content/email-content.test.mjs && node src/web/content/attachment-policy.test.mjs && node src/web/content/timezone.test.mjs && node src/web/realtime/event-normalizer.test.mjs && node src/web/backup/backup-request.test.mjs && node src/dav/caldav/caldav-contract.test.mjs && node src/dav/carddav/carddav-store.test.mjs && node src/dav/discovery/index.test.mjs",
-    "test:m6": "node src/admin/rbac.test.mjs && node src/admin/delegation.test.mjs && node src/admin/quota.test.mjs && node src/admin/admin-tools.test.mjs && node src/auth/auth.test.mjs",
+    "test": "npm run build:server && npm run test:web && npm run test:m6 && npm run test:m7 && npm run test:m8 && npm run test:m9 && npm run test:m10 && npm run test:lp0 && npm run test:lp1 && npm run test:lp2 && npm run test:server && node src/mail/mail-core.test.mjs && node src/web/security/security.test.mjs && node src/web/content/email-content.test.mjs && node src/web/content/attachment-policy.test.mjs && node src/web/content/timezone.test.mjs && node src/web/realtime/event-normalizer.test.mjs && node src/web/backup/backup-request.test.mjs && node src/dav/caldav/caldav-contract.test.mjs && node src/dav/carddav/carddav-store.test.mjs && node src/dav/discovery/index.test.mjs",
+    "test:server": "npm run build:server && node dist/server/src/runtime/runtime.test.js && node dist/server/src/foundation/config.test.js && node dist/server/src/runtime/observability.test.js",
+    "test:m6": "npm run build:server && node --experimental-strip-types src/admin/rbac.test.ts && node --experimental-strip-types src/admin/delegation.test.ts && node --experimental-strip-types src/admin/quota.test.ts && node --experimental-strip-types src/admin/admin-tools.test.ts && node --experimental-strip-types src/auth/auth.test.ts",
     "test:m7": "node src/lifecycle/retention.test.mjs && node src/lifecycle/account-lifecycle.test.mjs && node src/backup/backup-contract.test.mjs && node src/observability/observability.test.mjs",
     "test:m8": "node src/ops/acme/index.test.mjs && node src/ops/abuse/index.test.mjs",
     "test:m9": "node src/upgrade/upgrade-contract.test.mjs",
@@ -26,13 +30,16 @@
     "test:lp0:audit": "node scripts/lp0-scope-audit.mjs",
     "test:lp1": "node src/release/local-proof-topology.test.mjs && node scripts/lp1-compose-audit.mjs",
     "test:lp1:docker": "node scripts/lp1-proof-smoke.mjs",
-    "test:m2:postgres": "node src/integrations/postgres.integration.test.mjs"
+    "test:lp2": "npm run typecheck:server && node --experimental-strip-types src/integrations/tenant-context.test.ts && node --experimental-strip-types src/integrations/ldap-client.test.ts && node --experimental-strip-types src/integrations/postgres-store.test.ts && node --experimental-strip-types src/integrations/postgres.integration.test.ts && node scripts/lp2-compose-audit.mjs",
+    "test:lp2:docker": "node scripts/lp2-compose-smoke.mjs",
+    "test:m2:postgres": "node --experimental-strip-types src/integrations/postgres.integration.test.ts"
   },
   "dependencies": {
     "ldapts": "9.0.0",
     "pg": "8.23.0"
   },
   "devDependencies": {
+    "@types/node": "26.2.0",
     "typescript": "7.0.2"
   }
 }

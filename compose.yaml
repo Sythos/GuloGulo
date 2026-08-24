@@ -327,6 +327,154 @@ services:
       com.sythos.gulogulo.proof: local
       com.sythos.gulogulo.network-policy: offline_runtime
 
+  # LP2 is a disposable, synthetic dependency topology. LDAP and PostgreSQL
+  # are intentionally not exposed through host ports; the proof client reaches
+  # them only over the internal dual-stack network below.
+  lp2-ca:
+    build:
+      context: docker/lp2-tls
+      dockerfile: Dockerfile
+    profiles: ["lp2"]
+    command: ["/usr/local/sbin/gulogulo-lp2-tls"]
+    environment:
+      LP2_TLS_DIR: /run/gulogulo-lp2-tls
+    volumes:
+      - lp2-tls-data:/run/gulogulo-lp2-tls
+    networks:
+      - lp2-runtime
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=16m
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    init: true
+    restart: "no"
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - test -s /run/gulogulo-lp2-tls/ca.crt && test -s /run/gulogulo-lp2-tls/lp2-ldap.crt && test -s /run/gulogulo-lp2-tls/lp2-postgres.crt
+      interval: 2s
+      timeout: 2s
+      start_period: 2s
+      retries: 15
+    labels:
+      com.sythos.gulogulo.milestone: LP2
+      com.sythos.gulogulo.proof: local_synthetic
+      com.sythos.gulogulo.network-policy: offline_dependencies
+
+  lp2-ldap:
+    build:
+      context: docker/lp2-ldap
+      dockerfile: Dockerfile
+    profiles: ["lp2"]
+    environment:
+      LP2_TLS_DIR: /run/gulogulo-lp2-tls
+      LP2_LDAP_ROOT_DN: ${LP2_LDAP_ROOT_DN:-cn=admin,dc=gulogulo,dc=test}
+      LP2_LDAP_ROOT_PASSWORD: ${LP2_LDAP_ROOT_PASSWORD:-lp2-synthetic-root}
+      LP2_LDAP_BASE_DN: ${LP2_LDAP_BASE_DN:-dc=gulogulo,dc=test}
+      LP2_LDAP_USER_BASE_DN: ${LP2_LDAP_USER_BASE_DN:-ou=users,dc=gulogulo,dc=test}
+    volumes:
+      - lp2-tls-data:/run/gulogulo-lp2-tls:ro
+      - lp2-ldap-data:/var/lib/ldap
+    networks:
+      lp2-runtime:
+        aliases:
+          - lp2-ldap
+          - ldap.gulogulo.test
+    expose:
+      - "636"
+    depends_on:
+      lp2-ca:
+        condition: service_healthy
+    security_opt:
+      - no-new-privileges:true
+    init: true
+    restart: "no"
+    labels:
+      com.sythos.gulogulo.milestone: LP2
+      com.sythos.gulogulo.proof: local_synthetic
+      com.sythos.gulogulo.network-policy: offline_dependencies
+      com.sythos.gulogulo.tls: ldaps
+
+  lp2-postgres:
+    build:
+      context: docker/lp2-postgres
+      dockerfile: Dockerfile
+    profiles: ["lp2"]
+    environment:
+      LP2_TLS_DIR: /run/gulogulo-lp2-tls
+      PGDATA: /var/lib/postgresql/lp2-data
+      POSTGRES_DB: ${LP2_POSTGRES_DB:-gulogulo}
+      POSTGRES_USER: ${LP2_POSTGRES_USER:-gulogulo}
+      POSTGRES_PASSWORD: ${LP2_POSTGRES_PASSWORD:-lp2-synthetic-postgres}
+    volumes:
+      - lp2-tls-data:/run/gulogulo-lp2-tls:ro
+      - lp2-postgres-data:/var/lib/postgresql/lp2-data
+    networks:
+      lp2-runtime:
+        aliases:
+          - lp2-postgres
+          - postgres.gulogulo.test
+    expose:
+      - "5432"
+    depends_on:
+      lp2-ca:
+        condition: service_healthy
+    security_opt:
+      - no-new-privileges:true
+    init: true
+    restart: "no"
+    labels:
+      com.sythos.gulogulo.milestone: LP2
+      com.sythos.gulogulo.proof: local_synthetic
+      com.sythos.gulogulo.network-policy: offline_dependencies
+      com.sythos.gulogulo.tls: postgres-verify-full
+
+  gulogulo-lp2-proof-check:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        INSTALL_DEV: "true"
+    profiles: ["lp2-check"]
+    command: ["node", "scripts/lp2-proof-smoke.mjs"]
+    environment:
+      LP2_TLS_DIR: /run/gulogulo-lp2-tls
+      LP2_LDAP_URL: ldaps://lp2-ldap:636
+      LP2_LDAP_ROOT_DN: ${LP2_LDAP_ROOT_DN:-cn=admin,dc=gulogulo,dc=test}
+      LP2_LDAP_ROOT_PASSWORD: ${LP2_LDAP_ROOT_PASSWORD:-lp2-synthetic-root}
+      LP2_LDAP_USER_BASE_DN: ${LP2_LDAP_USER_BASE_DN:-ou=users,dc=gulogulo,dc=test}
+      LP2_POSTGRES_HOST: lp2-postgres
+      LP2_POSTGRES_PORT: 5432
+      LP2_POSTGRES_DB: ${LP2_POSTGRES_DB:-gulogulo}
+      LP2_POSTGRES_USER: ${LP2_POSTGRES_USER:-gulogulo}
+      LP2_POSTGRES_PASSWORD: ${LP2_POSTGRES_PASSWORD:-lp2-synthetic-postgres}
+    volumes:
+      - lp2-tls-data:/run/gulogulo-lp2-tls:ro
+      - lp2-proof-state:/var/lib/gulogulo/lp2:rw
+    networks:
+      - lp2-runtime
+    depends_on:
+      lp2-ldap:
+        condition: service_healthy
+      lp2-postgres:
+        condition: service_healthy
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=32m
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    init: true
+    restart: "no"
+    labels:
+      com.sythos.gulogulo.milestone: LP2
+      com.sythos.gulogulo.proof: local_synthetic
+      com.sythos.gulogulo.network-policy: offline_dependencies
+
 volumes:
   runtime-state:
     name: ${GULOGULO_VOLUME_PREFIX:-gulogulo}-runtime-state
@@ -358,6 +506,18 @@ volumes:
   lp1-proof-state:
     name: ${GULOGULO_VOLUME_PREFIX:-gulogulo}-lp1-proof-state
     external: ${GULOGULO_LP1_VOLUMES_EXTERNAL:-false}
+  lp2-tls-data:
+    name: ${GULOGULO_VOLUME_PREFIX:-gulogulo}-lp2-tls-data
+    external: ${GULOGULO_LP2_VOLUMES_EXTERNAL:-false}
+  lp2-ldap-data:
+    name: ${GULOGULO_VOLUME_PREFIX:-gulogulo}-lp2-ldap-data
+    external: ${GULOGULO_LP2_VOLUMES_EXTERNAL:-false}
+  lp2-postgres-data:
+    name: ${GULOGULO_VOLUME_PREFIX:-gulogulo}-lp2-postgres-data
+    external: ${GULOGULO_LP2_VOLUMES_EXTERNAL:-false}
+  lp2-proof-state:
+    name: ${GULOGULO_VOLUME_PREFIX:-gulogulo}-lp2-proof-state
+    external: ${GULOGULO_LP2_VOLUMES_EXTERNAL:-false}
 
 networks:
   proof-runtime:
@@ -367,3 +527,10 @@ networks:
     ipam:
       config:
         - subnet: fd42:4755:756c:7031::/64
+  lp2-runtime:
+    name: ${GULOGULO_LP2_NETWORK:-gulogulo-lp2-runtime}
+    internal: true
+    enable_ipv6: true
+    ipam:
+      config:
+        - subnet: fd42:4755:756c:7032::/64

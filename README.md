@@ -80,6 +80,7 @@ where the item depends on external infrastructure.
 - [x] health and metrics;
 - [x] multi-architecture Docker images for Ubuntu 26.04 LTS on amd64 (x86_64) and arm64;
 - [x] dual-stack IPv4 and IPv6 network support;
+- [x] offline synthetic LP2 LDAP and PostgreSQL dependency proof with verified TLS;
 - [x] log rotation;
 - [x] alerts;
 - [x] Postfix queue visibility;
@@ -117,10 +118,25 @@ gulogulo/
 ├── config/
 │   └── schema.v1.json
 ├── docker/
-│   └── lp1-network/
+│   ├── lp1-network/
+│   │   ├── Dockerfile
+│   │   ├── entrypoint-ca.sh
+│   │   └── entrypoint-dns.sh
+│   ├── lp2-tls/
+│   │   ├── .dockerignore
+│   │   ├── Dockerfile
+│   │   └── entrypoint-tls.sh
+│   ├── lp2-ldap/
+│   │   ├── .dockerignore
+│   │   ├── Dockerfile
+│   │   ├── bootstrap.ldif
+│   │   ├── entrypoint-ldap.sh
+│   │   └── healthcheck-ldap.sh
+│   └── lp2-postgres/
+│       ├── .dockerignore
 │       ├── Dockerfile
-│       ├── entrypoint-ca.sh
-│       └── entrypoint-dns.sh
+│       ├── entrypoint-postgres.sh
+│       └── healthcheck-postgres.sh
 ├── doc/
 │   ├── README.md
 │   ├── api-and-mcp.md
@@ -133,9 +149,11 @@ gulogulo/
 │   ├── lifecycle-backup-dr.md
 │   ├── local-proof-scope.md
 │   ├── local-proof-topology.md
+│   ├── lp2-local-services.md
 │   ├── mail-core.md
 │   ├── rbac-admin-mfa.md
 │   ├── release-readiness.md
+│   ├── server-typescript.md
 │   ├── observability.md
 │   ├── storage-and-quotas.md
 │   ├── upgrade-and-migration.md
@@ -147,20 +165,24 @@ gulogulo/
 │   ├── lp1-compose-audit.mjs
 │   ├── lp1-proof-check.mjs
 │   ├── lp1-proof-smoke.mjs
+│   ├── lp2-compose-audit.mjs
+│   ├── lp2-compose-smoke.mjs
+│   ├── lp2-proof-smoke.mjs
 │   ├── m10-release-audit.mjs
 │   ├── container-patch.sh
 │   └── runtime, fixture, and patch utilities
 ├── release/
 │   ├── local-proof-scope.json
 │   ├── local-proof-topology.json
+│   ├── lp2-local-services.json
 │   └── v1-release-evidence.template.json
 ├── src/
-│   ├── admin/
-│   ├── auth/
+│   ├── admin/ (TypeScript RBAC, delegation, quota, and admin tools)
+│   ├── auth/ (TypeScript password, TOTP, WebAuthn, and recovery contracts)
 │   ├── backup/
 │   ├── db/migrations/
 │   ├── foundation/
-│   ├── integrations/
+│   ├── integrations/ (TypeScript LDAP, PostgreSQL, tenant, and migration adapters)
 │   ├── lifecycle/
 │   ├── mail/
 │   ├── observability/
@@ -181,7 +203,7 @@ gulogulo/
 │   │   ├── index.mjs
 │   │   ├── rollout.mjs
 │   │   └── upgrade-contract.test.mjs
-│   ├── runtime/
+│   ├── runtime/ (TypeScript HTTP runtime and observability)
 │   ├── dav/
 │   │   ├── caldav/
 │   │   ├── carddav/
@@ -208,7 +230,8 @@ gulogulo/
 ├── compose.yaml
 ├── package-lock.json
 ├── package.json
-└── tsconfig.json
+├── tsconfig.json
+└── tsconfig.server.json
 ~~~
 
 ## Development and contribution
