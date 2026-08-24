@@ -475,6 +475,245 @@ services:
       com.sythos.gulogulo.proof: local_synthetic
       com.sythos.gulogulo.network-policy: offline_dependencies
 
+  # LP3 is a disposable internal mail topology. It provides real Ubuntu
+  # Postfix/Dovecot package services plus deterministic Rspamd and ClamAV
+  # protocol stubs. No LP3 service publishes a host port or has Internet
+  # runtime egress; the proof client is enabled separately with lp3-check.
+  lp3-tls:
+    build:
+      context: docker/lp3-tls
+      dockerfile: Dockerfile
+    profiles: ["lp3"]
+    command: ["/usr/local/sbin/gulogulo-lp3-tls"]
+    environment:
+      LP3_TLS_DIR: /run/gulogulo-lp3-tls
+    volumes:
+      - lp3-tls-data:/run/gulogulo-lp3-tls
+    networks:
+      lp3-runtime:
+        aliases:
+          - lp3-tls
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=16m
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    cap_add:
+      - CHOWN
+    init: true
+    restart: "no"
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - test -s /run/gulogulo-lp3-tls/ca.crt && test -s /run/gulogulo-lp3-tls/lp3-postfix.crt && test -s /run/gulogulo-lp3-tls/lp3-postfix.key && test -s /run/gulogulo-lp3-tls/lp3-dovecot.crt && test -s /run/gulogulo-lp3-tls/lp3-dovecot.key
+      interval: 2s
+      timeout: 2s
+      start_period: 2s
+      retries: 15
+    labels:
+      com.sythos.gulogulo.milestone: LP3
+      com.sythos.gulogulo.proof: local_synthetic
+      com.sythos.gulogulo.network-policy: offline_dependencies
+      com.sythos.gulogulo.tls: disposable_internal_ca
+      com.sythos.gulogulo.mail-role: tls
+
+  lp3-dovecot:
+    build:
+      context: docker/lp3-dovecot
+      dockerfile: Dockerfile
+    profiles: ["lp3"]
+    environment:
+      LP3_TLS_DIR: /run/gulogulo-lp3-tls
+    volumes:
+      - lp3-tls-data:/run/gulogulo-lp3-tls:ro
+      - lp3-mail-data:/var/mail/vhosts
+      - lp3-dovecot-state:/var/lib/dovecot
+    networks:
+      lp3-runtime:
+        aliases:
+          - lp3-dovecot
+          - imap.gulogulo.test
+          - lmtp.gulogulo.test
+          - sieve.gulogulo.test
+    expose:
+      - "24"
+      - "143"
+      - "4190"
+      - "993"
+    depends_on:
+      lp3-tls:
+        condition: service_healthy
+    read_only: true
+    tmpfs:
+      - /run:rw,noexec,nosuid,size=32m
+      - /tmp:rw,noexec,nosuid,size=16m
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    cap_add:
+      - CHOWN
+      - DAC_OVERRIDE
+      - NET_BIND_SERVICE
+      - SETGID
+      - SETUID
+    init: true
+    restart: "no"
+    labels:
+      com.sythos.gulogulo.milestone: LP3
+      com.sythos.gulogulo.proof: local_synthetic
+      com.sythos.gulogulo.network-policy: offline_dependencies
+      com.sythos.gulogulo.protocols: imap,imap_idle,lmtp,sieve
+      com.sythos.gulogulo.mail-role: mailbox
+
+  lp3-postfix:
+    build:
+      context: docker/lp3-postfix
+      dockerfile: Dockerfile
+    profiles: ["lp3"]
+    environment:
+      LP3_TLS_DIR: /run/gulogulo-lp3-tls
+    volumes:
+      - lp3-tls-data:/run/gulogulo-lp3-tls:ro
+      - lp3-postfix-spool:/var/spool/postfix
+      - lp3-postfix-state:/var/lib/postfix
+      - lp3-queue-data:/var/lib/gulogulo/queue
+    networks:
+      lp3-runtime:
+        aliases:
+          - lp3-postfix
+          - smtp.gulogulo.test
+          - submission.gulogulo.test
+    expose:
+      - "25"
+      - "587"
+    depends_on:
+      lp3-tls:
+        condition: service_healthy
+      lp3-dovecot:
+        condition: service_healthy
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=16m
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    cap_add:
+      - CHOWN
+      - DAC_OVERRIDE
+      - NET_BIND_SERVICE
+      - SETGID
+      - SETUID
+    init: true
+    restart: "no"
+    labels:
+      com.sythos.gulogulo.milestone: LP3
+      com.sythos.gulogulo.proof: local_synthetic
+      com.sythos.gulogulo.network-policy: offline_dependencies
+      com.sythos.gulogulo.protocols: smtp,inbound,submission,lmtp
+      com.sythos.gulogulo.mail-role: smtp
+
+  lp3-rspamd:
+    build:
+      context: docker/lp3-rspamd
+      dockerfile: Dockerfile
+    profiles: ["lp3"]
+    networks:
+      lp3-runtime:
+        aliases:
+          - lp3-rspamd
+          - rspamd.gulogulo.test
+    expose:
+      - "11333"
+    volumes:
+      - lp3-rspamd-data:/var/lib/rspamd
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=16m
+    user: "65532:65532"
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    init: true
+    restart: "no"
+    labels:
+      com.sythos.gulogulo.milestone: LP3
+      com.sythos.gulogulo.proof: protocol_stub
+      com.sythos.gulogulo.network-policy: offline_dependencies
+      com.sythos.gulogulo.production-interoperability: "false"
+      com.sythos.gulogulo.protocol: rspamd-http-checkv2
+      com.sythos.gulogulo.mail-role: scanner
+
+  lp3-clamav:
+    build:
+      context: docker/lp3-clamav
+      dockerfile: Dockerfile
+    profiles: ["lp3"]
+    networks:
+      lp3-runtime:
+        aliases:
+          - lp3-clamav
+          - clamav.gulogulo.test
+    expose:
+      - "3310"
+    volumes:
+      - lp3-clamav-data:/var/lib/clamav
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=16m
+    user: "65532:65532"
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    init: true
+    restart: "no"
+    labels:
+      com.sythos.gulogulo.milestone: LP3
+      com.sythos.gulogulo.proof: protocol_stub
+      com.sythos.gulogulo.network-policy: offline_dependencies
+      com.sythos.gulogulo.production-interoperability: "false"
+      com.sythos.gulogulo.protocol: clamd-instream
+      com.sythos.gulogulo.mail-role: scanner
+
+  gulogulo-lp3-proof-check:
+    build:
+      context: docker/lp3-proof
+      dockerfile: Dockerfile
+    profiles: ["lp3-check"]
+    command: ["/usr/bin/python3", "/usr/local/bin/gulogulo-lp3-proof"]
+    networks:
+      - lp3-runtime
+    depends_on:
+      lp3-postfix:
+        condition: service_healthy
+      lp3-dovecot:
+        condition: service_healthy
+      lp3-rspamd:
+        condition: service_healthy
+      lp3-clamav:
+        condition: service_healthy
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=16m
+    user: "65532:65532"
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    init: true
+    restart: "no"
+    labels:
+      com.sythos.gulogulo.milestone: LP3
+      com.sythos.gulogulo.proof: local_synthetic_mail
+      com.sythos.gulogulo.network-policy: offline_dependencies
+      com.sythos.gulogulo.protocols: smtp,imap,imap_idle,lmtp,sieve,rspamd,clamav
+      com.sythos.gulogulo.mail-role: proof
+
 volumes:
   runtime-state:
     name: ${GULOGULO_VOLUME_PREFIX:-gulogulo}-runtime-state
@@ -518,6 +757,30 @@ volumes:
   lp2-proof-state:
     name: ${GULOGULO_VOLUME_PREFIX:-gulogulo}-lp2-proof-state
     external: ${GULOGULO_LP2_VOLUMES_EXTERNAL:-false}
+  lp3-tls-data:
+    name: ${GULOGULO_VOLUME_PREFIX:-gulogulo}-lp3-tls-data
+    external: ${GULOGULO_LP3_VOLUMES_EXTERNAL:-false}
+  lp3-mail-data:
+    name: ${GULOGULO_VOLUME_PREFIX:-gulogulo}-lp3-mail-data
+    external: ${GULOGULO_LP3_VOLUMES_EXTERNAL:-false}
+  lp3-postfix-spool:
+    name: ${GULOGULO_VOLUME_PREFIX:-gulogulo}-lp3-postfix-spool
+    external: ${GULOGULO_LP3_VOLUMES_EXTERNAL:-false}
+  lp3-queue-data:
+    name: ${GULOGULO_VOLUME_PREFIX:-gulogulo}-lp3-queue-data
+    external: ${GULOGULO_LP3_VOLUMES_EXTERNAL:-false}
+  lp3-postfix-state:
+    name: ${GULOGULO_VOLUME_PREFIX:-gulogulo}-lp3-postfix-state
+    external: ${GULOGULO_LP3_VOLUMES_EXTERNAL:-false}
+  lp3-dovecot-state:
+    name: ${GULOGULO_VOLUME_PREFIX:-gulogulo}-lp3-dovecot-state
+    external: ${GULOGULO_LP3_VOLUMES_EXTERNAL:-false}
+  lp3-rspamd-data:
+    name: ${GULOGULO_VOLUME_PREFIX:-gulogulo}-lp3-rspamd-data
+    external: ${GULOGULO_LP3_VOLUMES_EXTERNAL:-false}
+  lp3-clamav-data:
+    name: ${GULOGULO_VOLUME_PREFIX:-gulogulo}-lp3-clamav-data
+    external: ${GULOGULO_LP3_VOLUMES_EXTERNAL:-false}
 
 networks:
   proof-runtime:
@@ -534,3 +797,11 @@ networks:
     ipam:
       config:
         - subnet: fd42:4755:756c:7032::/64
+  lp3-runtime:
+    name: ${GULOGULO_LP3_NETWORK:-gulogulo-lp3-runtime}
+    internal: true
+    enable_ipv6: true
+    ipam:
+      config:
+        - subnet: 172.29.3.0/24
+        - subnet: fd42:4755:756c:7033::/64

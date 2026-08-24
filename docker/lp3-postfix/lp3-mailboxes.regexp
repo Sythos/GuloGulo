@@ -1,0 +1,8 @@
+# SPDX-License-Identifier: MIT
+# SPDX-FileCopyrightText: 2026 Sythos (https://www.sythos.net)
+# Author: Sythos (https://www.sythos.net)
+
+# The local proof account is deliberately narrow. Dovecot remains the final
+# authority for mailbox existence during LMTP delivery.
+/^alice\@gulogulo\.test$/ OK
+/^postmaster\@gulogulo\.test$/ OK

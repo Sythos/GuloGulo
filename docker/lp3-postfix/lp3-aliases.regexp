@@ -1,0 +1,6 @@
+# SPDX-License-Identifier: MIT
+# SPDX-FileCopyrightText: 2026 Sythos (https://www.sythos.net)
+# Author: Sythos (https://www.sythos.net)
+
+# Explicit local alias used by the proof. There is no catch-all rule.
+/^sales\@gulogulo\.test$/ alice\@gulogulo.test

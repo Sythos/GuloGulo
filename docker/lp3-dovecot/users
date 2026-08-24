@@ -1,0 +1,8 @@
+# SPDX-License-Identifier: MIT
+# SPDX-FileCopyrightText: 2026 Sythos (https://www.sythos.net)
+# Author: Sythos (https://www.sythos.net)
+
+# Dovecot 2.4 passwd-file entries. Global mail_home/mail_uid/mail_gid values
+# provide the mailbox location and virtual-user ownership.
+alice@gulogulo.test:{PLAIN}lp3-synthetic-password
+postmaster@gulogulo.test:{PLAIN}lp3-synthetic-password

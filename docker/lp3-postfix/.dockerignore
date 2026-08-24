@@ -1,0 +1,11 @@
+# SPDX-License-Identifier: MIT
+# SPDX-FileCopyrightText: 2026 Sythos (https://www.sythos.net)
+# Author: Sythos (https://www.sythos.net)
+
+*
+!Dockerfile
+!entrypoint-postfix.sh
+!healthcheck-postfix.sh
+!main.cf
+!lp3-mailboxes.regexp
+!lp3-aliases.regexp
