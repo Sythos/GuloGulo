@@ -29,11 +29,36 @@ The M10 gate covers five evidence domains:
 | Data | quota allocation, 28-day purge, backup authorization, encrypted archive shape, idempotent lifecycle operations | an actual restore, deletion runbook execution, external-volume snapshots, measured RPO/RTO |
 | Interoperability | SMTP/IMAP/IDLE, Sieve, DAV object semantics, discovery, ICS/vCard, and timezone contracts | vendor client matrix and real protocol endpoints |
 | Operations | health, metrics, logging, alerts, queue visibility, Docker/Kubernetes migration contracts, and multi-architecture build configuration | scanner update channels, Docker host replacement, Kubernetes cutover, rollback, and incident tabletop |
-| Governance | role and delegation policy, default-deny master access, read-only API/MCP, ADRs, and documentation inventory | owner approval of the deployment and disaster-recovery runbooks |
+| Governance | role and delegation policy, default-deny master access, read-only API/MCP, ADRs, documentation inventory, and GitHub Artifact Attestations for trusted push builds | owner approval of the deployment and disaster-recovery runbooks |
 
 The source of truth for the checklist remains Section 30 of `GULOGULO.md`.
 The repository copy is deliberately an evidence boundary, not a second product
 specification.
+
+## Artifact provenance in GitHub Actions
+
+Trusted push builds generate signed GitHub Artifact Attestations for every OCI
+tar archive produced by the multi-architecture image gates. The reusable quality
+workflow uses `actions/attest-build-provenance@v4` (the build-provenance wrapper
+around `actions/attest`) with the minimum OIDC and attestation permissions, then
+verifies every generated subject with the GitHub CLI before
+the remaining release checks continue. Pull-request validation still runs all
+tests and image checks, but does not mint attestations from untrusted PR code.
+
+The workflow intentionally attests the exact OCI archive produced by Buildx,
+not a floating tag. This binds the provenance record to the immutable digest of
+the tested artifact. A maintainer can verify a downloaded archive from a
+connected checkout with:
+
+```text
+gh attestation verify PATH/TO/gulogulo-<image>-ubuntu-26.04.oci.tar --repo Sythos/GuloGulo
+```
+
+For a registry release, publish the same digest and verify its registry subject
+with the OCI form documented by GitHub (`gh attestation verify
+oci://REGISTRY/IMAGE:TAG --repo Sythos/GuloGulo`). Artifact attestations are
+provenance evidence; they do not replace image vulnerability scanning, SBOM
+review, signatures, or the external deployment rehearsal.
 
 ## Running the gate
 

@@ -1,0 +1,9 @@
+# SPDX-License-Identifier: MIT
+# SPDX-FileCopyrightText: 2026 Sythos (https://www.sythos.net)
+# Author: Sythos (https://www.sythos.net)
+
+# Dovecot 2.4 passwd-file entries. The explicit UID, GID, and home fields are
+# required by the userdb lookup for virtual users and keep LMTP and IMAP on the
+# same deterministic mailbox path.
+alice@gulogulo.test:{PLAIN}lp3-synthetic-password:5000:5000::/var/mail/vhosts/gulogulo.test/alice::
+postmaster@gulogulo.test:{PLAIN}lp3-synthetic-password:5000:5000::/var/mail/vhosts/gulogulo.test/postmaster::

@@ -1,0 +1,143 @@
+{
+  "$comment": "SPDX-License-Identifier: MIT; SPDX-FileCopyrightText: 2026 Sythos (https://www.sythos.net); Author: Sythos (https://www.sythos.net)",
+  "spdxLicenseIdentifier": "MIT",
+  "spdxFileCopyrightText": "2026 Sythos (https://www.sythos.net)",
+  "author": "Sythos (https://www.sythos.net)",
+  "schemaVersion": 1,
+  "milestone": "LP3",
+  "proofType": "local_synthetic_mail",
+  "networkPolicy": "offline_dependencies",
+  "networkName": "gulogulo-lp3-runtime",
+  "internalNetwork": true,
+  "enableIpv6": true,
+  "ipFamilies": [
+    "ipv4",
+    "ipv6"
+  ],
+  "syntheticDataOnly": true,
+  "publicDnsRequired": false,
+  "publicAcmeEnabled": false,
+  "externalDeliveryEnabled": false,
+  "hostNetwork": false,
+  "dockerSocketMounted": false,
+  "hostPortsPublished": false,
+  "targetPlatforms": [
+    "linux/amd64",
+    "linux/arm64"
+  ],
+  "protocols": {
+    "smtpInbound": {
+      "port": 25,
+      "tls": "starttls_or_local_policy",
+      "unauthenticatedExternalRelay": false,
+      "unknownInternalRecipient": "reject"
+    },
+    "smtpSubmission": {
+      "port": 587,
+      "implicitTlsPort": 465,
+      "authenticationRequired": true,
+      "unauthenticatedRelay": false
+    },
+    "imap": {
+      "implicitTlsPort": 993,
+      "idle": true,
+      "reconnect": "required"
+    },
+    "lmtp": {
+      "enabled": true,
+      "quotaReservationBeforeAck": true,
+      "temporaryFailureQueue": true
+    },
+    "sieve": {
+      "enabled": true,
+      "allowedActions": [
+        "fileinto",
+        "vacation",
+        "keep",
+        "discard",
+        "stop"
+      ],
+      "redirect": false,
+      "automaticForwarding": false
+    }
+  },
+  "policy": {
+    "catchAll": false,
+    "automaticForwarding": false,
+    "aliasResolution": "explicit_active_users_only",
+    "aliasMayShadowMailbox": false,
+    "externalAliasDestination": false,
+    "scanFailureMode": "fail_closed",
+    "trashRetentionDays": 28,
+    "maxQueueAttempts": 5,
+    "queueRetry": "exponential",
+    "queueView": "metadata_only"
+  },
+  "scanners": {
+    "rspamd": {
+      "service": "lp3-rspamd",
+      "required": true,
+      "unavailableVerdict": "deferred"
+    },
+    "clamav": {
+      "service": "lp3-clamav",
+      "required": true,
+      "unavailableVerdict": "deferred",
+      "infectedVerdict": "quarantined"
+    }
+  },
+  "services": [
+    {
+      "name": "lp3-tls",
+      "role": "disposable synthetic certificate authority for mail endpoints",
+      "health": "CA and Postfix/Dovecot leaf certificates exist"
+    },
+    {
+      "name": "lp3-postfix",
+      "role": "synthetic SMTP ingress, authenticated submission, and relay denial",
+      "health": "SMTP banner and policy probe succeed"
+    },
+    {
+      "name": "lp3-dovecot",
+      "role": "synthetic IMAPS, IMAP IDLE reconnect, Sieve, LMTP, mailbox, and quota boundary",
+      "health": "IMAPS CAPABILITY exposes IDLE and LMTP is ready"
+    },
+    {
+      "name": "lp3-rspamd",
+      "role": "synthetic spam scanner",
+      "health": "scanner endpoint accepts a deterministic probe"
+    },
+    {
+      "name": "lp3-clamav",
+      "role": "synthetic antivirus scanner",
+      "health": "clamd ping returns PONG"
+    },
+    {
+      "name": "gulogulo-lp3-proof-check",
+      "role": "deterministic local mail proof client",
+      "health": "protocol, policy, queue, retention, and safety probes pass"
+    },
+    {
+      "name": "gulogulo-lp3-proof-node",
+      "role": "compiled TypeScript mail contract proof client",
+      "health": "typed policy, scanner, queue, and IMAP IDLE contracts pass"
+    }
+  ],
+  "volumes": [
+    "lp3-tls-data",
+    "lp3-mail-data",
+    "lp3-postfix-spool",
+    "lp3-queue-data",
+    "lp3-postfix-state",
+    "lp3-dovecot-state",
+    "lp3-rspamd-data",
+    "lp3-clamav-data"
+  ],
+  "requiredLabels": [
+    "com.sythos.gulogulo.milestone",
+    "com.sythos.gulogulo.proof",
+    "com.sythos.gulogulo.network-policy",
+    "com.sythos.gulogulo.protocols"
+  ],
+  "status": "frozen"
+}
