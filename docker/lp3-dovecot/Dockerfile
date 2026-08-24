@@ -35,6 +35,7 @@ COPY healthcheck-dovecot.sh /usr/local/sbin/gulogulo-lp3-dovecot-health
 
 RUN chmod 0755 /usr/local/sbin/gulogulo-lp3-dovecot /usr/local/sbin/gulogulo-lp3-dovecot-health \
     && chmod 0640 /etc/dovecot/users \
+    && chown root:dovecot /etc/dovecot/users \
     && chmod 0644 /etc/dovecot/dovecot.conf /etc/dovecot/sieve/default.sieve
 
 EXPOSE 143 993 24 4190
