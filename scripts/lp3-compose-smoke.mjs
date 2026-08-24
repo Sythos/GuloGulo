@@ -93,9 +93,19 @@ function assertDualStackAddress(container, service) {
   }
 }
 
-function assertVolumeSuffix(container, service, suffix) {
-  const matching = (container.Mounts || []).some((mount) => mount.Type === 'volume' && String(mount.Source || '').endsWith(suffix));
-  if (!matching) throw new Error(`${service} does not mount the expected persistent volume ${suffix}.`);
+function assertPersistentVolume(container, service, suffix, destination) {
+  const expectedName = `${volumePrefix}-${suffix}`;
+  const matching = (container.Mounts || []).some((mount) => (
+    mount.Type === 'volume'
+    && mount.Name === expectedName
+    && mount.Destination === destination
+  ));
+  if (!matching) {
+    const actual = (container.Mounts || [])
+      .filter((mount) => mount.Type === 'volume')
+      .map(({ Name: name, Destination: mountedAt }) => ({ name, destination: mountedAt }));
+    throw new Error(`${service} does not mount ${expectedName} at ${destination}; actual volume mounts: ${JSON.stringify(actual)}.`);
+  }
 }
 
 function runProofClient() {
@@ -135,9 +145,9 @@ try {
     assertNoHostPorts(details, service);
     assertDualStackAddress(details, service);
   }
-  assertVolumeSuffix(inspectContainer(containers.find(([service]) => service === 'lp3-postfix')[1]), 'lp3-postfix', 'lp3-queue-data');
-  assertVolumeSuffix(inspectContainer(containers.find(([service]) => service === 'lp3-dovecot')[1]), 'lp3-dovecot', 'lp3-mail-data');
-  assertVolumeSuffix(inspectContainer(containers.find(([service]) => service === 'lp3-tls')[1]), 'lp3-tls', 'lp3-tls-data');
+  assertPersistentVolume(inspectContainer(containers.find(([service]) => service === 'lp3-postfix')[1]), 'lp3-postfix', 'lp3-queue-data', '/var/lib/gulogulo/queue');
+  assertPersistentVolume(inspectContainer(containers.find(([service]) => service === 'lp3-dovecot')[1]), 'lp3-dovecot', 'lp3-mail-data', '/var/mail/vhosts');
+  assertPersistentVolume(inspectContainer(containers.find(([service]) => service === 'lp3-tls')[1]), 'lp3-tls', 'lp3-tls-data', '/run/gulogulo-lp3-tls');
 
   // A restart must leave the mailbox and queue volumes attached and the mail
   // contracts reachable. The second proof run catches a lost socket/config
