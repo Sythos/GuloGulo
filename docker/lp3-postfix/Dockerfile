@@ -11,8 +11,8 @@ ARG TARGETARCH
 ENV DEBIAN_FRONTEND=noninteractive
 
 # Preserve the distribution's mixed Postfix queue ownership model. The
-# top-level queue roots must remain root-owned so an empty runtime volume
-# inherits the valid mixed queue layout created by the Ubuntu package.
+# Postfix state root belongs to the postfix service account, while the queue
+# root remains root-owned so empty runtime volumes inherit the package layout.
 RUN set -eux; \
     printf '%s\n' '#!/bin/sh' 'exit 101' > /usr/sbin/policy-rc.d; \
     chmod 0755 /usr/sbin/policy-rc.d; \
@@ -23,7 +23,8 @@ RUN set -eux; \
     apt-get install -y --no-install-recommends ca-certificates netcat-openbsd postfix; \
     rm -f /usr/sbin/policy-rc.d; \
     rm -rf /var/lib/apt/lists/*; \
-    install -d -o root -g root /var/lib/postfix /var/spool/postfix
+    install -d -o postfix -g postfix /var/lib/postfix; \
+    install -d -o root -g root /var/spool/postfix
 
 COPY main.cf /etc/postfix/main.cf
 COPY lp3-mailboxes.regexp /etc/postfix/lp3-mailboxes.regexp
