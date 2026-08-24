@@ -63,21 +63,26 @@ def imap_delivery_and_idle():
     last_error = None
     while time.time() < deadline:
         client = None
+        stage = "connect"
         try:
             client = imaplib.IMAP4("lp3-dovecot", 143)
+            stage = "capability"
             capability = client.capability()[1][0].decode().upper()
             if "IDLE" not in capability:
                 raise RuntimeError("Dovecot IMAP capability does not include IDLE")
+            stage = "login"
             client.login(USER, PASSWORD)
+            stage = "select"
             status, mailbox_data = client.select("INBOX")
             if status != "OK":
                 raise RuntimeError(f"Dovecot IMAP INBOX select failed: {mailbox_data!r}")
+            stage = "search"
             status, data = client.search(None, "SUBJECT", '"LP3 synthetic delivery proof"')
             if status == "OK" and data and data[0]:
                 return
             last_error = f"no matching message (capability={capability!r}, search={data!r})"
         except (imaplib.IMAP4.error, OSError, RuntimeError) as error:
-            last_error = repr(error)
+            last_error = f"{stage}: {error!r}"
         finally:
             if client is not None:
                 try:
