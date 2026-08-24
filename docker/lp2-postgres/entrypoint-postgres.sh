@@ -48,7 +48,10 @@ host all all ::/0 reject
 EOF
 chown postgres:postgres "${pgdata}/postgresql.conf" "${pgdata}/pg_hba.conf"
 
-runuser -u postgres -- "${pg_bin_dir}/postgres" --pgdata="${pgdata}" &
+# `postgres` accepts the data directory through `-D`.  `--pgdata` is an
+# initdb/pg_ctl option; passing it to the server makes PostgreSQL interpret
+# `pgdata` as a GUC name and abort with "unrecognized configuration parameter".
+runuser -u postgres -- "${pg_bin_dir}/postgres" -D "${pgdata}" &
 postgres_pid=$!
 cleanup() {
   kill "${postgres_pid}" 2>/dev/null || true
