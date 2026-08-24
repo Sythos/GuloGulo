@@ -73,9 +73,7 @@ def imap_delivery_and_idle():
                     raise RuntimeError(f"Dovecot IMAP INBOX select failed: {mailbox_data!r}")
                 status, data = client.search(None, "SUBJECT", '"LP3 synthetic delivery proof"')
                 if status == "OK" and data and data[0]:
-                    client.logout()
                     return
-                client.logout()
                 last_error = f"no matching message (capability={capability!r}, search={data!r})"
         except (imaplib.IMAP4.error, OSError, RuntimeError) as error:
             last_error = repr(error)
