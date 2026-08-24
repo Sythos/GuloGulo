@@ -39,8 +39,9 @@ specification.
 
 Trusted push builds generate signed GitHub Artifact Attestations for every OCI
 tar archive produced by the multi-architecture image gates. The reusable quality
-workflow uses `actions/attest@v4` with the minimum OIDC and attestation
-permissions, then verifies every generated subject with the GitHub CLI before
+workflow uses `actions/attest-build-provenance@v4` (the build-provenance wrapper
+around `actions/attest`) with the minimum OIDC and attestation permissions, then
+verifies every generated subject with the GitHub CLI before
 the remaining release checks continue. Pull-request validation still runs all
 tests and image checks, but does not mint attestations from untrusted PR code.
 

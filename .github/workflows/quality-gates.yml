@@ -138,7 +138,7 @@ jobs:
           test -f .github/workflows/commit-tests.yml
           test -f .github/workflows/pr-validation.yml
           test -f .github/workflows/quality-gates.yml
-          grep -Fq 'uses: actions/attest@v4' .github/workflows/quality-gates.yml
+          grep -Fq 'uses: actions/attest-build-provenance@v4' .github/workflows/quality-gates.yml
           grep -Fq 'id-token: write' .github/workflows/quality-gates.yml
           grep -Fq 'attestations: write' .github/workflows/quality-gates.yml
           test -f src/dav/caldav/caldav-contract.mjs
@@ -630,7 +630,7 @@ jobs:
 
       - name: Generate OCI artifact attestations
         if: (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && hashFiles('Dockerfile') != '' && hashFiles('docker/lp3-proof/Dockerfile') != ''
-        uses: actions/attest@v4
+        uses: actions/attest-build-provenance@v4
         id: attest-oci
         with:
           subject-path: ${{ runner.temp }}/gulogulo-*.oci.tar
