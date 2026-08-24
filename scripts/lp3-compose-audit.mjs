@@ -42,7 +42,7 @@ if (servicesStart < 0 || volumesStart < 0 || networksStart < 0) {
   fail('Compose services, volumes, or networks section is missing');
 }
 const servicesSection = compose.slice(servicesStart, volumesStart);
-const lp3Start = servicesSection.indexOf('\n  lp3-postfix:');
+const lp3Start = servicesSection.search(/^  lp3-tls:$/m);
 if (lp3Start < 0) fail('LP3 service section is missing');
 const lp3Section = servicesSection.slice(lp3Start);
 
@@ -52,8 +52,9 @@ for (const service of [
   'lp3-rspamd:',
   'lp3-clamav:',
   'gulogulo-lp3-proof-check:',
+  'gulogulo-lp3-proof-node:',
 ]) {
-  requireText(lp3Section, `  ${service}`, `LP3 service ${service}`);
+  requirePattern(lp3Section, new RegExp(`^  ${service}$`, 'm'), `LP3 service ${service}`);
 }
 
 for (const marker of [
@@ -158,7 +159,7 @@ equal(manifest.scanners.clamav.unavailableVerdict, 'deferred', 'manifest ClamAV 
 equal(manifest.scanners.clamav.infectedVerdict, 'quarantined', 'manifest ClamAV infected verdict');
 equal(manifest.targetPlatforms, ['linux/amd64', 'linux/arm64'], 'manifest target platforms');
 
-for (const service of ['lp3-tls', 'lp3-postfix', 'lp3-dovecot', 'lp3-rspamd', 'lp3-clamav', 'gulogulo-lp3-proof-check']) {
+for (const service of ['lp3-tls', 'lp3-postfix', 'lp3-dovecot', 'lp3-rspamd', 'lp3-clamav', 'gulogulo-lp3-proof-check', 'gulogulo-lp3-proof-node']) {
   if (!manifest.services.some((entry) => entry.name === service)) fail(`manifest service is missing: ${service}`);
 }
 for (const volume of ['lp3-tls-data', 'lp3-mail-data', 'lp3-postfix-spool', 'lp3-queue-data', 'lp3-postfix-state', 'lp3-dovecot-state', 'lp3-rspamd-data', 'lp3-clamav-data']) {

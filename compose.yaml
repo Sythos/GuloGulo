@@ -714,6 +714,34 @@ services:
       com.sythos.gulogulo.protocols: smtp,imap,imap_idle,lmtp,sieve,rspamd,clamav
       com.sythos.gulogulo.mail-role: proof
 
+  # This disposable client runs the compiled TypeScript mail contracts from
+  # the application image. It is attached to lp3-runtime in the Compose model
+  # because `docker compose run` does not provide a portable --network option
+  # across the Compose versions supported by the project.
+  gulogulo-lp3-proof-node:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    profiles: ["lp3-check"]
+    command: ["node", "scripts/lp3-proof-smoke.mjs"]
+    networks:
+      - lp3-runtime
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=64m
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    init: true
+    restart: "no"
+    labels:
+      com.sythos.gulogulo.milestone: LP3
+      com.sythos.gulogulo.proof: local_synthetic_mail_typed
+      com.sythos.gulogulo.network-policy: offline_dependencies
+      com.sythos.gulogulo.protocols: smtp,imap,imap_idle,lmtp,sieve,rspamd,clamav
+      com.sythos.gulogulo.mail-role: proof
+
 volumes:
   runtime-state:
     name: ${GULOGULO_VOLUME_PREFIX:-gulogulo}-runtime-state

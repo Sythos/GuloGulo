@@ -602,19 +602,53 @@ jobs:
           npm run typecheck:server
           npm run test:lp3
 
-      - name: Validate LP3 mail images on amd64 and arm64
+      # The Compose proof runs on the amd64 GitHub runner. Keep it before the
+      # emulated arm64 build so a functional regression fails quickly without
+      # spending another long QEMU build first.
+      - name: Run LP3 local mail Compose proof (amd64)
+        if: hashFiles('scripts/lp3-compose-smoke.mjs') != '' && hashFiles('compose.yaml') != ''
+        shell: bash
+        run: node scripts/lp3-compose-smoke.mjs
+
+      - name: Validate LP3 mail images on amd64
         if: hashFiles('docker/lp3-tls/Dockerfile') != '' && hashFiles('docker/lp3-postfix/Dockerfile') != '' && hashFiles('docker/lp3-dovecot/Dockerfile') != '' && hashFiles('docker/lp3-rspamd/Dockerfile') != '' && hashFiles('docker/lp3-clamav/Dockerfile') != '' && hashFiles('docker/lp3-proof/Dockerfile') != ''
         shell: bash
         run: |
           set -euo pipefail
           while IFS='|' read -r name dockerfile context; do
-            output="$RUNNER_TEMP/gulogulo-${name}-ubuntu-26.04.oci.tar"
+            output="$RUNNER_TEMP/gulogulo-${name}-amd64-ubuntu-26.04.oci.tar"
             docker buildx build \
-              --platform linux/amd64,linux/arm64 \
+              --platform linux/amd64 \
               --pull \
               --provenance=false \
               --sbom=false \
               --tag "gulogulo:ci-${name}-ubuntu-26.04" \
+              --file "$dockerfile" \
+              --output "type=oci,dest=$output" \
+              "$context"
+            test -s "$output"
+          done <<'EOF'
+          lp3-tls|docker/lp3-tls/Dockerfile|docker/lp3-tls
+          lp3-postfix|docker/lp3-postfix/Dockerfile|docker/lp3-postfix
+          lp3-dovecot|docker/lp3-dovecot/Dockerfile|docker/lp3-dovecot
+          lp3-rspamd|docker/lp3-rspamd/Dockerfile|docker/lp3-rspamd
+          lp3-clamav|docker/lp3-clamav/Dockerfile|docker/lp3-clamav
+          lp3-proof|docker/lp3-proof/Dockerfile|docker/lp3-proof
+          EOF
+
+      - name: Validate LP3 mail images on arm64
+        if: hashFiles('docker/lp3-tls/Dockerfile') != '' && hashFiles('docker/lp3-postfix/Dockerfile') != '' && hashFiles('docker/lp3-dovecot/Dockerfile') != '' && hashFiles('docker/lp3-rspamd/Dockerfile') != '' && hashFiles('docker/lp3-clamav/Dockerfile') != '' && hashFiles('docker/lp3-proof/Dockerfile') != ''
+        shell: bash
+        run: |
+          set -euo pipefail
+          while IFS='|' read -r name dockerfile context; do
+            output="$RUNNER_TEMP/gulogulo-${name}-arm64-ubuntu-26.04.oci.tar"
+            docker buildx build \
+              --platform linux/arm64 \
+              --pull \
+              --provenance=false \
+              --sbom=false \
+              --tag "gulogulo:ci-${name}-arm64-ubuntu-26.04" \
               --file "$dockerfile" \
               --output "type=oci,dest=$output" \
               "$context"
@@ -648,11 +682,6 @@ jobs:
           for artifact in "${artifacts[@]}"; do
             gh attestation verify "$artifact" --repo "$GITHUB_REPOSITORY"
           done
-
-      - name: Run LP3 local mail Compose proof
-        if: hashFiles('scripts/lp3-compose-smoke.mjs') != '' && hashFiles('compose.yaml') != ''
-        shell: bash
-        run: node scripts/lp3-compose-smoke.mjs
 
       - name: Run disposable PostgreSQL M2 integration contract
         if: hashFiles('src/integrations/postgres.integration.test.ts') != ''

@@ -116,6 +116,11 @@
       "name": "gulogulo-lp3-proof-check",
       "role": "deterministic local mail proof client",
       "health": "protocol, policy, queue, retention, and safety probes pass"
+    },
+    {
+      "name": "gulogulo-lp3-proof-node",
+      "role": "compiled TypeScript mail contract proof client",
+      "health": "typed policy, scanner, queue, and IMAP IDLE contracts pass"
     }
   ],
   "volumes": [

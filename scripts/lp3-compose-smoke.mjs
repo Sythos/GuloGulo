@@ -104,10 +104,11 @@ function runProofClient() {
 
 function runTypedNodeProof() {
   // The dedicated proof image checks vendor-shaped protocol fixtures. The
-  // application image additionally runs the compiled TypeScript mail
-  // contracts on the same internal network, so CI cannot pass with only a
-  // Python/JavaScript test double and an unbuilt server boundary.
-  compose(['--profile', 'lp3', 'run', '--rm', '--no-deps', '--network', network, 'gulogulo', 'node', 'scripts/lp3-proof-smoke.mjs']);
+  // application proof client is a separate Compose service already attached
+  // to lp3-runtime; this avoids relying on the non-portable `run --network`
+  // option while keeping the compiled TypeScript contracts on the same
+  // internal network.
+  compose(['--profile', 'lp3', '--profile', 'lp3-check', 'run', '--rm', '--no-deps', 'gulogulo-lp3-proof-node']);
 }
 
 let started = false;

@@ -64,8 +64,9 @@ other disposable proof projects without sharing names or volumes.
 | lp3-rspamd | Spam verdict service | HTTP 11333 |
 | lp3-clamav | Antivirus verdict service | clamd 3310 |
 | gulogulo-lp3-proof-check | Deterministic protocol and contract client | no published endpoint |
+| gulogulo-lp3-proof-node | Compiled TypeScript mail contract client | no published endpoint |
 
-All six LP3 services join lp3-runtime, an internal IPv4/IPv6 network. The
+All seven LP3 services join lp3-runtime, an internal IPv4/IPv6 network. The
 network uses a private ULA subnet (fd42:4755:756c:7033::/64) and has no host
 port bindings. The proof client talks to service names, never to localhost
 and never to a Docker socket.
@@ -147,16 +148,25 @@ node scripts/lp3-compose-smoke.mjs
 The runner creates a unique Compose project from GITHUB_RUN_ID when CI is
 available, or from the current timestamp locally. It builds the LP3 images,
 starts only the lp3 profile, waits for the TLS service and all four mail
-services to be healthy,
-runs the proof client, checks the network and mounts, restarts Postfix and
-Dovecot, runs the proof again, and removes the disposable project and volumes
-on exit. If a service fails, its last 160 log lines are printed before cleanup.
+services to be healthy, runs the Python protocol proof and the compiled
+TypeScript contract proof, checks the network and mounts, restarts Postfix and
+Dovecot, runs both proofs again, and removes the disposable project and
+volumes on exit. If a service fails, its last 160 log lines are printed before
+cleanup.
+
+On GitHub Actions, the functional Compose proof is deliberately run on the
+amd64 runner before the emulated arm64 image pass. The image gate then builds
+one OCI tar per LP3 image for `linux/amd64`, followed by one OCI tar per image
+for `linux/arm64`. This is intentionally two single-platform artifacts rather
+than one multi-platform index: both architecture builds remain mandatory, and
+all produced artifacts are attested and verified after the arm64 pass.
 
 The proof client can also be run manually after an operator has started the
 services:
 
 ~~~powershell
 docker compose --project-name gulogulo-lp3-manual --profile lp3 --profile lp3-check --file compose.yaml --env-file .env.example run --rm --no-deps gulogulo-lp3-proof-check
+docker compose --project-name gulogulo-lp3-manual --profile lp3 --profile lp3-check --file compose.yaml --env-file .env.example run --rm --no-deps gulogulo-lp3-proof-node
 docker compose --project-name gulogulo-lp3-manual --profile lp3 --profile lp3-check --file compose.yaml --env-file .env.example down --volumes --remove-orphans
 ~~~
 
