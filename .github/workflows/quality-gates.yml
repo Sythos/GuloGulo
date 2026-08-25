@@ -98,10 +98,12 @@ jobs:
           test -f doc/lp2-local-services.md
           test -f doc/lp3-local-mail.md
           test -f doc/lp4-local-web.md
+          test -f doc/lp5-local-operations-capacity.md
           test -f release/v1-release-evidence.template.json
           test -f release/lp2-local-services.json
           test -f release/lp3-local-mail.json
           test -f release/lp4-local-web.json
+          test -f release/lp5-local-operations-capacity.json
           test -f scripts/m10-release-audit.mjs
           test -f scripts/lp2-compose-audit.mjs
           test -f scripts/lp2-compose-smoke.mjs
@@ -113,6 +115,15 @@ jobs:
           test -f scripts/lp4-compose-smoke.ts
           test -f scripts/lp4-proof-check.ts
           test -f scripts/lp4-web-runtime.ts
+          test -f scripts/lp5-compose-audit.ts
+          test -f scripts/lp5-compose-smoke.ts
+          test -f scripts/lp5-capacity-smoke.ts
+          test -f scripts/lp5-proof-check.ts
+          test -f tsconfig.lp5.json
+          test -f src/capacity/capacity-contract.ts
+          test -f src/capacity/capacity-contract.test.ts
+          test -f src/ops/patch/status.ts
+          test -f src/ops/patch/status.test.ts
           test -f tsconfig.json
           test -f tsconfig.server.json
           test -f tsconfig.lp4.json
@@ -257,6 +268,12 @@ jobs:
           test -f src/ops/acme/index.test.mjs
           test -f src/ops/abuse/index.mjs
           test -f src/ops/abuse/index.test.mjs
+          test -f src/ops/abuse/index.ts
+          test -f src/ops/abuse/index.test.ts
+          test -f src/ops/acme/index.ts
+          test -f src/ops/acme/index.test.ts
+          test -f src/observability/index.ts
+          test -f src/observability/observability.test.ts
           test -f doc/acme-abuse-deployment.md
           test -f src/upgrade/compatibility.mjs
           test -f src/upgrade/control-plane.mjs
@@ -316,6 +333,10 @@ jobs:
             scripts/lp4-compose-smoke.ts \
             scripts/lp4-proof-check.ts \
             scripts/lp4-web-runtime.ts \
+            scripts/lp5-compose-audit.ts \
+            scripts/lp5-compose-smoke.ts \
+            scripts/lp5-capacity-smoke.ts \
+            scripts/lp5-proof-check.ts \
             scripts/m10-release-audit.mjs \
             .gitignore \
             .github/workflows/commit-tests.yml \
@@ -397,6 +418,8 @@ jobs:
           grep -Fq 'Author: Sythos (https://www.sythos.net)' tsconfig.server.json
           grep -Fq 'SPDX-License-Identifier: MIT' tsconfig.lp4.json
           grep -Fq 'Author: Sythos (https://www.sythos.net)' tsconfig.lp4.json
+          grep -Fq 'SPDX-License-Identifier: MIT' tsconfig.lp5.json
+          grep -Fq 'Author: Sythos (https://www.sythos.net)' tsconfig.lp5.json
           grep -Fq 'SPDX-License-Identifier: MIT' web/README.md
           grep -Fq 'Author: Sythos (https://www.sythos.net)' web/README.md
           grep -Fq 'SPDX-License-Identifier: MIT' assets/README.md
@@ -432,17 +455,24 @@ jobs:
           grep -Fq 'DEFAULT_TRASH_RETENTION_DAYS = 28' src/lifecycle/retention.mjs
           grep -Fq "BACKUP_ENCRYPTION_ALGORITHM = 'aes-256-gcm'" src/backup/backup-contract.mjs
           grep -Fq 'PURGE_REJECTED' src/lifecycle/retention.mjs
-          grep -Fq 'createLogRotationPolicy' src/observability/log-policy.mjs
-          grep -Fq 'createStructuredEvent' src/observability/structured-event.mjs
-          grep -Fq 'createAlertPolicy' src/observability/alert-policy.mjs
-          grep -Fq 'LETSENCRYPT' src/ops/acme/index.mjs
-          grep -Fq 'HTTP_01' src/ops/acme/index.mjs
-          grep -Fq 'DNS_01' src/ops/acme/index.mjs
-          grep -Fq 'createSafeReloadPlan' src/ops/acme/index.mjs
-          grep -Fq 'DEFAULT_RATE_LIMITS' src/ops/abuse/index.mjs
-          grep -Fq 'createAbuseAuditEvent' src/ops/abuse/index.mjs
-          grep -Fq 'validateComposeProductionReadiness' src/ops/abuse/index.mjs
-          grep -Fq 'HOST_NAMESPACE_FORBIDDEN' src/ops/abuse/index.mjs
+          grep -Fq 'createLogRotationPolicy' src/observability/log-policy.ts
+          grep -Fq 'createStructuredEvent' src/observability/structured-event.ts
+          grep -Fq 'createAlertPolicy' src/observability/alert-policy.ts
+          grep -Fq 'LETSENCRYPT' src/ops/acme/index.ts
+          grep -Fq 'HTTP_01' src/ops/acme/index.ts
+          grep -Fq 'DNS_01' src/ops/acme/index.ts
+          grep -Fq 'createSafeReloadPlan' src/ops/acme/index.ts
+          grep -Fq 'DEFAULT_RATE_LIMITS' src/ops/abuse/index.ts
+          grep -Fq 'createAbuseAuditEvent' src/ops/abuse/index.ts
+          grep -Fq 'validateComposeProductionReadiness' src/ops/abuse/index.ts
+          grep -Fq 'HOST_NAMESPACE_FORBIDDEN' src/ops/abuse/index.ts
+          grep -Fq 'sanitizePatchStatus' src/ops/patch/status.ts
+          grep -Fq 'apt_update_failed' scripts/container-patch.sh
+          grep -Fq 'gulogulo_abuse_limited_total' src/runtime/server.ts
+          grep -Fq 'gulogulo-lp5-web' compose.yaml
+          grep -Fq 'profiles: ["lp5"]' compose.yaml
+          grep -Fq 'profiles: ["lp5-check"]' compose.yaml
+          grep -Fq 'lp5-patch-state:/var/lib/gulogulo/patch:ro' compose.yaml
           grep -Fq 'MIGRATION_PHASES' src/upgrade/compatibility.mjs
           grep -Fq 'createSchemaMigrationPlan' src/upgrade/compatibility.mjs
           grep -Fq 'createUpgradeController' src/upgrade/control-plane.mjs
@@ -489,6 +519,7 @@ jobs:
           node -e "const t=require('./release/lp2-local-services.json'); if (t.spdxLicenseIdentifier !== 'MIT' || t.author !== 'Sythos (https://www.sythos.net)' || t.milestone !== 'LP2' || t.proofType !== 'local_synthetic' || t.networkPolicy !== 'offline_dependencies' || t.internalNetwork !== true || t.enableIpv6 !== true || t.ipFamilies?.join(',') !== 'ipv4,ipv6' || t.publicDnsRequired !== false || t.publicAcmeEnabled !== false || t.hostPortsPublished !== false || t.dockerSocketMounted !== false) process.exit(1)"
           node -e "const t=require('./release/lp3-local-mail.json'); if (t.spdxLicenseIdentifier !== 'MIT' || t.author !== 'Sythos (https://www.sythos.net)' || t.milestone !== 'LP3' || t.proofType !== 'local_synthetic_mail' || t.networkPolicy !== 'offline_dependencies' || t.internalNetwork !== true || t.enableIpv6 !== true || t.ipFamilies?.join(',') !== 'ipv4,ipv6' || t.syntheticDataOnly !== true || t.publicDnsRequired !== false || t.publicAcmeEnabled !== false || t.externalDeliveryEnabled !== false || t.hostPortsPublished !== false || t.dockerSocketMounted !== false || t.policy?.catchAll !== false || t.policy?.automaticForwarding !== false || t.policy?.scanFailureMode !== 'fail_closed' || t.policy?.trashRetentionDays !== 28 || t.protocols?.imap?.idle !== true || t.protocols?.lmtp?.quotaReservationBeforeAck !== true || t.protocols?.sieve?.redirect !== false) process.exit(1)"
           node -e "const t=require('./release/lp4-local-web.json'); if (t.spdxLicenseIdentifier !== 'MIT' || t.author !== 'Sythos (https://www.sythos.net)' || t.milestone !== 'LP4' || t.proofType !== 'local_synthetic_web_dav' || t.networkPolicy !== 'offline_dependencies' || t.internalNetwork !== true || t.enableIpv6 !== true || t.ipFamilies?.join(',') !== 'ipv4,ipv6' || t.syntheticDataOnly !== true || t.publicDnsRequired !== false || t.publicAcmeEnabled !== false || t.hostPortsPublished !== false || t.dockerSocketMounted !== false || t.credentialsCommitted !== false || t.web?.sameOriginOnly !== true || t.session?.csrfOnAuthenticatedMutations !== true || t.dav?.tenantBoundEtags !== true || t.dav?.tenantBoundSyncTokens !== true || t.dav?.masterContentAccess !== false || t.discovery?.tenantBound !== true || t.architectureValidation?.defaultWorkflowMode !== 'amd64' || t.architectureValidation?.finalWorkflowMode !== 'multiarch' || t.architectureValidation?.finalModePlatforms?.join(',') !== 'linux/arm64' || t.architectureValidation?.arm64RequiredBeforeMergeOrRelease !== true || t.architectureValidation?.composeProofPlatform !== 'linux/amd64') process.exit(1)"
+          node -e "const t=require('./release/lp5-local-operations-capacity.json'); if (t.spdxLicenseIdentifier !== 'MIT' || t.author !== 'Sythos (https://www.sythos.net)' || t.milestone !== 'LP5' || t.proofType !== 'local_synthetic_operations_capacity' || t.networkPolicy !== 'offline_dependencies' || t.internalNetwork !== true || t.enableIpv6 !== true || t.ipFamilies?.join(',') !== 'ipv4,ipv6' || t.hostPortsPublished !== false || t.dockerSocketMounted !== false || t.capacity?.claim !== 'bounded_local_proof_only' || t.capacity?.amd64Budget?.activeIdleConnections !== 8 || t.architectureValidation?.defaultWorkflowMode !== 'amd64' || t.architectureValidation?.finalWorkflowMode !== 'multiarch' || t.architectureValidation?.finalModePlatforms?.join(',') !== 'linux/arm64' || t.architectureValidation?.arm64RequiredBeforeMergeOrRelease !== true) process.exit(1)"
           bash -n docker/lp1-network/entrypoint-ca.sh
           bash -n docker/lp1-network/entrypoint-dns.sh
           bash -n docker/lp2-tls/entrypoint-tls.sh
@@ -659,6 +690,11 @@ jobs:
         shell: bash
         run: npm run test:lp4
 
+      - name: Run LP5 static and typed operations/capacity gates
+        if: inputs.architecture_mode != 'multiarch' && hashFiles('scripts/lp5-compose-audit.ts') != ''
+        shell: bash
+        run: npm run test:lp5
+
       # In the default amd64 mode, the Compose proofs run on the amd64 GitHub
       # runner before any architecture image work that could be expensive.
       - name: Run LP3 local mail Compose proof (amd64)
@@ -672,6 +708,11 @@ jobs:
         if: inputs.architecture_mode != 'multiarch' && hashFiles('scripts/lp4-compose-smoke.ts') != '' && hashFiles('compose.yaml') != ''
         shell: bash
         run: npm run test:lp4:docker
+
+      - name: Run LP5 local operations and capacity Compose proof (amd64)
+        if: inputs.architecture_mode != 'multiarch' && hashFiles('scripts/lp5-compose-smoke.ts') != '' && hashFiles('compose.yaml') != ''
+        shell: bash
+        run: npm run test:lp5:docker
 
       - name: Validate LP3 mail images on amd64
         if: inputs.architecture_mode != 'multiarch' && hashFiles('docker/lp3-tls/Dockerfile') != '' && hashFiles('docker/lp3-postfix/Dockerfile') != '' && hashFiles('docker/lp3-dovecot/Dockerfile') != '' && hashFiles('docker/lp3-rspamd/Dockerfile') != '' && hashFiles('docker/lp3-clamav/Dockerfile') != '' && hashFiles('docker/lp3-proof/Dockerfile') != ''

@@ -33,10 +33,11 @@ unrestricted `kubectl` to a tenant.
 
 ## 2. ACME configuration
 
-The module is `src/ops/acme/index.mjs`. The main entry point is:
+The canonical module is `src/ops/acme/index.ts` (the `.mjs` file is a
+compatibility bridge). The main entry point is:
 
 ```js
-import { createAcmeConfig } from './src/ops/acme/index.mjs';
+import { createAcmeConfig } from './src/ops/acme/index.ts';
 
 const config = createAcmeConfig({
   domains: ['mail.example.test', 'autoconfig.example.test'],
@@ -168,7 +169,8 @@ audited control plane and is outside the tenant read-only surface.
 
 ## 5. Abuse and rate controls
 
-The module is `src/ops/abuse/index.mjs`. `createRateLimiter()` applies limits
+The canonical module is `src/ops/abuse/index.ts` (the `.mjs` file is a
+compatibility bridge). `createRateLimiter()` applies limits
 per tenant, IP, and opaque session for every required channel. The default
 channels are:
 

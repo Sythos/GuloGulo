@@ -11,6 +11,8 @@ import { loadConfig } from './config.js';
 import { createDependencyRegistry, createMetrics } from './metrics.js';
 import { createLogger } from './logger.js';
 import { getWellKnownResource, WELL_KNOWN_PATHS } from '../dav/discovery/index.ts';
+import { createRateLimiter } from '../ops/abuse/index.ts';
+import { parsePatchStatus, type PatchStatusDto } from '../ops/patch/status.ts';
 import { CSRF_HEADER_NAME, createWebSecurity } from '../web/security/index.ts';
 import type { SessionIdentity, WebSecurity, WebSession } from '../web/security/index.ts';
 
@@ -34,6 +36,7 @@ interface RuntimeServerOptions {
   discoveryContract?: any;
   discoveryTenantId?: string;
   webSecurity?: WebSecurity;
+  rateLimiter?: any;
   authenticateLogin?: LoginAuthenticator;
   apiResources?: Partial<ApiResources>;
 }
@@ -48,6 +51,7 @@ export interface RuntimeServer {
   discoveryContract: any;
   discoveryTenantId: string | undefined;
   webSecurity: WebSecurity;
+  rateLimiter: any;
   authenticateLogin: LoginAuthenticator;
   apiResources: ApiResources;
   loginFailures: Map<string, { startedAt: number; count: number }>;
@@ -83,14 +87,6 @@ const STATIC_MIME_TYPES: Readonly<Record<string, string>> = Object.freeze({
   '.webmanifest': 'application/manifest+json; charset=utf-8',
 });
 const REQUEST_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/;
-const PATCH_STATUS_VALUES = new Set([
-  'unknown',
-  'checking',
-  'updates_available',
-  'applying',
-  'current',
-  'failed',
-]);
 const WELL_KNOWN_PATH_VALUES = new Set<string>(Object.values(WELL_KNOWN_PATHS));
 const API_BODY_MAX_BYTES = 16 * 1024;
 const LOGIN_FAILURE_LIMIT = 5;
@@ -302,31 +298,19 @@ function patchStatusFile(config: RuntimeConfig): string {
   return config?.contract?.patching?.statusFile ?? config?.patching?.statusFile ?? '/var/lib/gulogulo/patch/status.json';
 }
 
-function readPatchStatus(config: RuntimeConfig): Record<string, unknown> {
+function readPatchStatus(config: RuntimeConfig): PatchStatusDto {
   try {
-    const parsed = JSON.parse(readFileSync(patchStatusFile(config), 'utf8')) as Record<string, unknown>;
-    if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)) {
-      throw new Error('invalid_status_shape');
-    }
-
-    const state = typeof parsed.state === 'string' && PATCH_STATUS_VALUES.has(parsed.state) ? parsed.state : 'unknown';
-    const result: Record<string, unknown> = {
-      schemaVersion: 1,
-      state,
-    };
-    for (const key of ['checkedAt', 'updatedAt', 'baseImage', 'nodeVersion', 'reason']) {
-      if (typeof parsed[key] === 'string' && /^[A-Za-z0-9._:+/-]{1,255}$/.test(parsed[key])) {
-        result[key] = parsed[key];
-      }
-    }
-    return result;
+    return parsePatchStatus(readFileSync(patchStatusFile(config), 'utf8'));
   } catch {
-    return {
-      schemaVersion: 1,
-      state: 'unknown',
-      reason: 'status_unavailable',
-    };
+    return parsePatchStatus(undefined);
   }
+}
+
+function abuseChannelForPath(path: string | null): string {
+  if (path === '/api/session/login') return 'login';
+  if (path !== null && path.startsWith('/api/')) return 'api';
+  if (path !== null && WELL_KNOWN_PATH_VALUES.has(path)) return 'dav';
+  return 'http';
 }
 
 function elapsedMilliseconds(startedAt: bigint): number {
@@ -452,6 +436,7 @@ export function createRuntimeServer({
   discoveryContract = config?.discoveryContract,
   discoveryTenantId = config?.discoveryTenantId ?? config?.tenantId,
   webSecurity = createWebSecurity({ clock }),
+  rateLimiter,
   authenticateLogin = createFixtureLoginAuthenticator(),
   apiResources = defaultApiResources(),
 }: RuntimeServerOptions = {}): RuntimeServer {
@@ -484,6 +469,7 @@ export function createRuntimeServer({
     discoveryContract,
     discoveryTenantId,
     webSecurity,
+    rateLimiter: rateLimiter ?? createRateLimiter({ clock }),
     authenticateLogin,
     apiResources: { ...defaultApiResources(), ...apiResources },
     loginFailures: new Map(),
@@ -534,16 +520,6 @@ export function createRuntimeServer({
       });
     };
 
-    if (path === null) {
-      finish(
-        400,
-        responsePayload(runtime, 'bad_request', requestDetails, {
-          reason: 'invalid_request_target',
-        }),
-      );
-      return;
-    }
-
     const cookieHeader = requestHeader(request, 'cookie');
     const session = runtime.webSecurity.authenticate(cookieHeader);
     const clearExpiredCookie = () => {
@@ -557,6 +533,39 @@ export function createRuntimeServer({
         error: { code: 'AUTHENTICATION_REQUIRED', message: 'Authentication is required.' },
       }));
     };
+
+    const abuseChannel = abuseChannelForPath(path);
+    const abuseDecision = runtime.rateLimiter.consume({
+      channel: abuseChannel,
+      tenantId: session?.tenantId ?? 'anonymous',
+      ipAddress: request.socket.remoteAddress ?? 'unknown',
+    });
+    runtime.metrics.increment(abuseDecision.allowed ? 'gulogulo_abuse_allowed_total' : 'gulogulo_abuse_limited_total', 1, {
+      channel: abuseChannel,
+    });
+    if (!abuseDecision.allowed) {
+      const retryAfterSeconds = Math.max(1, Math.ceil(Number(abuseDecision.retryAfterMs ?? 1000) / 1000));
+      response.setHeader('retry-after', String(retryAfterSeconds));
+      scopedLogger.warn('abuse_rate_limited', {
+        channel: abuseChannel,
+        limited_by: abuseDecision.limitedBy,
+        retry_after_seconds: retryAfterSeconds,
+      });
+      finish(429, responsePayload(runtime, 'rate_limited', requestDetails, {
+        error: { code: 'RATE_LIMITED', message: 'Request rate exceeded.' },
+      }));
+      return;
+    }
+
+    if (path === null) {
+      finish(
+        400,
+        responsePayload(runtime, 'bad_request', requestDetails, {
+          reason: 'invalid_request_target',
+        }),
+      );
+      return;
+    }
 
     if (path === '/api/session/login') {
       if (method !== 'POST') {

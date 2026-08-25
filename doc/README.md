@@ -72,6 +72,10 @@ normal workflow.
   authenticated HTML5 shell, secure session and CSRF boundary, tenant-scoped
   CalDAV/CardDAV contracts, discovery resources, dual-stack Compose proof,
   runtime credentials, and restart continuity checks.
+- [LP5 local operations and capacity proof](lp5-local-operations-capacity.md) —
+  fail-closed patch status, typed abuse and observability controls, bounded
+  web/DAV/mail/IMAP-IDLE measurements, resource limits, and the AMD64-first /
+  ARM64-final workflow.
 - [Server TypeScript boundary](server-typescript.md) — compiler settings,
   build and test commands, compiled production startup, and the temporary
   compatibility-bridge rule.
