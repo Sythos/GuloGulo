@@ -87,6 +87,28 @@ The intended integrated npm entry points are `npm run test:lp4` and
 checks, all typed web and DAV tests, and the static audit. The second runs
 `scripts/lp4-compose-smoke.ts`.
 
+## Architecture-gated CI
+
+The normal pull-request and push path uses the fast `amd64` architecture mode.
+This keeps the functional LP4 static, typed, and Compose gates quick and avoids
+starting QEMU when a change is still being iterated. The reusable quality gate
+accepts `architecture_mode=amd64` (the default) or `architecture_mode=multiarch`.
+
+The final LP4 verification uses the explicit `multiarch` mode. It is deliberately
+the short final architecture gate: it skips the already-green functional suite,
+builds the arm64 artifacts, and verifies their OCI attestations. The ARM64 pass
+is therefore a release/merge gate, not a hidden best-effort job. The Compose
+proof itself remains an amd64 GitHub runner proof; the prior amd64 run plus this
+arm64 artifact pass cover both target architectures.
+
+For the manual commit workflow, choose **multiarch** only after the default
+amd64 run is green. This is the intended two-stage path:
+
+1. run the default amd64 quality gate;
+2. after it passes, dispatch the same commit with `architecture_mode=multiarch`
+   for the short arm64-only final gate;
+3. merge or publish only after that final run is green.
+
 The live smoke builds the application image, starts `gulogulo-lp4-web`, runs
 the internal proof client, inspects network/container/volume safety, restarts
 the web service, and repeats the proof against the preserved DAV continuity
