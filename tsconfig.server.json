@@ -29,6 +29,9 @@
     "src/auth/**/*.ts",
     "src/admin/**/*.ts",
     "src/mail/**/*.ts",
+    "src/ops/**/*.ts",
+    "src/observability/**/*.ts",
+    "src/capacity/**/*.ts",
     "src/dav/**/*.ts",
     "src/web/**/*.ts"
   ]

@@ -839,6 +839,156 @@ services:
       com.sythos.gulogulo.network-policy: offline_dependencies
       com.sythos.gulogulo.protocols: http,session,caldav,carddav,discovery
 
+  # LP5 is the bounded local operations proof. It reuses the deterministic
+  # LP4 runtime fixture and adds a disposable, isolated maintenance helper.
+  gulogulo-lp5-web:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        INSTALL_DEV: "true"
+    profiles: ["lp5"]
+    command: ["node", "--experimental-strip-types", "scripts/lp4-web-runtime.ts"]
+    environment:
+      APP_ENV: local-proof
+      GULOGULO_ENV: local-proof
+      GULOGULO_SERVICE_NAME: gulogulo-lp5-web
+      HOST: "::"
+      PORT: "8080"
+      LP4_LOGIN_EMAIL: ${LP5_LOGIN_EMAIL}
+      LP4_LOGIN_PASSWORD: ${LP5_LOGIN_PASSWORD}
+      LP4_TENANT_ID: ${LP5_TENANT_ID:-acme}
+      LP4_TENANT_DOMAIN: ${LP5_TENANT_DOMAIN:-example.test}
+      LP4_USER_ID: ${LP5_USER_ID:-alice}
+      LP4_DAV_STATE_DIR: /var/lib/gulogulo/dav
+      GULOGULO_PATCH_STATUS_FILE: /var/lib/gulogulo/patch/status.json
+    volumes:
+      - lp5-runtime-state:/var/lib/gulogulo/runtime
+      - lp5-dav-data:/var/lib/gulogulo/dav
+      - lp5-patch-state:/var/lib/gulogulo/patch:ro
+    networks:
+      lp5-runtime:
+        aliases:
+          - gulogulo-lp5-web
+          - webmail.lp5.gulogulo.test
+          - calendar.lp5.gulogulo.test
+    expose:
+      - "8080"
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=64m
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    pids_limit: 256
+    deploy:
+      resources:
+        limits:
+          cpus: "1.00"
+          memory: 512M
+          pids: 256
+    init: true
+    restart: "no"
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - "fetch('http://[::1]:'+(process.env.PORT||8080)+'/health/ready').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"
+      interval: 3s
+      timeout: 3s
+      start_period: 5s
+      retries: 30
+    labels:
+      com.sythos.gulogulo.milestone: LP5
+      com.sythos.gulogulo.proof: local_synthetic_operations_capacity
+      com.sythos.gulogulo.network-policy: offline_dependencies
+      com.sythos.gulogulo.protocols: http,session,metrics,patch_status
+      com.sythos.gulogulo.content-access: tenant_user_only
+
+  gulogulo-lp5-proof-check:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        INSTALL_DEV: "true"
+    profiles: ["lp5-check"]
+    command: ["node", "--experimental-strip-types", "scripts/lp5-proof-check.ts"]
+    environment:
+      LP5_BASE_URL: http://gulogulo-lp5-web:8080
+      LP5_LOGIN_EMAIL: ${LP5_LOGIN_EMAIL}
+      LP5_LOGIN_PASSWORD: ${LP5_LOGIN_PASSWORD}
+      LP5_TENANT_ID: ${LP5_TENANT_ID:-acme}
+      LP5_TENANT_DOMAIN: ${LP5_TENANT_DOMAIN:-example.test}
+      LP5_USER_ID: ${LP5_USER_ID:-alice}
+      LP5_STARTUP_MS: ${LP5_STARTUP_MS:-0}
+      LP5_READINESS_MS: ${LP5_READINESS_MS:-0}
+      LP5_MEMORY_MIB: ${LP5_MEMORY_MIB:-0}
+      LP5_CPU_MILLIS: ${LP5_CPU_MILLIS:-0}
+      LP5_PIDS: ${LP5_PIDS:-0}
+    networks:
+      - lp5-runtime
+    depends_on:
+      gulogulo-lp5-web:
+        condition: service_healthy
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=32m
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    pids_limit: 128
+    deploy:
+      resources:
+        limits:
+          cpus: "0.50"
+          memory: 256M
+          pids: 128
+    init: true
+    restart: "no"
+    labels:
+      com.sythos.gulogulo.milestone: LP5
+      com.sythos.gulogulo.proof: local_synthetic_operations_capacity_client
+      com.sythos.gulogulo.network-policy: offline_dependencies
+      com.sythos.gulogulo.protocols: http,session,metrics,patch_status
+
+  # The maintenance helper is the only LP5 writer of patch-state. The
+  # application mounts this volume read-only and cannot invoke APT.
+  gulogulo-lp5-maintenance:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    profiles: ["lp5-check"]
+    command: ["/usr/local/sbin/gulogulo-container-patch", "status"]
+    user: "0:0"
+    volumes:
+      - lp5-patch-state:/var/lib/gulogulo/patch
+    networks:
+      - lp5-runtime
+    read_only: false
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=32m
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    pids_limit: 128
+    deploy:
+      resources:
+        limits:
+          cpus: "0.50"
+          memory: 256M
+          pids: 128
+    init: true
+    restart: "no"
+    labels:
+      com.sythos.gulogulo.milestone: LP5
+      com.sythos.gulogulo.proof: disposable_patch_status
+      com.sythos.gulogulo.network-policy: offline_dependencies
+      com.sythos.gulogulo.protocols: patch_status_only
+
 volumes:
   runtime-state:
     name: ${GULOGULO_VOLUME_PREFIX:-gulogulo}-runtime-state
@@ -912,6 +1062,15 @@ volumes:
   lp4-dav-data:
     name: ${GULOGULO_VOLUME_PREFIX:-gulogulo}-lp4-dav-data
     external: ${GULOGULO_LP4_VOLUMES_EXTERNAL:-false}
+  lp5-runtime-state:
+    name: ${GULOGULO_VOLUME_PREFIX:-gulogulo}-lp5-runtime-state
+    external: ${GULOGULO_LP5_VOLUMES_EXTERNAL:-false}
+  lp5-dav-data:
+    name: ${GULOGULO_VOLUME_PREFIX:-gulogulo}-lp5-dav-data
+    external: ${GULOGULO_LP5_VOLUMES_EXTERNAL:-false}
+  lp5-patch-state:
+    name: ${GULOGULO_VOLUME_PREFIX:-gulogulo}-lp5-patch-state
+    external: ${GULOGULO_LP5_VOLUMES_EXTERNAL:-false}
 
 networks:
   proof-runtime:
@@ -944,3 +1103,11 @@ networks:
       config:
         - subnet: 172.29.4.0/24
         - subnet: fd42:4755:756c:7034::/64
+  lp5-runtime:
+    name: ${GULOGULO_LP5_NETWORK:-gulogulo-lp5-runtime}
+    internal: true
+    enable_ipv6: true
+    ipam:
+      config:
+        - subnet: 172.29.5.0/24
+        - subnet: fd42:4755:756c:7035::/64

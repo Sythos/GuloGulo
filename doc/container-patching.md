@@ -70,6 +70,18 @@ performs `apt-get upgrade -y`. The helper writes a small allowlisted JSON status
 file to `/var/lib/gulogulo/patch/status.json`. It never writes APT output,
 credentials, or arbitrary command text into that file.
 
+On an APT failure the helper atomically replaces the transient `checking` or
+`applying` state with `state: "failed"` and a short allowlisted reason such as
+`apt_update_failed` or `apt_apply_failed`. The application reads the file
+through the typed `src/ops/patch/status.ts` sanitizer, so absent, corrupt, or
+unrecognised state is exposed as a fail-closed `unknown` DTO.
+
+The LP5 Compose proof makes the ownership boundary visible: the disposable
+`gulogulo-lp5-maintenance` service is the only writer, while
+`gulogulo-lp5-web` mounts `lp5-patch-state` read-only. The helper is exercised
+with `status` in the offline proof; real `check`/`apply` runs belong to an
+operator-controlled maintenance environment with explicitly reviewed egress.
+
 In production, prefer a disposable maintenance image or a CI/CD rebuild over
 running `apply` against a live application container. The helper exists to make
 the patch contract explicit and testable, not to turn Gulo Gulo into a mutable

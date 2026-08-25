@@ -2,5 +2,5 @@
 // SPDX-FileCopyrightText: 2026 Sythos (https://www.sythos.net)
 // Author: Sythos (https://www.sythos.net)
 
-// Temporary compatibility bridge. Observability behavior lives in TypeScript.
-export * from './index.ts';
+// Temporary compatibility bridge. Patch-status contract tests are TypeScript.
+import './status.test.ts';

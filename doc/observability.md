@@ -71,10 +71,14 @@ The dependency-free registry supports counters, gauges, and histogram count and
 sum observations. Labels are sorted, bounded, printable, and rejected when
 their names could carry secrets or message content.
 
-The runtime records HTTP request count and duration, dependency status, and a
-`gulogulo_build_info` gauge carrying the safe version/build labels. Later
-milestones add quota, queue, Rspamd, ClamAV, IMAP, DAV, certificate, backup,
-and retention metrics.
+The runtime records HTTP request count and duration, dependency status, a
+`gulogulo_build_info` gauge carrying the safe version/build labels, and
+bounded `gulogulo_abuse_allowed_total` / `gulogulo_abuse_limited_total`
+counters labelled only by channel. Rate-limit logs contain no raw IP, session,
+cookie, credential, or message data. LP5's local capacity proof additionally
+measures web/DAV p95 latency, queue and IMAP IDLE contract timing, and resource
+limits without turning those fixture measurements into a production capacity
+claim.
 
 ## A quick probe
 

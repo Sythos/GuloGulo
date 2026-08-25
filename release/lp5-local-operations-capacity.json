@@ -1,0 +1,59 @@
+{
+  "spdxLicenseIdentifier": "MIT",
+  "spdxFileCopyrightText": "2026 Sythos (https://www.sythos.net)",
+  "author": "Sythos (https://www.sythos.net)",
+  "schemaVersion": 1,
+  "milestone": "LP5",
+  "proofType": "local_synthetic_operations_capacity",
+  "networkPolicy": "offline_dependencies",
+  "networkName": "gulogulo-lp5-runtime",
+  "internalNetwork": true,
+  "enableIpv6": true,
+  "ipFamilies": ["ipv4", "ipv6"],
+  "syntheticDataOnly": true,
+  "hostNetwork": false,
+  "hostPortsPublished": false,
+  "dockerSocketMounted": false,
+  "targetPlatforms": ["linux/amd64", "linux/arm64"],
+  "architectureValidation": {
+    "defaultWorkflowMode": "amd64",
+    "composeProofPlatform": "linux/amd64",
+    "finalWorkflowMode": "multiarch",
+    "finalModePlatforms": ["linux/arm64"],
+    "arm64RequiredBeforeMergeOrRelease": true
+  },
+  "capacity": {
+    "claim": "bounded_local_proof_only",
+    "measurementAlgorithm": "monotonic_clock_and_nearest_rank_p95",
+    "load": {
+      "webRequests": 24,
+      "davRequests": 16,
+      "queueOperations": 16,
+      "idleConnections": 8
+    },
+    "amd64Budget": {
+      "startupMs": 60000,
+      "readinessMs": 45000,
+      "webP95Ms": 750,
+      "davP95Ms": 1000,
+      "queueP95Ms": 1000,
+      "idleNotifyP95Ms": 1000,
+      "httpErrorRate": 0,
+      "activeIdleConnections": 8,
+      "memoryMiB": 768,
+      "cpuMillis": 2000,
+      "pids": 256
+    },
+    "arm64Evidence": "final_multiarch_artifact_gate_only"
+  },
+  "typedModules": ["src/capacity/capacity-contract.ts"],
+  "typedTests": ["src/capacity/capacity-contract.test.ts"],
+  "scripts": ["scripts/lp5-compose-audit.ts", "scripts/lp5-capacity-smoke.ts", "scripts/lp5-proof-check.ts"],
+  "services": [
+    { "name": "gulogulo-lp5-web", "role": "bounded synthetic web and DAV runtime" },
+    { "name": "gulogulo-lp5-proof-check", "role": "internal deterministic capacity probe" },
+    { "name": "gulogulo-lp5-maintenance", "role": "disposable allowlisted patch-state helper" }
+  ],
+  "liveDockerEvidence": "github_actions_required",
+  "status": "verified_amd64_and_arm64_artifact"
+}

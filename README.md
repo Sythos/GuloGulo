@@ -37,6 +37,12 @@ check mark means that the repository contains an implementation contract and a
 passing verification gate for that item; deployment evidence is still required
 where the item depends on external infrastructure.
 
+LP5 is complete at the bounded synthetic operations and capacity boundary. Its
+local operations, patch-state, abuse, observability, and capacity contracts
+passed the integrated GitHub AMD64 Compose proof, followed by the final ARM64
+artifact and attestation gate. This remains local-proof evidence, not a claim
+of production capacity or external service interoperability.
+
 ### Security
 
 - [x] no open relay;
@@ -91,6 +97,8 @@ where the item depends on external infrastructure.
 - [x] log rotation;
 - [x] alerts;
 - [x] Postfix queue visibility;
+- [x] bounded LP5 operations and capacity proof (AMD64 Compose first, ARM64 final artifact gate);
+- [x] fail-closed disposable patch helper and sanitized read-only patch status;
 - [ ] automatic Rspamd/ClamAV updates;
 - [x] provider-only migration contract, compatibility window, and rollback state machine;
 - [ ] live blue/green rehearsal;
@@ -193,6 +201,7 @@ gulogulo/
 │   ├── lp2-local-services.md
 │   ├── lp3-local-mail.md
 │   ├── lp4-local-web.md
+│   ├── lp5-local-operations-capacity.md
 │   ├── mail-core.md
 │   ├── rbac-admin-mfa.md
 │   ├── release-readiness.md
@@ -218,6 +227,10 @@ gulogulo/
 │   ├── lp4-compose-smoke.ts
 │   ├── lp4-proof-check.ts
 │   ├── lp4-web-runtime.ts
+│   ├── lp5-capacity-smoke.ts
+│   ├── lp5-compose-audit.ts
+│   ├── lp5-compose-smoke.ts
+│   ├── lp5-proof-check.ts
 │   ├── m10-release-audit.mjs
 │   ├── container-patch.sh
 │   └── runtime, fixture, and patch utilities
@@ -227,6 +240,7 @@ gulogulo/
 │   ├── lp2-local-services.json
 │   ├── lp3-local-mail.json
 │   ├── lp4-local-web.json
+│   ├── lp5-local-operations-capacity.json
 │   └── v1-release-evidence.template.json
 ├── src/
 │   ├── admin/ (TypeScript RBAC, delegation, quota, and admin tools)
@@ -252,6 +266,7 @@ gulogulo/
 │   │   ├── mail-scanners.test.ts
 │   │   └── mail-scanners.ts
 │   ├── observability/
+│   ├── capacity/ (typed bounded local-proof measurement contracts)
 │   ├── release/
 │   │   ├── index.mjs
 │   │   ├── local-proof-scope.mjs
@@ -261,8 +276,9 @@ gulogulo/
 │   │   ├── release-evidence.mjs
 │   │   └── release-evidence.test.mjs
 │   ├── ops/
-│   │   ├── abuse/
-│   │   └── acme/
+│   │   ├── abuse/ (typed rate and abuse controls)
+│   │   ├── acme/ (typed ACME and certificate health contracts)
+│   │   └── patch/ (typed sanitized patch-status contract)
 │   ├── upgrade/
 │   │   ├── compatibility.mjs
 │   │   ├── control-plane.mjs
@@ -298,6 +314,7 @@ gulogulo/
 ├── package.json
 ├── tsconfig.json
 ├── tsconfig.lp4.json
+├── tsconfig.lp5.json
 └── tsconfig.server.json
 ~~~
 
