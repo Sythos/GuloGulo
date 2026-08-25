@@ -17,11 +17,6 @@ on:
         default: amd64
         type: string
 
-permissions:
-  contents: read
-  id-token: write
-  attestations: write
-
 jobs:
   repository-quality:
     name: Repository quality gates (${{ inputs.context }})
@@ -169,8 +164,8 @@ jobs:
           grep -Fq 'architecture_mode' .github/workflows/pr-validation.yml
           grep -Fq 'BUILD_PLATFORMS' .github/workflows/quality-gates.yml
           grep -Fq 'uses: actions/attest-build-provenance@v4' .github/workflows/quality-gates.yml
-          grep -Fq 'id-token: write' .github/workflows/quality-gates.yml
-          grep -Fq 'attestations: write' .github/workflows/quality-gates.yml
+          grep -Fq 'id-token: write' .github/workflows/commit-tests.yml
+          grep -Fq 'attestations: write' .github/workflows/commit-tests.yml
           test -f src/dav/caldav/caldav-contract.mjs
           test -f src/dav/caldav/caldav-contract.test.mjs
           test -f src/dav/carddav/carddav-store.mjs
