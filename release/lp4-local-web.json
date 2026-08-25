@@ -23,6 +23,7 @@
   "architectureValidation": {
     "defaultWorkflowMode": "amd64",
     "finalWorkflowMode": "multiarch",
+    "finalModePlatforms": ["linux/arm64"],
     "arm64RequiredBeforeMergeOrRelease": true,
     "composeProofPlatform": "linux/amd64"
   },
