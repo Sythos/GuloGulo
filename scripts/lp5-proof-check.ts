@@ -5,6 +5,7 @@
 import { createImapIdleBroker } from '../src/mail/imap-idle.ts';
 import { createMailQueue } from '../src/mail/mail-queue.ts';
 import { AMD64_LOCAL_PROOF_BUDGET, evaluateCapacity, percentile, type CapacityMeasurement } from '../src/capacity/capacity-contract.ts';
+import { createTenantContext } from '../src/integrations/tenant-context.ts';
 
 function requiredEnvironment(name: string): string {
   const value = process.env[name];
@@ -52,7 +53,12 @@ const dav = await p95(baseUrl, '/.well-known/caldav', 16);
 const ready = await fetch(`${baseUrl}/health/ready`);
 if (!ready.ok) throw new Error(`LP5 readiness returned ${ready.status}`);
 
-const context = Object.freeze({ tenantId: 'acme', actorId: 'alice', role: 'user' as const });
+const context = createTenantContext({
+  tenantId: requiredEnvironment('LP5_TENANT_ID'),
+  domain: requiredEnvironment('LP5_TENANT_DOMAIN'),
+  actorId: requiredEnvironment('LP5_USER_ID'),
+  role: 'user',
+});
 const queue = createMailQueue();
 const queueStarted = performance.now();
 for (let index = 0; index < 16; index += 1) {
