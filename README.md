@@ -94,6 +94,7 @@ of production capacity or external service interoperability.
 - [x] fast amd64-first CI with an explicit multiarch amd64+arm64 final gate;
 - [x] tenant-bound DAV ETags and sync tokens;
 - [x] OCI build-provenance attestations generated and verified;
+- [x] pull-request validation delegates the identity-token and attestation permissions required by the provenance gate;
 - [x] log rotation;
 - [x] alerts;
 - [x] Postfix queue visibility;
