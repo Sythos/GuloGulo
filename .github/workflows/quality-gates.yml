@@ -11,6 +11,11 @@ on:
         description: Execution context for the quality gates
         required: true
         type: string
+      architecture_mode:
+        description: Fast amd64 validation by default; select multiarch for the final arm64 gate
+        required: false
+        default: amd64
+        type: string
 
 permissions:
   contents: read
@@ -22,6 +27,9 @@ jobs:
     name: Repository quality gates (${{ inputs.context }})
     runs-on: ubuntu-latest
     timeout-minutes: 60
+    env:
+      ARCHITECTURE_MODE: ${{ inputs.architecture_mode || 'amd64' }}
+      BUILD_PLATFORMS: ${{ inputs.architecture_mode == 'multiarch' && 'linux/amd64,linux/arm64' || 'linux/amd64' }}
     steps:
       - name: Checkout
         uses: actions/checkout@v6
@@ -59,6 +67,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          [[ "$ARCHITECTURE_MODE" == "amd64" || "$ARCHITECTURE_MODE" == "multiarch" ]]
           test -f LICENSE
           grep -Fq 'MIT License' LICENSE
           test -f README.md
@@ -145,6 +154,9 @@ jobs:
           test -f .github/workflows/commit-tests.yml
           test -f .github/workflows/pr-validation.yml
           test -f .github/workflows/quality-gates.yml
+          grep -Fq 'architecture_mode' .github/workflows/commit-tests.yml
+          grep -Fq 'architecture_mode' .github/workflows/pr-validation.yml
+          grep -Fq 'BUILD_PLATFORMS' .github/workflows/quality-gates.yml
           grep -Fq 'uses: actions/attest-build-provenance@v4' .github/workflows/quality-gates.yml
           grep -Fq 'id-token: write' .github/workflows/quality-gates.yml
           grep -Fq 'attestations: write' .github/workflows/quality-gates.yml
@@ -476,7 +488,7 @@ jobs:
           node -e "const t=require('./release/local-proof-topology.json'); if (t.spdxLicenseIdentifier !== 'MIT' || t.author !== 'Sythos (https://www.sythos.net)' || t.milestone !== 'LP1' || t.networkPolicy !== 'offline_runtime' || t.internalNetwork !== true || t.ipFamilies?.join(',') !== 'ipv4,ipv6' || t.publicDnsRequired !== false || t.publicAcmeEnabled !== false || t.dockerSocketMounted !== false) process.exit(1)"
           node -e "const t=require('./release/lp2-local-services.json'); if (t.spdxLicenseIdentifier !== 'MIT' || t.author !== 'Sythos (https://www.sythos.net)' || t.milestone !== 'LP2' || t.proofType !== 'local_synthetic' || t.networkPolicy !== 'offline_dependencies' || t.internalNetwork !== true || t.enableIpv6 !== true || t.ipFamilies?.join(',') !== 'ipv4,ipv6' || t.publicDnsRequired !== false || t.publicAcmeEnabled !== false || t.hostPortsPublished !== false || t.dockerSocketMounted !== false) process.exit(1)"
           node -e "const t=require('./release/lp3-local-mail.json'); if (t.spdxLicenseIdentifier !== 'MIT' || t.author !== 'Sythos (https://www.sythos.net)' || t.milestone !== 'LP3' || t.proofType !== 'local_synthetic_mail' || t.networkPolicy !== 'offline_dependencies' || t.internalNetwork !== true || t.enableIpv6 !== true || t.ipFamilies?.join(',') !== 'ipv4,ipv6' || t.syntheticDataOnly !== true || t.publicDnsRequired !== false || t.publicAcmeEnabled !== false || t.externalDeliveryEnabled !== false || t.hostPortsPublished !== false || t.dockerSocketMounted !== false || t.policy?.catchAll !== false || t.policy?.automaticForwarding !== false || t.policy?.scanFailureMode !== 'fail_closed' || t.policy?.trashRetentionDays !== 28 || t.protocols?.imap?.idle !== true || t.protocols?.lmtp?.quotaReservationBeforeAck !== true || t.protocols?.sieve?.redirect !== false) process.exit(1)"
-          node -e "const t=require('./release/lp4-local-web.json'); if (t.spdxLicenseIdentifier !== 'MIT' || t.author !== 'Sythos (https://www.sythos.net)' || t.milestone !== 'LP4' || t.proofType !== 'local_synthetic_web_dav' || t.networkPolicy !== 'offline_dependencies' || t.internalNetwork !== true || t.enableIpv6 !== true || t.ipFamilies?.join(',') !== 'ipv4,ipv6' || t.syntheticDataOnly !== true || t.publicDnsRequired !== false || t.publicAcmeEnabled !== false || t.hostPortsPublished !== false || t.dockerSocketMounted !== false || t.credentialsCommitted !== false || t.web?.sameOriginOnly !== true || t.session?.csrfOnAuthenticatedMutations !== true || t.dav?.tenantBoundEtags !== true || t.dav?.tenantBoundSyncTokens !== true || t.dav?.masterContentAccess !== false || t.discovery?.tenantBound !== true) process.exit(1)"
+          node -e "const t=require('./release/lp4-local-web.json'); if (t.spdxLicenseIdentifier !== 'MIT' || t.author !== 'Sythos (https://www.sythos.net)' || t.milestone !== 'LP4' || t.proofType !== 'local_synthetic_web_dav' || t.networkPolicy !== 'offline_dependencies' || t.internalNetwork !== true || t.enableIpv6 !== true || t.ipFamilies?.join(',') !== 'ipv4,ipv6' || t.syntheticDataOnly !== true || t.publicDnsRequired !== false || t.publicAcmeEnabled !== false || t.hostPortsPublished !== false || t.dockerSocketMounted !== false || t.credentialsCommitted !== false || t.web?.sameOriginOnly !== true || t.session?.csrfOnAuthenticatedMutations !== true || t.dav?.tenantBoundEtags !== true || t.dav?.tenantBoundSyncTokens !== true || t.dav?.masterContentAccess !== false || t.discovery?.tenantBound !== true || t.architectureValidation?.defaultWorkflowMode !== 'amd64' || t.architectureValidation?.finalWorkflowMode !== 'multiarch' || t.architectureValidation?.arm64RequiredBeforeMergeOrRelease !== true || t.architectureValidation?.composeProofPlatform !== 'linux/amd64') process.exit(1)"
           bash -n docker/lp1-network/entrypoint-ca.sh
           bash -n docker/lp1-network/entrypoint-dns.sh
           bash -n docker/lp2-tls/entrypoint-tls.sh
@@ -530,7 +542,7 @@ jobs:
         run: ./scripts/m0-smoke.ps1
 
       - name: Set up QEMU for Ubuntu multi-architecture builds
-        if: hashFiles('Dockerfile') != ''
+        if: hashFiles('Dockerfile') != '' && inputs.architecture_mode == 'multiarch'
         uses: docker/setup-qemu-action@v4.2.0
         with:
           platforms: amd64,arm64
@@ -539,14 +551,14 @@ jobs:
         if: hashFiles('Dockerfile') != ''
         uses: docker/setup-buildx-action@v4.2.0
 
-      - name: Validate Ubuntu 26.04 LTS amd64 and arm64 images
+      - name: Validate Ubuntu 26.04 LTS images (${{ inputs.architecture_mode || 'amd64' }})
         if: hashFiles('Dockerfile') != ''
         shell: bash
         run: |
           set -euo pipefail
           output="$RUNNER_TEMP/gulogulo-ubuntu-26.04.oci.tar"
           docker buildx build \
-            --platform linux/amd64,linux/arm64 \
+            --platform "$BUILD_PLATFORMS" \
             --pull \
             --build-arg NODE_VERSION=26.7.0 \
             --provenance=false \
@@ -556,14 +568,14 @@ jobs:
             .
           test -s "$output"
 
-      - name: Validate LP1 network utility image on amd64 and arm64
+      - name: Validate LP1 network utility image (${{ inputs.architecture_mode || 'amd64' }})
         if: hashFiles('docker/lp1-network/Dockerfile') != ''
         shell: bash
         run: |
           set -euo pipefail
           output="$RUNNER_TEMP/gulogulo-lp1-network-ubuntu-26.04.oci.tar"
           docker buildx build \
-            --platform linux/amd64,linux/arm64 \
+            --platform "$BUILD_PLATFORMS" \
             --pull \
             --provenance=false \
             --sbom=false \
@@ -601,7 +613,7 @@ jobs:
         shell: bash
         run: node scripts/lp2-compose-audit.mjs
 
-      - name: Validate LP2 dependency images on amd64 and arm64
+      - name: Validate LP2 dependency images (${{ inputs.architecture_mode || 'amd64' }})
         if: hashFiles('docker/lp2-tls/Dockerfile') != '' && hashFiles('docker/lp2-ldap/Dockerfile') != '' && hashFiles('docker/lp2-postgres/Dockerfile') != ''
         shell: bash
         run: |
@@ -609,7 +621,7 @@ jobs:
           while IFS='|' read -r name dockerfile context; do
             output="$RUNNER_TEMP/gulogulo-${name}-ubuntu-26.04.oci.tar"
             docker buildx build \
-              --platform linux/amd64,linux/arm64 \
+              --platform "$BUILD_PLATFORMS" \
               --pull \
               --provenance=false \
               --sbom=false \
@@ -688,8 +700,8 @@ jobs:
           lp3-proof|docker/lp3-proof/Dockerfile|docker/lp3-proof
           EOF
 
-      - name: Validate LP3 mail images on arm64
-        if: hashFiles('docker/lp3-tls/Dockerfile') != '' && hashFiles('docker/lp3-postfix/Dockerfile') != '' && hashFiles('docker/lp3-dovecot/Dockerfile') != '' && hashFiles('docker/lp3-rspamd/Dockerfile') != '' && hashFiles('docker/lp3-clamav/Dockerfile') != '' && hashFiles('docker/lp3-proof/Dockerfile') != ''
+      - name: Validate LP3 mail images on arm64 (final multiarch gate)
+        if: inputs.architecture_mode == 'multiarch' && hashFiles('docker/lp3-tls/Dockerfile') != '' && hashFiles('docker/lp3-postfix/Dockerfile') != '' && hashFiles('docker/lp3-dovecot/Dockerfile') != '' && hashFiles('docker/lp3-rspamd/Dockerfile') != '' && hashFiles('docker/lp3-clamav/Dockerfile') != '' && hashFiles('docker/lp3-proof/Dockerfile') != ''
         shell: bash
         run: |
           set -euo pipefail

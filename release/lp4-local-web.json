@@ -20,6 +20,12 @@
   "credentialsCommitted": false,
   "credentialsGeneratedAtRuntime": true,
   "targetPlatforms": ["linux/amd64", "linux/arm64"],
+  "architectureValidation": {
+    "defaultWorkflowMode": "amd64",
+    "finalWorkflowMode": "multiarch",
+    "arm64RequiredBeforeMergeOrRelease": true,
+    "composeProofPlatform": "linux/amd64"
+  },
   "web": {
     "staticEntry": "/",
     "apiEntry": "/api/session",

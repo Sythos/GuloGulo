@@ -12,6 +12,15 @@ on:
       - reopened
       - ready_for_review
   workflow_dispatch:
+    inputs:
+      architecture_mode:
+        description: Run the fast amd64 gate or the final amd64 plus arm64 gate
+        type: choice
+        required: false
+        default: amd64
+        options:
+          - amd64
+          - multiarch
 
 permissions:
   contents: read
@@ -25,3 +34,4 @@ jobs:
     uses: ./.github/workflows/quality-gates.yml
     with:
       context: pull-request
+      architecture_mode: ${{ inputs.architecture_mode || 'amd64' }}
