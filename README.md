@@ -38,9 +38,10 @@ passing verification gate for that item; deployment evidence is still required
 where the item depends on external infrastructure.
 
 LP5 is currently in AMD64-first validation. Its local operations, patch-state,
-abuse, observability, and bounded-capacity contracts are present; the integrated
-GitHub AMD64 Compose proof and the final ARM64 artifact gate still have to pass
-before LP5 is recorded as complete.
+abuse, observability, and bounded-capacity contracts are present, and the
+Compose proof now activates the runtime and check profiles together; the
+integrated GitHub AMD64 Compose proof and the final ARM64 artifact gate still
+have to pass before LP5 is recorded as complete.
 
 ### Security
 

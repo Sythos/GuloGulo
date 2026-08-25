@@ -133,7 +133,7 @@ try {
   const pids = Number(webContainer.HostConfig?.PidsLimit || 0);
   if (!(memoryMiB > 0) || !(pids > 0)) throw new Error('LP5 resource limits were not applied to the web container.');
 
-  compose(['--profile', 'lp5-check', 'run', '--rm', '--no-deps', 'gulogulo-lp5-maintenance']);
+  compose(['--profile', 'lp5', '--profile', 'lp5-check', 'run', '--rm', '--no-deps', 'gulogulo-lp5-maintenance']);
   runProof(startupMs, healthy.elapsedMs, memoryMiB, cpuMillis, pids);
 
   compose(['--profile', 'lp5', 'restart', 'gulogulo-lp5-web']);
