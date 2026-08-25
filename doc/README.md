@@ -65,6 +65,13 @@ normal workflow.
   offline dual-stack dependency lab, verified LDAPS and PostgreSQL TLS,
   deterministic fixtures, disposable volumes, and the multi-architecture
   Compose rehearsal.
+- [LP3 local mail proof](lp3-local-mail.md) — the offline Postfix, Dovecot,
+  Rspamd, and ClamAV boundary with IMAP IDLE, LMTP, Sieve, queue/retry/bounce,
+  explicit aliases, and persistent restart-safe volumes.
+- [LP4 local web, DAV, and discovery proof](lp4-local-web.md) — the
+  authenticated HTML5 shell, secure session and CSRF boundary, tenant-scoped
+  CalDAV/CardDAV contracts, discovery resources, dual-stack Compose proof,
+  runtime credentials, and restart continuity checks.
 - [Server TypeScript boundary](server-typescript.md) — compiler settings,
   build and test commands, compiled production startup, and the temporary
   compatibility-bridge rule.

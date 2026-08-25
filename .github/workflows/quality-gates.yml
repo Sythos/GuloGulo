@@ -88,9 +88,11 @@ jobs:
           test -f doc/release-readiness.md
           test -f doc/lp2-local-services.md
           test -f doc/lp3-local-mail.md
+          test -f doc/lp4-local-web.md
           test -f release/v1-release-evidence.template.json
           test -f release/lp2-local-services.json
           test -f release/lp3-local-mail.json
+          test -f release/lp4-local-web.json
           test -f scripts/m10-release-audit.mjs
           test -f scripts/lp2-compose-audit.mjs
           test -f scripts/lp2-compose-smoke.mjs
@@ -98,8 +100,13 @@ jobs:
           test -f scripts/lp3-compose-audit.mjs
           test -f scripts/lp3-compose-smoke.mjs
           test -f scripts/lp3-proof-smoke.mjs
+          test -f scripts/lp4-compose-audit.ts
+          test -f scripts/lp4-compose-smoke.ts
+          test -f scripts/lp4-proof-check.ts
+          test -f scripts/lp4-web-runtime.ts
           test -f tsconfig.json
           test -f tsconfig.server.json
+          test -f tsconfig.lp4.json
           test -f web/index.html
           test -f web/styles.css
           test -f web/manifest.json
@@ -148,6 +155,27 @@ jobs:
           test -f src/dav/carddav/index.mjs
           test -f src/dav/discovery/index.mjs
           test -f src/dav/discovery/index.test.mjs
+          test -f src/dav/caldav/caldav-contract.ts
+          test -f src/dav/caldav/caldav-contract.test.ts
+          test -f src/dav/carddav/carddav-store.ts
+          test -f src/dav/carddav/carddav-store.test.ts
+          test -f src/dav/carddav/index.ts
+          test -f src/dav/discovery/index.ts
+          test -f src/dav/discovery/index.test.ts
+          test -f src/web/security/csrf.ts
+          test -f src/web/security/index.ts
+          test -f src/web/security/session-manager.ts
+          test -f src/web/security/security.test.ts
+          test -f src/web/content/attachment-policy.ts
+          test -f src/web/content/attachment-policy.test.ts
+          test -f src/web/content/email-content.ts
+          test -f src/web/content/email-content.test.ts
+          test -f src/web/content/timezone.ts
+          test -f src/web/content/timezone.test.ts
+          test -f src/web/realtime/event-normalizer.ts
+          test -f src/web/realtime/event-normalizer.test.ts
+          test -f src/web/backup/backup-request.ts
+          test -f src/web/backup/backup-request.test.ts
           test -f src/admin/rbac.ts
           test -f src/admin/rbac.test.ts
           test -f src/admin/delegation.ts
@@ -272,6 +300,10 @@ jobs:
             scripts/lp3-compose-audit.mjs \
             scripts/lp3-compose-smoke.mjs \
             scripts/lp3-proof-smoke.mjs \
+            scripts/lp4-compose-audit.ts \
+            scripts/lp4-compose-smoke.ts \
+            scripts/lp4-proof-check.ts \
+            scripts/lp4-web-runtime.ts \
             scripts/m10-release-audit.mjs \
             .gitignore \
             .github/workflows/commit-tests.yml \
@@ -351,6 +383,8 @@ jobs:
           grep -Fq 'Author: Sythos (https://www.sythos.net)' tsconfig.json
           grep -Fq 'SPDX-License-Identifier: MIT' tsconfig.server.json
           grep -Fq 'Author: Sythos (https://www.sythos.net)' tsconfig.server.json
+          grep -Fq 'SPDX-License-Identifier: MIT' tsconfig.lp4.json
+          grep -Fq 'Author: Sythos (https://www.sythos.net)' tsconfig.lp4.json
           grep -Fq 'SPDX-License-Identifier: MIT' web/README.md
           grep -Fq 'Author: Sythos (https://www.sythos.net)' web/README.md
           grep -Fq 'SPDX-License-Identifier: MIT' assets/README.md
@@ -366,11 +400,16 @@ jobs:
           grep -Fq "state === 'bounced'" src/mail/mail-queue.ts
           grep -Fq 'eventId' src/mail/imap-idle.ts
           grep -Fq 'fail-closed' doc/mail-core.md
-          grep -Fq 'CONTENT_SCOPE_REQUIRED' src/dav/caldav/caldav-contract.mjs
-          grep -Fq 'SYNC_SCOPE_DENIED' src/dav/caldav/caldav-contract.mjs
-          grep -Fq 'SCOPE_ROLE_DENIED' src/dav/carddav/carddav-store.mjs
-          grep -Fq 'WELL_KNOWN_PATHS' src/dav/discovery/index.mjs
-          grep -Fq 'PLAINTEXT_DISCOVERY_FORBIDDEN' src/dav/discovery/index.mjs
+          grep -Fq 'CONTENT_SCOPE_REQUIRED' src/dav/caldav/caldav-contract.ts
+          grep -Fq 'SYNC_SCOPE_DENIED' src/dav/caldav/caldav-contract.ts
+          grep -Fq 'SCOPE_ROLE_DENIED' src/dav/carddav/carddav-store.ts
+          grep -Fq 'WELL_KNOWN_PATHS' src/dav/discovery/index.ts
+          grep -Fq 'PLAINTEXT_DISCOVERY_FORBIDDEN' src/dav/discovery/index.ts
+          grep -Fq 'gulogulo-lp4-web' compose.yaml
+          grep -Fq 'LP4_LOGIN_EMAIL: ${LP4_LOGIN_EMAIL}' compose.yaml
+          grep -Fq 'id="login-shell"' web/index.html
+          grep -Fq '/api/session/login' src/runtime/server.ts
+          grep -Fq '/assets/gulo-gulo-calendar-mail.png' src/runtime/server.ts
           grep -Fq 'CONTENT_ACCESS_DENIED' src/admin/rbac.ts
           grep -Fq 'QUOTA_EXCEEDED' src/admin/quota.ts
           grep -Fq 'MASTER_LOG_ACCESS_DISABLED' src/admin/rbac.ts
@@ -437,6 +476,7 @@ jobs:
           node -e "const t=require('./release/local-proof-topology.json'); if (t.spdxLicenseIdentifier !== 'MIT' || t.author !== 'Sythos (https://www.sythos.net)' || t.milestone !== 'LP1' || t.networkPolicy !== 'offline_runtime' || t.internalNetwork !== true || t.ipFamilies?.join(',') !== 'ipv4,ipv6' || t.publicDnsRequired !== false || t.publicAcmeEnabled !== false || t.dockerSocketMounted !== false) process.exit(1)"
           node -e "const t=require('./release/lp2-local-services.json'); if (t.spdxLicenseIdentifier !== 'MIT' || t.author !== 'Sythos (https://www.sythos.net)' || t.milestone !== 'LP2' || t.proofType !== 'local_synthetic' || t.networkPolicy !== 'offline_dependencies' || t.internalNetwork !== true || t.enableIpv6 !== true || t.ipFamilies?.join(',') !== 'ipv4,ipv6' || t.publicDnsRequired !== false || t.publicAcmeEnabled !== false || t.hostPortsPublished !== false || t.dockerSocketMounted !== false) process.exit(1)"
           node -e "const t=require('./release/lp3-local-mail.json'); if (t.spdxLicenseIdentifier !== 'MIT' || t.author !== 'Sythos (https://www.sythos.net)' || t.milestone !== 'LP3' || t.proofType !== 'local_synthetic_mail' || t.networkPolicy !== 'offline_dependencies' || t.internalNetwork !== true || t.enableIpv6 !== true || t.ipFamilies?.join(',') !== 'ipv4,ipv6' || t.syntheticDataOnly !== true || t.publicDnsRequired !== false || t.publicAcmeEnabled !== false || t.externalDeliveryEnabled !== false || t.hostPortsPublished !== false || t.dockerSocketMounted !== false || t.policy?.catchAll !== false || t.policy?.automaticForwarding !== false || t.policy?.scanFailureMode !== 'fail_closed' || t.policy?.trashRetentionDays !== 28 || t.protocols?.imap?.idle !== true || t.protocols?.lmtp?.quotaReservationBeforeAck !== true || t.protocols?.sieve?.redirect !== false) process.exit(1)"
+          node -e "const t=require('./release/lp4-local-web.json'); if (t.spdxLicenseIdentifier !== 'MIT' || t.author !== 'Sythos (https://www.sythos.net)' || t.milestone !== 'LP4' || t.proofType !== 'local_synthetic_web_dav' || t.networkPolicy !== 'offline_dependencies' || t.internalNetwork !== true || t.enableIpv6 !== true || t.ipFamilies?.join(',') !== 'ipv4,ipv6' || t.syntheticDataOnly !== true || t.publicDnsRequired !== false || t.publicAcmeEnabled !== false || t.hostPortsPublished !== false || t.dockerSocketMounted !== false || t.credentialsCommitted !== false || t.web?.sameOriginOnly !== true || t.session?.csrfOnAuthenticatedMutations !== true || t.dav?.tenantBoundEtags !== true || t.dav?.tenantBoundSyncTokens !== true || t.dav?.masterContentAccess !== false || t.discovery?.tenantBound !== true) process.exit(1)"
           bash -n docker/lp1-network/entrypoint-ca.sh
           bash -n docker/lp1-network/entrypoint-dns.sh
           bash -n docker/lp2-tls/entrypoint-tls.sh
@@ -602,6 +642,11 @@ jobs:
           npm run typecheck:server
           npm run test:lp3
 
+      - name: Run LP4 static and typed web/DAV contract gates
+        if: hashFiles('scripts/lp4-compose-audit.ts') != ''
+        shell: bash
+        run: npm run test:lp4
+
       # The Compose proof runs on the amd64 GitHub runner. Keep it before the
       # emulated arm64 build so a functional regression fails quickly without
       # spending another long QEMU build first.
@@ -609,6 +654,13 @@ jobs:
         if: hashFiles('scripts/lp3-compose-smoke.mjs') != '' && hashFiles('compose.yaml') != ''
         shell: bash
         run: node scripts/lp3-compose-smoke.mjs
+
+      # LP4 remains an amd64 live proof on GitHub; the root image is already
+      # validated for both architectures by the multi-architecture build.
+      - name: Run LP4 local web and DAV Compose proof (amd64)
+        if: hashFiles('scripts/lp4-compose-smoke.ts') != '' && hashFiles('compose.yaml') != ''
+        shell: bash
+        run: npm run test:lp4:docker
 
       - name: Validate LP3 mail images on amd64
         if: hashFiles('docker/lp3-tls/Dockerfile') != '' && hashFiles('docker/lp3-postfix/Dockerfile') != '' && hashFiles('docker/lp3-dovecot/Dockerfile') != '' && hashFiles('docker/lp3-rspamd/Dockerfile') != '' && hashFiles('docker/lp3-clamav/Dockerfile') != '' && hashFiles('docker/lp3-proof/Dockerfile') != ''

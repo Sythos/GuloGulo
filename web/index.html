@@ -28,9 +28,70 @@ Author: Sythos (https://www.sythos.net)
     data-caldav-discovery-path="/discovery/caldav"
     data-carddav-discovery-path="/discovery/carddav"
   >
-    <a class="skip-link" href="#main-content">Skip to main content</a>
+    <a class="skip-link" id="skip-link" href="#login-form">Skip to sign in</a>
 
-    <div class="app-shell" id="app-shell">
+    <main class="login-shell" id="login-shell" aria-labelledby="login-heading">
+      <div class="login-card">
+        <section class="login-panel" aria-describedby="login-intro">
+          <p class="eyebrow">Gulo Gulo</p>
+          <h1 id="login-heading">Open your workspace</h1>
+          <p class="login-intro" id="login-intro">
+            Sign in to your protected mail, calendar, and contacts.
+          </p>
+
+          <form class="login-form" id="login-form" novalidate>
+            <div class="login-error" id="login-error" role="alert" aria-live="assertive" tabindex="-1" hidden></div>
+
+            <label for="login-email">Email address</label>
+            <input
+              id="login-email"
+              name="email"
+              type="email"
+              inputmode="email"
+              autocomplete="username"
+              autocapitalize="none"
+              spellcheck="false"
+              maxlength="320"
+              required
+            >
+
+            <label for="login-password">Password</label>
+            <input
+              id="login-password"
+              name="password"
+              type="password"
+              autocomplete="current-password"
+              maxlength="1024"
+              required
+            >
+
+            <label class="checkbox-row login-remember" for="login-remember">
+              <input id="login-remember" name="rememberMe" type="checkbox">
+              <span>Keep me signed in on this device</span>
+            </label>
+
+            <button class="button button-primary login-submit" id="login-submit" type="submit">
+              Sign in
+            </button>
+            <p class="form-hint">
+              Your password is sent only to the same-origin authentication API and is never stored by this page.
+            </p>
+          </form>
+        </section>
+
+        <div class="login-art" aria-hidden="true">
+          <img
+            src="../assets/gulo-gulo-calendar-mail.png"
+            width="128"
+            height="128"
+            alt=""
+          >
+          <p>Private mail and groupware</p>
+        </div>
+      </div>
+    </main>
+
+    <div class="app-shell" id="app-shell" hidden>
       <header class="app-header">
         <div class="brand-lockup">
           <span class="brand-mark" aria-hidden="true">GG</span>
@@ -154,7 +215,7 @@ Author: Sythos (https://www.sythos.net)
           </div>
         </aside>
 
-        <main class="main-content" id="main-content">
+        <main class="main-content" id="main-content" tabindex="-1">
           <section class="main-panel" data-view-panel="mail" aria-labelledby="mailbox-heading">
             <section class="mailbox-panel" aria-labelledby="mailbox-heading">
             <div class="panel-heading">

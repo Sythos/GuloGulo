@@ -46,6 +46,7 @@ where the item depends on external infrastructure.
 - [ ] PostgreSQL protected and backed up;
 - [ ] secret store and rotation configured;
 - [x] CSP, CSRF, and security headers;
+- [x] secure web sessions, generic login failures, and login rate limits;
 - [x] email HTML sanitization;
 - [x] rate and abuse controls contract tested;
 - [x] audit has no secrets;
@@ -83,6 +84,8 @@ where the item depends on external infrastructure.
 - [x] persistent external mail volumes and restart continuity;
 - [x] offline synthetic LP2 LDAP and PostgreSQL dependency proof with verified TLS;
 - [x] offline synthetic mail proof with Postfix, Dovecot, Rspamd, and ClamAV;
+- [x] offline synthetic web/session/DAV/discovery proof with restart continuity;
+- [x] tenant-bound DAV ETags and sync tokens;
 - [x] OCI build-provenance attestations generated and verified;
 - [x] log rotation;
 - [x] alerts;
@@ -188,6 +191,7 @@ gulogulo/
 │   ├── local-proof-topology.md
 │   ├── lp2-local-services.md
 │   ├── lp3-local-mail.md
+│   ├── lp4-local-web.md
 │   ├── mail-core.md
 │   ├── rbac-admin-mfa.md
 │   ├── release-readiness.md
@@ -209,6 +213,10 @@ gulogulo/
 │   ├── lp3-compose-audit.mjs
 │   ├── lp3-compose-smoke.mjs
 │   ├── lp3-proof-smoke.mjs
+│   ├── lp4-compose-audit.ts
+│   ├── lp4-compose-smoke.ts
+│   ├── lp4-proof-check.ts
+│   ├── lp4-web-runtime.ts
 │   ├── m10-release-audit.mjs
 │   ├── container-patch.sh
 │   └── runtime, fixture, and patch utilities
@@ -217,6 +225,7 @@ gulogulo/
 │   ├── local-proof-topology.json
 │   ├── lp2-local-services.json
 │   ├── lp3-local-mail.json
+│   ├── lp4-local-web.json
 │   └── v1-release-evidence.template.json
 ├── src/
 │   ├── admin/ (TypeScript RBAC, delegation, quota, and admin tools)
@@ -261,14 +270,14 @@ gulogulo/
 │   │   └── upgrade-contract.test.mjs
 │   ├── runtime/ (TypeScript HTTP runtime and observability)
 │   ├── dav/
-│   │   ├── caldav/
-│   │   ├── carddav/
-│   │   └── discovery/
+│   │   ├── caldav/ (strict TypeScript CalDAV contract and tests)
+│   │   ├── carddav/ (strict TypeScript CardDAV contract and tests)
+│   │   └── discovery/ (strict TypeScript discovery and tests)
 │   └── web/
-│       ├── backup/
-│       ├── content/
-│       ├── realtime/
-│       └── security/
+│       ├── backup/ (typed user backup boundary)
+│       ├── content/ (typed sanitization, attachment, and timezone policies)
+│       ├── realtime/ (typed metadata-only event normalization)
+│       └── security/ (typed sessions, cookies, and CSRF)
 ├── test/
 │   └── fixtures/
 ├── web/
@@ -287,6 +296,7 @@ gulogulo/
 ├── package-lock.json
 ├── package.json
 ├── tsconfig.json
+├── tsconfig.lp4.json
 └── tsconfig.server.json
 ~~~
 

@@ -75,9 +75,47 @@ const DANGEROUS_ELEMENTS = new Set([
 ]);
 
 const SAFE_URL_PROTOCOLS = new Set(['cid:', 'https:', 'mailto:']);
+const CSRF_TOKEN_PATTERN = /^[A-Za-z0-9_-]{43}$/;
+
+type AuthenticatedSession = Readonly<{
+  authenticated: true;
+  csrfToken: string;
+  user: Readonly<{ email: string; [key: string]: unknown }>;
+}>;
+
+type AuthenticationView = 'signed-in' | 'signed-out';
 
 function asString(value, fallback = '') {
   return typeof value === 'string' ? value : fallback;
+}
+
+function readAuthenticatedSession(payload: unknown): AuthenticatedSession | undefined {
+  if (!payload || typeof payload !== 'object' || Array.isArray(payload)) return undefined;
+  const candidate = payload as Record<string, unknown>;
+  const user = candidate.user;
+  if (!user || typeof user !== 'object' || Array.isArray(user)) return undefined;
+  const email = asString((user as Record<string, unknown>).email).trim();
+  const csrfToken = asString(candidate.csrfToken);
+  if (!email || !CSRF_TOKEN_PATTERN.test(csrfToken) || candidate.authenticated === false) return undefined;
+  return Object.freeze({
+    authenticated: true,
+    csrfToken,
+    user: Object.freeze({ ...(user as Record<string, unknown>), email }),
+  });
+}
+
+function renderAuthenticationView(documentRef: Document, authenticated: boolean): AuthenticationView {
+  const loginShell = documentRef.querySelector<HTMLElement>('#login-shell');
+  const appShell = documentRef.querySelector<HTMLElement>('#app-shell');
+  const skipLink = documentRef.querySelector<HTMLAnchorElement>('#skip-link');
+  if (loginShell) loginShell.hidden = authenticated;
+  if (appShell) appShell.hidden = !authenticated;
+  if (skipLink) {
+    skipLink.href = authenticated ? '#main-content' : '#login-form';
+    skipLink.textContent = authenticated ? 'Skip to main content' : 'Skip to sign in';
+  }
+  if (documentRef.body) documentRef.body.dataset.authState = authenticated ? 'signed-in' : 'signed-out';
+  return authenticated ? 'signed-in' : 'signed-out';
 }
 
 function parseRealtimeMetadata(value) {
@@ -250,8 +288,17 @@ function buildWebConfig(documentRef = globalThis.document) {
 }
 
 function createApiClient({ fetchFn = globalThis.fetch, documentRef = globalThis.document, config = DEFAULT_WEB_CONFIG } = {}) {
-  const csrfToken = () => asString(documentRef?.querySelector?.('meta[name="csrf-token"]')?.content);
+  const csrfElement = () => documentRef?.querySelector?.('meta[name="csrf-token"]');
+  const csrfToken = () => asString(csrfElement()?.content);
   const base = config.apiBase.replace(/\/$/, '');
+
+  function setCsrfToken(value: unknown): boolean {
+    const element = csrfElement();
+    if (!element) return false;
+    const token = asString(value);
+    element.content = CSRF_TOKEN_PATTERN.test(token) ? token : '';
+    return element.content.length > 0;
+  }
 
   async function request(path, options = {}) {
     const method = asString(options.method, 'GET').toUpperCase();
@@ -279,10 +326,12 @@ function createApiClient({ fetchFn = globalThis.fetch, documentRef = globalThis.
       error.status = response.status;
       throw error;
     }
+    const responseToken = payload?.csrfToken ?? response.headers?.get?.('x-csrf-token');
+    if (responseToken !== undefined) setCsrfToken(responseToken);
     return payload;
   }
 
-  return Object.freeze({ request });
+  return Object.freeze({ request, setCsrfToken });
 }
 
 function createEventStream({
@@ -320,6 +369,7 @@ function createWebApplication(documentRef = globalThis.document, windowRef = glo
   const config = { ...buildWebConfig(documentRef), ...injected };
   const api = injected.api ?? createApiClient({ fetchFn: windowRef.fetch?.bind(windowRef), documentRef, config });
   const state = {
+    authentication: 'checking',
     activeView: 'mail',
     activeFolder: 'inbox',
     messages: [],
@@ -335,6 +385,71 @@ function createWebApplication(documentRef = globalThis.document, windowRef = glo
   const status = get('#app-status');
   const listState = get('#list-state');
   const connectionState = get('#connection-state');
+
+  function setLoginBusy(busy) {
+    const form = get('#login-form');
+    const submit = get('#login-submit');
+    if (form) form.setAttribute('aria-busy', String(busy));
+    if (submit) submit.disabled = busy;
+  }
+
+  function setLoginError(message = '') {
+    const error = get('#login-error');
+    if (!error) return;
+    error.textContent = message;
+    error.hidden = !message;
+  }
+
+  function showLogin({ message = '', focus = true } = {}) {
+    state.authentication = 'signed-out';
+    state.account = undefined;
+    state.eventStream?.close();
+    state.eventStream = undefined;
+    api.setCsrfToken?.('');
+    renderAuthenticationView(documentRef, false);
+    setLoginBusy(false);
+    setLoginError(message);
+    const password = get('#login-password');
+    if (password) password.value = '';
+    if (focus) {
+      const target = message ? get('#login-error') : get('#login-email');
+      target?.focus?.();
+    }
+  }
+
+  function startEventStream() {
+    if (state.eventStream) return;
+    state.eventStream = createEventStream({
+      windowRef,
+      path: config.eventsPath,
+      onState: setConnectionState,
+      onMail: () => void loadFolder(state.activeFolder),
+      onCalendar: () => {
+        if (state.activeView === 'calendar') void loadCalendar();
+        else announce('Calendar changed. Open Calendar to refresh the view.');
+      },
+      onContacts: () => {
+        if (state.activeView === 'contacts') void loadContacts();
+        else announce('Contacts changed. Open Contacts to refresh the view.');
+      },
+    });
+  }
+
+  async function enterWorkspace(payload, { focus = true } = {}) {
+    const session = readAuthenticatedSession(payload);
+    if (!session) throw new Error('The authentication response was incomplete.');
+    api.setCsrfToken?.(session.csrfToken);
+    state.authentication = 'signed-in';
+    state.account = session.user;
+    get('#account-label').textContent = session.user.email;
+    get('#account-name').textContent = session.user.email;
+    setLoginError('');
+    setLoginBusy(false);
+    renderAuthenticationView(documentRef, true);
+    startEventStream();
+    await loadFolder('inbox');
+    if (focus) get('#main-content')?.focus?.();
+  }
 
   function announce(message, tone = 'info') {
     if (!status) return;
@@ -717,15 +832,44 @@ function createWebApplication(documentRef = globalThis.document, windowRef = glo
     }
   }
 
+  async function submitLogin(event) {
+    event.preventDefault();
+    const form = event.currentTarget;
+    if (!form.checkValidity()) {
+      form.reportValidity();
+      return;
+    }
+    const data = new FormData(form);
+    setLoginError('');
+    setLoginBusy(true);
+    try {
+      const payload = await api.request('/session/login', {
+        method: 'POST',
+        body: {
+          email: asString(data.get('email')).trim(),
+          password: asString(data.get('password')),
+          rememberMe: data.get('rememberMe') === 'on',
+        },
+      });
+      await enterWorkspace(payload);
+      form.reset();
+    } catch (error) {
+      const message = error?.status === 429
+        ? 'Sign-in is temporarily unavailable. Wait a moment and try again.'
+        : 'Sign-in failed. Check your details and try again.';
+      showLogin({ message });
+    }
+  }
+
   function bindEvents() {
+    get('#login-form')?.addEventListener('submit', submitLogin);
     get('#compose-button')?.addEventListener('click', () => get('#compose-dialog')?.showModal());
     get('#preferences-button')?.addEventListener('click', () => get('#preferences-dialog')?.showModal());
     get('#compose-form')?.addEventListener('submit', submitCompose);
     get('#preferences-form')?.addEventListener('submit', submitPreferences);
     get('#logout-button')?.addEventListener('click', async () => {
       try { await api.request('/session/logout', { method: 'POST', body: {} }); } catch { /* logout remains local below */ }
-      state.eventStream?.close();
-      windowRef.location?.assign?.('/login');
+      showLogin();
     });
     get('#search-form')?.addEventListener('submit', (event) => {
       event.preventDefault();
@@ -773,31 +917,16 @@ function createWebApplication(documentRef = globalThis.document, windowRef = glo
   async function start() {
     renderTimeZone();
     bindEvents();
-    state.eventStream = createEventStream({
-      windowRef,
-      path: config.eventsPath,
-      onState: setConnectionState,
-      onMail: () => void loadFolder(state.activeFolder),
-      onCalendar: () => {
-        if (state.activeView === 'calendar') void loadCalendar();
-        else announce('Calendar changed. Open Calendar to refresh the view.');
-      },
-      onContacts: () => {
-        if (state.activeView === 'contacts') void loadContacts();
-        else announce('Contacts changed. Open Contacts to refresh the view.');
-      },
-    });
+    setLoginBusy(true);
+    documentRef.body.dataset.authState = 'checking';
     try {
       const payload = await api.request('/session');
-      state.account = payload?.user;
-      const account = asString(state.account?.email, 'Signed-in user');
-      get('#account-label').textContent = account;
-      get('#account-name').textContent = account;
+      await enterWorkspace(payload, { focus: false });
     } catch {
-      // The protected API decides whether the session is valid; do not cache identity locally.
+      // A missing or invalid server-side session returns to the credential form.
+      showLogin({ focus: false });
     }
-    await loadFolder('inbox');
-    return Object.freeze({ state, loadFolder, loadCalendar, loadContacts, setView, selectMessage, close: () => state.eventStream?.close() });
+    return Object.freeze({ state, loadFolder, loadCalendar, loadContacts, setView, selectMessage, showLogin, close: () => state.eventStream?.close() });
   }
 
   return Object.freeze({ state, start, loadFolder, loadCalendar, loadContacts, setView, selectMessage, sanitiseMessageHtml });
@@ -813,6 +942,8 @@ export {
   formatMessageTime,
   normaliseTimeZone,
   parseRealtimeMetadata,
+  readAuthenticatedSession,
+  renderAuthenticationView,
   sanitiseMessageHtml,
 };
 

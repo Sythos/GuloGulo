@@ -107,6 +107,116 @@ a {
   border: 0;
 }
 
+[hidden] {
+  display: none !important;
+}
+
+.login-shell {
+  display: grid;
+  min-height: 100vh;
+  place-items: center;
+  padding: clamp(1rem, 5vw, 4rem);
+  background:
+    radial-gradient(circle at 18% 14%, rgb(217 154 79 / 12%), transparent 30rem),
+    var(--bg);
+}
+
+.login-card {
+  display: grid;
+  grid-template-areas: "art panel";
+  grid-template-columns: minmax(10rem, 0.75fr) minmax(19rem, 1.25fr);
+  width: min(100%, 51rem);
+  min-height: 30rem;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: calc(var(--radius-md) * 1.35);
+  background: var(--surface);
+  box-shadow: var(--shadow);
+}
+
+.login-panel {
+  display: grid;
+  grid-area: panel;
+  align-content: center;
+  padding: clamp(2rem, 5vw, 4rem);
+  border-left: 1px solid var(--border);
+}
+
+.login-panel h1 {
+  max-width: 15ch;
+  margin: 0.35rem 0 0;
+  font-size: clamp(1.8rem, 4vw, 2.65rem);
+  line-height: 1.08;
+}
+
+.login-intro {
+  max-width: 40ch;
+  margin: 0.9rem 0 1.6rem;
+  color: var(--muted);
+}
+
+.login-form {
+  display: grid;
+  gap: 0.55rem;
+}
+
+.login-form > label:not(.checkbox-row) {
+  margin-top: 0.4rem;
+  font-size: 0.82rem;
+  font-weight: 650;
+}
+
+.login-remember {
+  gap: 0.55rem;
+  margin: 0.5rem 0;
+  font-size: 0.82rem;
+}
+
+.login-remember input {
+  width: 1rem;
+  height: 1rem;
+  flex: 0 0 auto;
+  accent-color: var(--accent-strong);
+}
+
+.login-submit {
+  width: 100%;
+  margin-top: 0.25rem;
+}
+
+.login-error {
+  padding: 0.7rem 0.8rem;
+  border: 1px solid var(--danger);
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--danger) 9%, transparent);
+  color: var(--danger);
+}
+
+.login-art {
+  display: grid;
+  grid-area: art;
+  align-content: start;
+  justify-items: start;
+  gap: 1rem;
+  padding: clamp(1.5rem, 4vw, 2.5rem);
+  background: var(--surface-raised);
+}
+
+.login-art img {
+  width: 128px;
+  height: 128px;
+  object-fit: cover;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+}
+
+.login-art p {
+  max-width: 12rem;
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.82rem;
+}
+
 .app-shell {
   min-height: 100vh;
 }
@@ -516,6 +626,7 @@ a {
 }
 
 .search-form input,
+.login-form input:not([type="checkbox"]),
 .modal-form input,
 .modal-form select,
 .modal-form textarea {
@@ -527,6 +638,7 @@ a {
 }
 
 .search-form input,
+.login-form input:not([type="checkbox"]),
 .modal-form input,
 .modal-form select {
   min-height: 2.45rem;
@@ -864,6 +976,30 @@ a {
 }
 
 @media (max-width: 56rem) {
+  .login-shell {
+    align-items: start;
+    padding: 1rem;
+  }
+
+  .login-card {
+    grid-template-areas:
+      "panel"
+      "art";
+    grid-template-columns: minmax(0, 1fr);
+    min-height: 0;
+  }
+
+  .login-panel {
+    padding: clamp(1.5rem, 7vw, 2.5rem);
+    border-bottom: 1px solid var(--border);
+    border-left: 0;
+  }
+
+  .login-art {
+    min-height: 11rem;
+    padding: 1.25rem;
+  }
+
   .app-header {
     min-height: 4.5rem;
     padding: 0.85rem 1rem;

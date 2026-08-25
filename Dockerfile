@@ -65,7 +65,12 @@ RUN set -eux; \
 RUN set -eux; \
     groupadd --system --gid 10001 gulogulo; \
     useradd --system --uid 10001 --gid 10001 --home-dir /nonexistent --shell /usr/sbin/nologin gulogulo; \
-    install -d -o gulogulo -g gulogulo /var/lib/gulogulo/patch
+    install -d -o gulogulo -g gulogulo \
+      /var/lib/gulogulo/patch \
+      /var/lib/gulogulo/runtime \
+      /var/lib/gulogulo/dav \
+      /var/lib/gulogulo/mail \
+      /var/lib/gulogulo/backups
 
 WORKDIR /app
 

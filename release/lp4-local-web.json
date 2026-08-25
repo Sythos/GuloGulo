@@ -1,0 +1,106 @@
+{
+  "spdxLicenseIdentifier": "MIT",
+  "spdxFileCopyrightText": "2026 Sythos (https://www.sythos.net)",
+  "author": "Sythos (https://www.sythos.net)",
+  "schemaVersion": 1,
+  "milestone": "LP4",
+  "proofType": "local_synthetic_web_dav",
+  "networkPolicy": "offline_dependencies",
+  "networkName": "gulogulo-lp4-runtime",
+  "internalNetwork": true,
+  "enableIpv6": true,
+  "ipFamilies": ["ipv4", "ipv6"],
+  "syntheticDataOnly": true,
+  "publicDnsRequired": false,
+  "publicAcmeEnabled": false,
+  "externalDeliveryEnabled": false,
+  "hostNetwork": false,
+  "dockerSocketMounted": false,
+  "hostPortsPublished": false,
+  "credentialsCommitted": false,
+  "credentialsGeneratedAtRuntime": true,
+  "targetPlatforms": ["linux/amd64", "linux/arm64"],
+  "web": {
+    "staticEntry": "/",
+    "apiEntry": "/api/session",
+    "login": "/api/session/login",
+    "logout": "/api/session/logout",
+    "calendar": "/api/calendar/events",
+    "contacts": "/api/contacts",
+    "discovery": "/api/discovery",
+    "sameOriginOnly": true
+  },
+  "session": {
+    "syntheticLoginOnly": true,
+    "cookieName": "__Host-gulogulo-session",
+    "secure": true,
+    "httpOnly": true,
+    "sameSite": "Lax",
+    "csrfOnAuthenticatedMutations": true
+  },
+  "dav": {
+    "authoritativeStore": "dav_service",
+    "contractDouble": "deterministic_in_memory",
+    "persistentContinuityVolume": "lp4-dav-data",
+    "tenantBoundEtags": true,
+    "tenantBoundSyncTokens": true,
+    "conditionalWrites": true,
+    "masterContentAccess": false,
+    "crossTenantContentAccess": false
+  },
+  "discovery": {
+    "caldav": "/.well-known/caldav",
+    "carddav": "/.well-known/carddav",
+    "autoconfig": "/.well-known/autoconfig/mail/config-v1.1.xml",
+    "document": "/.well-known/gulogulo/discovery.json",
+    "httpsDestinationsOnly": true,
+    "tenantBound": true,
+    "secretsIncluded": false
+  },
+  "typedModules": [
+    "src/web/security/csrf.ts",
+    "src/web/security/index.ts",
+    "src/web/security/session-manager.ts",
+    "src/web/content/attachment-policy.ts",
+    "src/web/content/email-content.ts",
+    "src/web/content/timezone.ts",
+    "src/web/realtime/event-normalizer.ts",
+    "src/web/backup/backup-request.ts",
+    "src/dav/caldav/caldav-contract.ts",
+    "src/dav/carddav/carddav-store.ts",
+    "src/dav/carddav/index.ts",
+    "src/dav/discovery/index.ts"
+  ],
+  "typedTests": [
+    "src/web/security/security.test.ts",
+    "src/web/content/attachment-policy.test.ts",
+    "src/web/content/email-content.test.ts",
+    "src/web/content/timezone.test.ts",
+    "src/web/realtime/event-normalizer.test.ts",
+    "src/web/backup/backup-request.test.ts",
+    "src/dav/caldav/caldav-contract.test.ts",
+    "src/dav/carddav/carddav-store.test.ts",
+    "src/dav/discovery/index.test.ts"
+  ],
+  "services": [
+    {
+      "name": "gulogulo-lp4-web",
+      "role": "synthetic static web, session API, tenant-bound DAV, and discovery runtime",
+      "health": "internal HTTP readiness succeeds"
+    },
+    {
+      "name": "gulogulo-lp4-proof-check",
+      "role": "deterministic web, session, DAV, and discovery proof client",
+      "health": "static, API, tenant-scope, ETag, sync-token, and logout probes pass"
+    }
+  ],
+  "volumes": ["lp4-runtime-state", "lp4-dav-data"],
+  "requiredLabels": [
+    "com.sythos.gulogulo.milestone",
+    "com.sythos.gulogulo.proof",
+    "com.sythos.gulogulo.network-policy",
+    "com.sythos.gulogulo.protocols"
+  ],
+  "liveDockerEvidence": "github_actions_required",
+  "status": "implementation_ready"
+}

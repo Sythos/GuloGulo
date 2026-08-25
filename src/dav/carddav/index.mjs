@@ -2,4 +2,5 @@
 // SPDX-FileCopyrightText: 2026 Sythos (https://www.sythos.net)
 // Author: Sythos (https://www.sythos.net)
 
-export * from './carddav-store.mjs';
+// Temporary compatibility bridge. CardDAV exports live in strict TypeScript.
+export * from './index.ts';

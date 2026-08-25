@@ -6,7 +6,8 @@ Author: Sythos (https://www.sythos.net)
 
 # Gulo Gulo web shell
 
-This directory contains the dependency-light HTML5 user surface for Gulo Gulo.
+This directory contains the dependency-light HTML5 login and workspace surface
+for Gulo Gulo.
 The browser source is `src/app.ts`; `dist/app.js` is the generated browser
 module consumed by `index.html`. The source intentionally stays within the
 JavaScript-compatible subset of TypeScript so that the initial shell has no
@@ -17,8 +18,9 @@ runtime or package-manager dependency.
 From the repository root, run:
 
 ```text
-node web/build.mjs
-node web/test/web-shell.test.mjs
+npm run typecheck:web
+npm run build:web
+npm run test:web
 ```
 
 The build is deterministic and uses the repository-pinned TypeScript compiler
@@ -27,11 +29,25 @@ and rebuilt in CI and in the OCI image; it must never be edited by hand.
 
 ## Browser contract
 
-- `index.html` is a semantic shell with keyboard-visible focus, skip navigation,
+- `index.html` starts with a semantic login surface. On desktop the approved
+  Gulo Gulo artwork is rendered at exactly 128 × 128 CSS pixels in the
+  upper-left area and the authentication form is on the right. The form comes
+  first in DOM order and stays first when the narrow layout stacks, preserving
+  keyboard and screen-reader priority.
+- A successful `POST /api/session/login` receives `{email, password,
+  rememberMe}` and must return a scoped `user` plus a fresh `csrfToken`. The
+  client clears the password field and moves focus into the workspace. Invalid
+  credentials and rate limits produce non-enumerating login errors.
+- An initial `GET /api/session` restores only a valid server-side session;
+  `{authenticated: false}` or an incomplete response leaves the login surface
+  active. `POST /api/session/logout` clears the server cookie before returning
+  to the login form.
+- The authenticated workspace has keyboard-visible focus, skip navigation,
   labelled controls, responsive folder/message panes, and native dialogs.
 - `app.ts` uses credentialed same-origin API requests and sends the CSRF token
-  only on state-changing requests. It never stores credentials or bearer tokens
-  in browser storage.
+  only on state-changing requests. The token lives in the document meta element
+  and can be rotated by API responses; credentials, session cookies, and bearer
+  tokens are never copied into browser storage.
 - Mail HTML is parsed into a detached template. scripts, forms, active content,
   event attributes, unsafe URLs, and inline styles are removed before rendering.
 - New-mail updates use a credentialed Server-Sent Events stream. The browser
@@ -49,7 +65,8 @@ and rebuilt in CI and in the OCI image; it must never be edited by hand.
 - `calendar.changed` and `contacts.changed` SSE events carry metadata only; the
   corresponding view refreshes through the protected API after authorization.
 
-The shell intentionally does not implement authentication, authorization,
-session issuance, mailbox access, or message persistence. Those are server-side
-contracts and must remain enforced for every request, regardless of browser
-state or URL parameters.
+The form initiates authentication but does not implement identity verification,
+authorization, session issuance, mailbox access, or message persistence. Those
+remain server-side contracts and must be enforced for every request, regardless
+of browser state or URL parameters. The page never connects directly to LDAP,
+PostgreSQL, mailbox storage, or DAV storage.

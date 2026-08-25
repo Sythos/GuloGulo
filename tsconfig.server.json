@@ -29,6 +29,7 @@
     "src/auth/**/*.ts",
     "src/admin/**/*.ts",
     "src/mail/**/*.ts",
-    "src/dav/discovery/index.mjs"
+    "src/dav/**/*.ts",
+    "src/web/**/*.ts"
   ]
 }
