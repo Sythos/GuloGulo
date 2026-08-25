@@ -37,12 +37,11 @@ check mark means that the repository contains an implementation contract and a
 passing verification gate for that item; deployment evidence is still required
 where the item depends on external infrastructure.
 
-LP5 is currently in AMD64-first validation. Its local operations, patch-state,
-abuse, observability, and bounded-capacity contracts are present, and the
-Compose proof now activates the runtime and check profiles together while
-using the configured tenant context; the integrated GitHub AMD64 Compose proof
-and the final ARM64 artifact gate still have to pass before LP5 is recorded as
-complete.
+LP5 is complete at the bounded synthetic operations and capacity boundary. Its
+local operations, patch-state, abuse, observability, and capacity contracts
+passed the integrated GitHub AMD64 Compose proof, followed by the final ARM64
+artifact and attestation gate. This remains local-proof evidence, not a claim
+of production capacity or external service interoperability.
 
 ### Security
 
@@ -98,7 +97,7 @@ complete.
 - [x] log rotation;
 - [x] alerts;
 - [x] Postfix queue visibility;
-- [ ] bounded LP5 operations and capacity proof (AMD64 first, ARM64 final gate);
+- [x] bounded LP5 operations and capacity proof (AMD64 Compose first, ARM64 final artifact gate);
 - [x] fail-closed disposable patch helper and sanitized read-only patch status;
 - [ ] automatic Rspamd/ClamAV updates;
 - [x] provider-only migration contract, compatibility window, and rollback state machine;

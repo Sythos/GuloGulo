@@ -55,5 +55,5 @@
     { "name": "gulogulo-lp5-maintenance", "role": "disposable allowlisted patch-state helper" }
   ],
   "liveDockerEvidence": "github_actions_required",
-  "status": "implementation_ready"
+  "status": "verified_amd64_and_arm64_artifact"
 }
