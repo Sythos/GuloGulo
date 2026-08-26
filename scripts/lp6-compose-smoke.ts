@@ -4,6 +4,7 @@
 
 import { randomBytes } from 'node:crypto';
 import { spawnSync, type SpawnSyncReturns } from 'node:child_process';
+import { isIP } from 'node:net';
 import { inspect } from 'node:util';
 
 type JsonRecord = Record<string, unknown>;
@@ -50,8 +51,21 @@ function assertSafeContainer(container: JsonRecord, service: string): void {
   for (const mount of (container.Mounts || []) as JsonRecord[]) {
     if (/docker\.sock/iu.test(`${mount.Source || ''} ${mount.Destination || ''}`)) throw new Error(`${service} mounts the Docker socket.`);
   }
-  const networks = Object.values(((container.NetworkSettings || {}) as JsonRecord).Networks as JsonRecord || {}) as JsonRecord[];
-  if (!networks.some((state) => state.IPAddress && state.GlobalIPv6Address)) throw new Error(`${service} is not dual stack.`);
+}
+
+function assertInternalDualStackNetwork(networkDetails: JsonRecord): void {
+  if (networkDetails.Internal !== true || networkDetails.EnableIPv6 !== true) {
+    throw new Error('LP6 network is not internal with IPv6 enabled.');
+  }
+  const ipam = (networkDetails.IPAM || {}) as JsonRecord;
+  const configurations = Array.isArray(ipam.Config) ? ipam.Config as JsonRecord[] : [];
+  const addressFamilies = configurations
+    .map((configuration) => configuration.Subnet)
+    .filter((subnet): subnet is string => typeof subnet === 'string')
+    .map((subnet) => isIP(subnet.split('/', 1)[0]));
+  if (!addressFamilies.includes(4) || !addressFamilies.includes(6)) {
+    throw new Error('LP6 network IPAM does not provide both IPv4 and IPv6 subnets.');
+  }
 }
 
 function assertVolume(container: JsonRecord, destination: string, writable: boolean): void {
@@ -65,6 +79,8 @@ try {
   compose(['--profile', 'lp6', '--profile', 'lp6-check', 'build', '--pull', 'gulogulo-lp6-source-fixture', 'gulogulo-lp6-backup', 'gulogulo-lp6-restore']);
   compose(['--profile', 'lp6', '--profile', 'lp6-check', 'create']);
   created = true;
+  const networkDetails = JSON.parse(execute(['network', 'inspect', network], { capture: true }).stdout)[0] as JsonRecord;
+  assertInternalDualStackNetwork(networkDetails);
   for (const service of ['gulogulo-lp6-source-fixture', 'gulogulo-lp6-backup', 'gulogulo-lp6-restore']) {
     assertSafeContainer(inspectContainer(serviceContainer(service)), service);
   }
@@ -86,8 +102,6 @@ try {
   compose(['--profile', 'lp6', 'run', '--rm', '--no-deps', 'gulogulo-lp6-backup']);
   compose(['--profile', 'lp6-check', 'run', '--rm', '--no-deps', 'gulogulo-lp6-restore']);
 
-  const networkDetails = JSON.parse(execute(['network', 'inspect', network], { capture: true }).stdout)[0] as JsonRecord;
-  if (networkDetails.Internal !== true || networkDetails.EnableIPv6 !== true) throw new Error('LP6 network is not internal dual stack.');
   console.log(JSON.stringify({
     milestone: 'LP6', project, network, networkInternal: true, networkIpv6: true,
     backupIdempotent: true, encryptedMetadataVerified: true, checksumsVerified: true,
