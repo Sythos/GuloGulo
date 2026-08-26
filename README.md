@@ -43,14 +43,18 @@ passed the integrated GitHub AMD64 Compose proof, followed by the final ARM64
 artifact and attestation gate. This remains local-proof evidence, not a claim
 of production capacity or external service interoperability.
 
-LP6 is implemented at the bounded local backup, restore, retention, and
-disaster-recovery boundary. Its synthetic proof is now being validated through
-the AMD64-first GitHub gate, followed by the explicit ARM64 artifact gate;
-the smoke harness checks the internal dual-stack network IPAM before starting
-the one-shot workers, and the source fixture declares its container-internal
-source path explicitly. Until both gates are green, LP6 is not marked as a
-completed release milestone. This is still local synthetic evidence, not a
-production backup, storage, or RPO/RTO claim.
+LP6 is complete at the bounded local backup, restore, retention, and
+disaster-recovery boundary. Its synthetic proof passed the AMD64-first GitHub
+run [32949664266](https://github.com/Sythos/GuloGulo/actions/runs/32949664266),
+followed by the final ARM64 artifact and provenance run
+[32950490366](https://github.com/Sythos/GuloGulo/actions/runs/32950490366). The
+post-merge `main` run [32954486125](https://github.com/Sythos/GuloGulo/actions/runs/32954486125)
+also passed. The smoke harness checks the internal dual-stack network IPAM
+before starting the one-shot workers, the source fixture declares its
+container-internal source path explicitly, and static audit checks that
+binding. This remains local synthetic evidence, not a production backup,
+storage, or RPO/RTO claim. LP7 is the next owner-gated local replacement and
+blue/green rehearsal.
 
 ### Security
 
