@@ -56,6 +56,9 @@ const services = compose.slice(servicesStart, volumesStart);
 const lp6Start = services.search(/^  gulogulo-lp6-source-fixture:$/mu);
 if (lp6Start < 0) fail('LP6 service section is missing');
 const lp6 = services.slice(lp6Start);
+const sourceFixtureEnd = lp6.indexOf('\n  gulogulo-lp6-backup:');
+if (sourceFixtureEnd < 0) fail('LP6 source fixture service boundary is missing');
+const sourceFixture = lp6.slice(0, sourceFixtureEnd);
 for (const marker of [
   'gulogulo-lp6-source-fixture:', 'gulogulo-lp6-backup:', 'gulogulo-lp6-restore:',
   'profiles: ["lp6"]', 'profiles: ["lp6-check"]',
@@ -66,6 +69,7 @@ for (const marker of [
   'com.sythos.gulogulo.milestone: LP6',
   'com.sythos.gulogulo.network-policy: offline_dependencies',
 ]) requireText(lp6, marker);
+requireText(sourceFixture, 'LP6_SOURCE_DIR: /var/lib/gulogulo/lp6-source', 'LP6 source fixture source directory');
 if (/\n\s+ports:/mu.test(lp6)) fail('LP6 services must not publish host ports');
 if (/docker\.sock|network_mode:\s*host|privileged:\s*true/mu.test(lp6)) fail('LP6 topology contains a Docker socket, host network, or privileged service');
 

@@ -1004,6 +1004,8 @@ services:
     # Named Docker volumes are initially root-owned. These disposable local
     # writers need no capabilities and have no host or socket access.
     user: "0:0"
+    environment:
+      LP6_SOURCE_DIR: /var/lib/gulogulo/lp6-source
     volumes:
       - lp6-source-data:/var/lib/gulogulo/lp6-source
     networks:

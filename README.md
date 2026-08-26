@@ -47,7 +47,8 @@ LP6 is implemented at the bounded local backup, restore, retention, and
 disaster-recovery boundary. Its synthetic proof is now being validated through
 the AMD64-first GitHub gate, followed by the explicit ARM64 artifact gate;
 the smoke harness checks the internal dual-stack network IPAM before starting
-the one-shot workers. Until both gates are green, LP6 is not marked as a
+the one-shot workers, and the source fixture declares its container-internal
+source path explicitly. Until both gates are green, LP6 is not marked as a
 completed release milestone. This is still local synthetic evidence, not a
 production backup, storage, or RPO/RTO claim.
 
