@@ -43,6 +43,13 @@ passed the integrated GitHub AMD64 Compose proof, followed by the final ARM64
 artifact and attestation gate. This remains local-proof evidence, not a claim
 of production capacity or external service interoperability.
 
+LP6 is implemented at the bounded local backup, restore, retention, and
+disaster-recovery boundary. Its synthetic proof is now being validated through
+the AMD64-first GitHub gate, followed by the explicit ARM64 artifact gate;
+until both are green, LP6 is not marked as a completed release milestone. This
+is still local synthetic evidence, not a production backup, storage, or RPO/RTO
+claim.
+
 ### Security
 
 - [x] no open relay;
@@ -203,6 +210,7 @@ gulogulo/
 │   ├── lp3-local-mail.md
 │   ├── lp4-local-web.md
 │   ├── lp5-local-operations-capacity.md
+│   ├── lp6-local-backup-dr.md
 │   ├── mail-core.md
 │   ├── rbac-admin-mfa.md
 │   ├── release-readiness.md
@@ -232,6 +240,11 @@ gulogulo/
 │   ├── lp5-compose-audit.ts
 │   ├── lp5-compose-smoke.ts
 │   ├── lp5-proof-check.ts
+│   ├── lp6-source-fixture.ts
+│   ├── lp6-backup-worker.ts
+│   ├── lp6-restore-worker.ts
+│   ├── lp6-compose-audit.ts
+│   ├── lp6-compose-smoke.ts
 │   ├── m10-release-audit.mjs
 │   ├── container-patch.sh
 │   └── runtime, fixture, and patch utilities
@@ -242,15 +255,31 @@ gulogulo/
 │   ├── lp3-local-mail.json
 │   ├── lp4-local-web.json
 │   ├── lp5-local-operations-capacity.json
+│   ├── lp6-local-backup-dr.json
 │   └── v1-release-evidence.template.json
 ├── src/
 │   ├── admin/ (TypeScript RBAC, delegation, quota, and admin tools)
 │   ├── auth/ (TypeScript password, TOTP, WebAuthn, and recovery contracts)
 │   ├── backup/
+│   │   ├── backup-contract.mjs
+│   │   ├── backup-contract.test.mjs
+│   │   ├── backup-contract.ts
+│   │   ├── backup-contract.test.ts
+│   │   ├── index.mjs
+│   │   └── index.ts
 │   ├── db/migrations/
 │   ├── foundation/
 │   ├── integrations/ (TypeScript LDAP, PostgreSQL, tenant, and migration adapters)
 │   ├── lifecycle/
+│   │   ├── account-lifecycle.mjs
+│   │   ├── account-lifecycle.test.mjs
+│   │   ├── account-lifecycle.ts
+│   │   ├── account-lifecycle.test.ts
+│   │   ├── index.mjs
+│   │   ├── retention.mjs
+│   │   ├── retention.test.mjs
+│   │   ├── retention.ts
+│   │   └── retention.test.ts
 │   ├── mail/
 │   │   ├── imap-idle.mjs
 │   │   ├── imap-idle.test.ts
@@ -316,6 +345,7 @@ gulogulo/
 ├── tsconfig.json
 ├── tsconfig.lp4.json
 ├── tsconfig.lp5.json
+├── tsconfig.lp6.json
 └── tsconfig.server.json
 ~~~
 

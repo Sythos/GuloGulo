@@ -989,6 +989,106 @@ services:
       com.sythos.gulogulo.network-policy: offline_dependencies
       com.sythos.gulogulo.protocols: patch_status_only
 
+  # LP6 is an offline, synthetic backup/restore/retention rehearsal. The
+  # source data volume is intentionally absent from the isolated restore
+  # service; restore can consume only a read-only backup volume.
+  gulogulo-lp6-source-fixture:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        INSTALL_DEV: "true"
+    platform: ${GULOGULO_LP6_COMPOSE_PLATFORM:-linux/amd64}
+    profiles: ["lp6-check"]
+    command: ["node", "--experimental-strip-types", "scripts/lp6-source-fixture.ts"]
+    # Named Docker volumes are initially root-owned. These disposable local
+    # writers need no capabilities and have no host or socket access.
+    user: "0:0"
+    volumes:
+      - lp6-source-data:/var/lib/gulogulo/lp6-source
+    networks:
+      - lp6-runtime
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=16m
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    init: true
+    restart: "no"
+    labels:
+      com.sythos.gulogulo.milestone: LP6
+      com.sythos.gulogulo.proof: local_synthetic_backup_source
+      com.sythos.gulogulo.network-policy: offline_dependencies
+
+  gulogulo-lp6-backup:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        INSTALL_DEV: "true"
+    platform: ${GULOGULO_LP6_COMPOSE_PLATFORM:-linux/amd64}
+    profiles: ["lp6"]
+    command: ["node", "--experimental-strip-types", "scripts/lp6-backup-worker.ts"]
+    user: "0:0"
+    environment:
+      LP6_SOURCE_DIR: /var/lib/gulogulo/lp6-source
+      LP6_BACKUP_DIR: /var/lib/gulogulo/lp6-backup
+      LP6_TEST_KEY_B64: ${LP6_TEST_KEY_B64}
+      LP6_KEY_REFERENCE: ${LP6_KEY_REFERENCE:-kms/local-synthetic/lp6-v1}
+    volumes:
+      - lp6-source-data:/var/lib/gulogulo/lp6-source:ro
+      - lp6-backup-data:/var/lib/gulogulo/lp6-backup
+    networks:
+      - lp6-runtime
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=16m
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    init: true
+    restart: "no"
+    labels:
+      com.sythos.gulogulo.milestone: LP6
+      com.sythos.gulogulo.proof: local_synthetic_encrypted_backup
+      com.sythos.gulogulo.network-policy: offline_dependencies
+
+  gulogulo-lp6-restore:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        INSTALL_DEV: "true"
+    platform: ${GULOGULO_LP6_COMPOSE_PLATFORM:-linux/amd64}
+    profiles: ["lp6-check"]
+    command: ["node", "--experimental-strip-types", "scripts/lp6-restore-worker.ts"]
+    user: "0:0"
+    environment:
+      LP6_BACKUP_DIR: /var/lib/gulogulo/lp6-backup
+      LP6_RESTORE_DIR: /var/lib/gulogulo/lp6-restore
+      LP6_TEST_KEY_B64: ${LP6_TEST_KEY_B64}
+    volumes:
+      - lp6-backup-data:/var/lib/gulogulo/lp6-backup:ro
+      - lp6-restore-data:/var/lib/gulogulo/lp6-restore
+    networks:
+      - lp6-runtime
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=16m
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    init: true
+    restart: "no"
+    labels:
+      com.sythos.gulogulo.milestone: LP6
+      com.sythos.gulogulo.proof: local_synthetic_isolated_restore
+      com.sythos.gulogulo.network-policy: offline_dependencies
+
 volumes:
   runtime-state:
     name: ${GULOGULO_VOLUME_PREFIX:-gulogulo}-runtime-state
@@ -1071,6 +1171,15 @@ volumes:
   lp5-patch-state:
     name: ${GULOGULO_VOLUME_PREFIX:-gulogulo}-lp5-patch-state
     external: ${GULOGULO_LP5_VOLUMES_EXTERNAL:-false}
+  lp6-source-data:
+    name: ${GULOGULO_VOLUME_PREFIX:-gulogulo}-lp6-source-data
+    external: ${GULOGULO_LP6_VOLUMES_EXTERNAL:-false}
+  lp6-backup-data:
+    name: ${GULOGULO_VOLUME_PREFIX:-gulogulo}-lp6-backup-data
+    external: ${GULOGULO_LP6_VOLUMES_EXTERNAL:-false}
+  lp6-restore-data:
+    name: ${GULOGULO_VOLUME_PREFIX:-gulogulo}-lp6-restore-data
+    external: ${GULOGULO_LP6_VOLUMES_EXTERNAL:-false}
 
 networks:
   proof-runtime:
@@ -1111,3 +1220,11 @@ networks:
       config:
         - subnet: 172.29.5.0/24
         - subnet: fd42:4755:756c:7035::/64
+  lp6-runtime:
+    name: ${GULOGULO_LP6_NETWORK:-gulogulo-lp6-runtime}
+    internal: true
+    enable_ipv6: true
+    ipam:
+      config:
+        - subnet: 172.29.6.0/24
+        - subnet: fd42:4755:756c:7036::/64
