@@ -1,0 +1,64 @@
+{
+  "spdxLicenseIdentifier": "MIT",
+  "spdxFileCopyrightText": "2026 Sythos (https://www.sythos.net)",
+  "author": "Sythos (https://www.sythos.net)",
+  "schemaVersion": 1,
+  "milestone": "LP6",
+  "proofType": "local_synthetic_backup_restore_retention_dr",
+  "networkPolicy": "offline_dependencies",
+  "networkName": "gulogulo-lp6-runtime",
+  "internalNetwork": true,
+  "enableIpv6": true,
+  "ipFamilies": ["ipv4", "ipv6"],
+  "syntheticDataOnly": true,
+  "hostNetwork": false,
+  "hostPortsPublished": false,
+  "dockerSocketMounted": false,
+  "targetPlatforms": ["linux/amd64", "linux/arm64"],
+  "architectureValidation": {
+    "defaultWorkflowMode": "amd64",
+    "composeProofPlatform": "linux/amd64",
+    "finalWorkflowMode": "multiarch",
+    "finalModePlatforms": ["linux/arm64"],
+    "arm64RequiredBeforeMergeOrRelease": true
+  },
+  "recovery": {
+    "metadataEncryption": "aes-256-gcm",
+    "checksumAlgorithm": "sha256",
+    "retentionDays": 28,
+    "rpoMinutes": 15,
+    "rtoMinutes": 60,
+    "holdsPreventPurge": true,
+    "idempotentPurge": true,
+    "failedRestorePreservesSource": true,
+    "isolatedRestore": true
+  },
+  "canonicalTypedModules": [
+    "src/backup/backup-contract.ts",
+    "src/backup/index.ts",
+    "src/lifecycle/retention.ts",
+    "src/lifecycle/account-lifecycle.ts"
+  ],
+  "compatibilityBridges": [
+    "src/backup/backup-contract.mjs",
+    "src/backup/index.mjs",
+    "src/lifecycle/retention.mjs",
+    "src/lifecycle/account-lifecycle.mjs"
+  ],
+  "scripts": [
+    "scripts/lp6-source-fixture.ts",
+    "scripts/lp6-backup-worker.ts",
+    "scripts/lp6-restore-worker.ts",
+    "scripts/lp6-compose-audit.ts",
+    "scripts/lp6-compose-smoke.ts"
+  ],
+  "services": [
+    { "name": "gulogulo-lp6-source-fixture", "role": "synthetic persistent source writer" },
+    { "name": "gulogulo-lp6-backup", "role": "encrypted metadata and checksum backup worker" },
+    { "name": "gulogulo-lp6-restore", "role": "isolated restore and DR rehearsal worker" }
+  ],
+  "volumes": ["lp6-source-data", "lp6-backup-data", "lp6-restore-data"],
+  "externalPersistentVolumes": true,
+  "liveDockerEvidence": "github_actions_required",
+  "status": "implementation_ready"
+}

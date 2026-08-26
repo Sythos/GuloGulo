@@ -39,6 +39,8 @@
     "test:lp5": "npm run typecheck:server && npx tsc --project tsconfig.lp5.json && node --experimental-strip-types src/capacity/capacity-contract.test.ts && node --experimental-strip-types src/ops/patch/status.test.ts && node --experimental-strip-types scripts/lp5-compose-audit.ts",
     "test:lp5:docker": "node --experimental-strip-types scripts/lp5-compose-smoke.ts",
     "test:lp5:capacity": "node --experimental-strip-types scripts/lp5-capacity-smoke.ts",
+    "test:lp6": "npx tsc --project tsconfig.lp6.json && node --experimental-strip-types src/backup/backup-contract.test.ts && node --experimental-strip-types src/lifecycle/retention.test.ts && node --experimental-strip-types src/lifecycle/account-lifecycle.test.ts && node --experimental-strip-types scripts/lp6-compose-audit.ts",
+    "test:lp6:docker": "node --experimental-strip-types scripts/lp6-compose-smoke.ts",
     "test:m2:postgres": "node --experimental-strip-types src/integrations/postgres.integration.test.ts"
   },
   "dependencies": {
