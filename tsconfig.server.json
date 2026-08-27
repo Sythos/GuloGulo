@@ -32,6 +32,7 @@
     "src/ops/**/*.ts",
     "src/observability/**/*.ts",
     "src/capacity/**/*.ts",
+    "src/upgrade/**/*.ts",
     "src/dav/**/*.ts",
     "src/web/**/*.ts"
   ]

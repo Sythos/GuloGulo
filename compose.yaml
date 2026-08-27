@@ -1091,6 +1091,211 @@ services:
       com.sythos.gulogulo.proof: local_synthetic_isolated_restore
       com.sythos.gulogulo.network-policy: offline_dependencies
 
+  # LP7 is a bounded replacement rehearsal. Blue and green run the same
+  # deterministic runtime against the same durable volumes; the proof runner
+  # changes the serving slot by stopping one container and verifies rollback
+  # without copying mailbox, queue, DAV, or backup state through the app.
+  # There is deliberately no host port or Docker socket in this topology.
+  gulogulo-lp7-blue:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        INSTALL_DEV: "true"
+    platform: ${GULOGULO_LP7_COMPOSE_PLATFORM:-linux/amd64}
+    profiles: ["lp7"]
+    command: ["node", "--experimental-strip-types", "scripts/lp4-web-runtime.ts"]
+    environment:
+      APP_ENV: local-proof
+      GULOGULO_ENV: local-proof
+      GULOGULO_SERVICE_NAME: gulogulo-lp7-blue
+      GULOGULO_VERSION: ${GULOGULO_LP7_BLUE_VERSION:-0.0.0-blue}
+      GULOGULO_BUILD_DIGEST: ${GULOGULO_LP7_BLUE_DIGEST:-sha256:lp7-blue}
+      HOST: "::"
+      PORT: "8080"
+      LP4_LOGIN_EMAIL: ${LP7_LOGIN_EMAIL}
+      LP4_LOGIN_PASSWORD: ${LP7_LOGIN_PASSWORD}
+      LP4_TENANT_ID: ${LP7_TENANT_ID:-acme}
+      LP4_TENANT_DOMAIN: ${LP7_TENANT_DOMAIN:-example.test}
+      LP4_USER_ID: ${LP7_USER_ID:-alice}
+      LP4_DAV_STATE_DIR: /var/lib/gulogulo/dav
+    volumes:
+      - lp7-runtime-state:/var/lib/gulogulo/runtime
+      - lp7-mail-data:/var/lib/gulogulo/mail
+      - lp7-dav-data:/var/lib/gulogulo/dav
+      - lp7-queue-data:/var/lib/gulogulo/queue
+      - lp7-backup-data:/var/lib/gulogulo/backups
+    networks:
+      lp7-runtime:
+        aliases:
+          - gulogulo-lp7-blue
+    expose:
+      - "8080"
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=64m
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    pids_limit: 256
+    deploy:
+      resources:
+        limits:
+          cpus: "1.00"
+          memory: 512M
+          pids: 256
+    init: true
+    restart: "no"
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - "fetch('http://[::1]:'+(process.env.PORT||8080)+'/health/ready').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"
+      interval: 3s
+      timeout: 3s
+      start_period: 5s
+      retries: 30
+    labels:
+      com.sythos.gulogulo.milestone: LP7
+      com.sythos.gulogulo.proof: local_synthetic_replacement_blue
+      com.sythos.gulogulo.network-policy: offline_dependencies
+      com.sythos.gulogulo.upgrade-track: blue
+      com.sythos.gulogulo.protocols: http,session,caldav,carddav,queue
+
+  gulogulo-lp7-green:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        INSTALL_DEV: "true"
+    platform: ${GULOGULO_LP7_COMPOSE_PLATFORM:-linux/amd64}
+    profiles: ["lp7"]
+    command: ["node", "--experimental-strip-types", "scripts/lp4-web-runtime.ts"]
+    environment:
+      APP_ENV: local-proof
+      GULOGULO_ENV: local-proof
+      GULOGULO_SERVICE_NAME: gulogulo-lp7-green
+      GULOGULO_VERSION: ${GULOGULO_LP7_GREEN_VERSION:-0.0.0-green}
+      GULOGULO_BUILD_DIGEST: ${GULOGULO_LP7_GREEN_DIGEST:-sha256:lp7-green}
+      HOST: "::"
+      PORT: "8080"
+      LP4_LOGIN_EMAIL: ${LP7_LOGIN_EMAIL}
+      LP4_LOGIN_PASSWORD: ${LP7_LOGIN_PASSWORD}
+      LP4_TENANT_ID: ${LP7_TENANT_ID:-acme}
+      LP4_TENANT_DOMAIN: ${LP7_TENANT_DOMAIN:-example.test}
+      LP4_USER_ID: ${LP7_USER_ID:-alice}
+      LP4_DAV_STATE_DIR: /var/lib/gulogulo/dav
+    volumes:
+      - lp7-runtime-state:/var/lib/gulogulo/runtime
+      - lp7-mail-data:/var/lib/gulogulo/mail
+      - lp7-dav-data:/var/lib/gulogulo/dav
+      - lp7-queue-data:/var/lib/gulogulo/queue
+      - lp7-backup-data:/var/lib/gulogulo/backups
+    networks:
+      lp7-runtime:
+        aliases:
+          - gulogulo-lp7-green
+    expose:
+      - "8080"
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=64m
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    pids_limit: 256
+    deploy:
+      resources:
+        limits:
+          cpus: "1.00"
+          memory: 512M
+          pids: 256
+    init: true
+    restart: "no"
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - "fetch('http://[::1]:'+(process.env.PORT||8080)+'/health/ready').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"
+      interval: 3s
+      timeout: 3s
+      start_period: 5s
+      retries: 30
+    labels:
+      com.sythos.gulogulo.milestone: LP7
+      com.sythos.gulogulo.proof: local_synthetic_replacement_green
+      com.sythos.gulogulo.network-policy: offline_dependencies
+      com.sythos.gulogulo.upgrade-track: green
+      com.sythos.gulogulo.protocols: http,session,caldav,carddav,queue
+
+  gulogulo-lp7-proof-check:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        INSTALL_DEV: "true"
+    platform: ${GULOGULO_LP7_COMPOSE_PLATFORM:-linux/amd64}
+    profiles: ["lp7-check"]
+    command: ["node", "--experimental-strip-types", "scripts/lp7-proof-check.ts"]
+    user: "0:0"
+    environment:
+      LP7_BLUE_BASE_URL: http://gulogulo-lp7-blue:8080
+      LP7_GREEN_BASE_URL: http://gulogulo-lp7-green:8080
+      LP7_BLUE_VERSION: ${GULOGULO_LP7_BLUE_VERSION:-0.0.0-blue}
+      LP7_GREEN_VERSION: ${GULOGULO_LP7_GREEN_VERSION:-0.0.0-green}
+      LP7_BLUE_DIGEST: ${GULOGULO_LP7_BLUE_DIGEST:-sha256:lp7-blue}
+      LP7_GREEN_DIGEST: ${GULOGULO_LP7_GREEN_DIGEST:-sha256:lp7-green}
+      LP7_LOGIN_EMAIL: ${LP7_LOGIN_EMAIL}
+      LP7_LOGIN_PASSWORD: ${LP7_LOGIN_PASSWORD}
+      LP7_TENANT_ID: ${LP7_TENANT_ID:-acme}
+      LP7_USER_ID: ${LP7_USER_ID:-alice}
+      LP7_DAV_STATE_DIR: /var/lib/gulogulo/dav
+      LP7_PROOF_STATE_DIR: /var/lib/gulogulo/lp7
+      LP7_RUNTIME_STATE_DIR: /var/lib/gulogulo/runtime
+      LP7_MAIL_STATE_DIR: /var/lib/gulogulo/mail
+      LP7_QUEUE_STATE_DIR: /var/lib/gulogulo/queue
+      LP7_BACKUP_STATE_DIR: /var/lib/gulogulo/backups
+    volumes:
+      - lp7-runtime-state:/var/lib/gulogulo/runtime
+      - lp7-mail-data:/var/lib/gulogulo/mail
+      - lp7-dav-data:/var/lib/gulogulo/dav:ro
+      - lp7-queue-data:/var/lib/gulogulo/queue
+      - lp7-backup-data:/var/lib/gulogulo/backups
+      - lp7-proof-state:/var/lib/gulogulo/lp7
+    networks:
+      - lp7-runtime
+    depends_on:
+      gulogulo-lp7-blue:
+        condition: service_healthy
+      gulogulo-lp7-green:
+        condition: service_healthy
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=32m
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    pids_limit: 128
+    deploy:
+      resources:
+        limits:
+          cpus: "0.50"
+          memory: 256M
+          pids: 128
+    init: true
+    restart: "no"
+    labels:
+      com.sythos.gulogulo.milestone: LP7
+      com.sythos.gulogulo.proof: local_synthetic_replacement_proof_check
+      com.sythos.gulogulo.network-policy: offline_dependencies
+      com.sythos.gulogulo.upgrade-track: checker
+      com.sythos.gulogulo.protocols: http,session,caldav,carddav,queue,rollback
+
 volumes:
   runtime-state:
     name: ${GULOGULO_VOLUME_PREFIX:-gulogulo}-runtime-state
@@ -1182,6 +1387,24 @@ volumes:
   lp6-restore-data:
     name: ${GULOGULO_VOLUME_PREFIX:-gulogulo}-lp6-restore-data
     external: ${GULOGULO_LP6_VOLUMES_EXTERNAL:-false}
+  lp7-runtime-state:
+    name: ${GULOGULO_VOLUME_PREFIX:-gulogulo}-lp7-runtime-state
+    external: ${GULOGULO_LP7_VOLUMES_EXTERNAL:-false}
+  lp7-mail-data:
+    name: ${GULOGULO_VOLUME_PREFIX:-gulogulo}-lp7-mail-data
+    external: ${GULOGULO_LP7_VOLUMES_EXTERNAL:-false}
+  lp7-dav-data:
+    name: ${GULOGULO_VOLUME_PREFIX:-gulogulo}-lp7-dav-data
+    external: ${GULOGULO_LP7_VOLUMES_EXTERNAL:-false}
+  lp7-queue-data:
+    name: ${GULOGULO_VOLUME_PREFIX:-gulogulo}-lp7-queue-data
+    external: ${GULOGULO_LP7_VOLUMES_EXTERNAL:-false}
+  lp7-backup-data:
+    name: ${GULOGULO_VOLUME_PREFIX:-gulogulo}-lp7-backup-data
+    external: ${GULOGULO_LP7_VOLUMES_EXTERNAL:-false}
+  lp7-proof-state:
+    name: ${GULOGULO_VOLUME_PREFIX:-gulogulo}-lp7-proof-state
+    external: ${GULOGULO_LP7_VOLUMES_EXTERNAL:-false}
 
 networks:
   proof-runtime:
@@ -1230,3 +1453,11 @@ networks:
       config:
         - subnet: 172.29.6.0/24
         - subnet: fd42:4755:756c:7036::/64
+  lp7-runtime:
+    name: ${GULOGULO_LP7_NETWORK:-gulogulo-lp7-runtime}
+    internal: true
+    enable_ipv6: true
+    ipam:
+      config:
+        - subnet: 172.29.7.0/24
+        - subnet: fd42:4755:756c:7037::/64

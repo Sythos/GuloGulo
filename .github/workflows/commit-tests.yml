@@ -9,7 +9,7 @@ on:
   workflow_dispatch:
     inputs:
       architecture_mode:
-        description: Run the fast amd64 gate or the final arm64-only gate
+        description: Run the fast amd64 gate or the final amd64+arm64 artifact gate
         type: choice
         required: false
         default: amd64

@@ -1,0 +1,120 @@
+{
+  "spdxLicenseIdentifier": "MIT",
+  "spdxFileCopyrightText": "2026 Sythos (https://www.sythos.net)",
+  "author": "Sythos (https://www.sythos.net)",
+  "schemaVersion": 1,
+  "milestone": "LP7",
+  "proofType": "local_synthetic_docker_replacement_blue_green",
+  "networkPolicy": "offline_dependencies",
+  "networkName": "gulogulo-lp7-runtime",
+  "internalNetwork": true,
+  "enableIpv6": true,
+  "ipFamilies": ["ipv4", "ipv6"],
+  "syntheticDataOnly": true,
+  "publicDnsRequired": false,
+  "publicAcmeEnabled": false,
+  "externalDeliveryEnabled": false,
+  "hostNetwork": false,
+  "hostPortsPublished": false,
+  "dockerSocketMounted": false,
+  "externalPersistentVolumes": true,
+  "targetPlatforms": ["linux/amd64", "linux/arm64"],
+  "architectureValidation": {
+    "defaultWorkflowMode": "amd64",
+    "composeProofPlatform": "linux/amd64",
+    "functionalProofPlatform": "linux/amd64",
+    "finalWorkflowMode": "multiarch",
+    "finalModePlatforms": ["linux/amd64", "linux/arm64"],
+    "arm64RequiredBeforeMergeOrRelease": true,
+    "multiarchFunctionalProof": false,
+    "multiarchEvidence": "artifact_and_provenance_only"
+  },
+  "architecturePolicy": {
+    "functionalDefault": "linux/amd64",
+    "multiarchGate": "linux/amd64_and_linux/arm64_artifact_and_oci_provenance_only",
+    "arm64FunctionalComposeProof": false
+  },
+  "upgrade": {
+    "strategy": "docker_replacement_and_blue_green",
+    "sourceTrack": "blue",
+    "targetTrack": "green",
+    "sourceVersion": "0.0.0-blue",
+    "targetVersion": "0.0.0-green",
+    "compatibilityWindow": "forward_and_backward",
+    "migrationPhases": ["expand", "backfill", "switch", "contract"],
+    "readinessGatedCutover": true,
+    "connectionDrainRequired": true,
+    "rollbackSupported": true,
+    "rollbackKeepsBlueServing": true,
+    "noDestructiveSchemaCleanup": true,
+    "finalizeRequiresObservationAndRestoreCheck": true,
+    "syntheticTrafficDuringCutover": true,
+    "imapIdleReconnectRequired": true,
+    "smtpQueueHandoffRequired": true,
+    "externalStateReferences": [
+      "external-postgresql",
+      "external-ldap",
+      "mail-data",
+      "dav-data",
+      "backup-data",
+      "persistent-mail-queue"
+    ],
+    "kubernetes": {
+      "stableService": "gulogulo-web",
+      "blueDeployment": "gulogulo-blue",
+      "greenDeployment": "gulogulo-green",
+      "readinessGated": true,
+      "maxUnavailable": 0,
+      "maxSurge": 1,
+      "podDisruptionBudgetMinAvailable": 1,
+      "terminationGracePeriodSeconds": 60,
+      "drainHooks": true,
+      "rollback": true
+    }
+  },
+  "continuity": {
+    "sharedVolumeReplacement": true,
+    "queueStatePreserved": true,
+    "mailStatePreserved": true,
+    "davStatePreserved": true,
+    "backupStatePreserved": true,
+    "duplicateDelivery": false,
+    "syntheticTrafficLoss": false,
+    "rollbackPreservesForwardCompatibleData": true
+  },
+  "scripts": [
+    "scripts/lp7-compose-audit.ts",
+    "scripts/lp7-proof-check.ts",
+    "scripts/lp7-compose-smoke.ts"
+  ],
+  "services": [
+    {
+      "name": "gulogulo-lp7-blue",
+      "role": "synthetic source deployment with durable external state"
+    },
+    {
+      "name": "gulogulo-lp7-green",
+      "role": "readiness-gated target deployment sharing durable external state"
+    },
+    {
+      "name": "gulogulo-lp7-proof-check",
+      "role": "internal traffic, continuity, cutover, and rollback proof client"
+    }
+  ],
+  "volumes": [
+    "lp7-runtime-state",
+    "lp7-mail-data",
+    "lp7-dav-data",
+    "lp7-queue-data",
+    "lp7-backup-data",
+    "lp7-proof-state"
+  ],
+  "requiredLabels": [
+    "com.sythos.gulogulo.milestone",
+    "com.sythos.gulogulo.proof",
+    "com.sythos.gulogulo.network-policy",
+    "com.sythos.gulogulo.upgrade-track"
+  ],
+  "liveDockerEvidence": "github_actions_required",
+  "status": "implementation_ready"
+}

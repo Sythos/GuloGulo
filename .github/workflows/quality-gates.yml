@@ -12,7 +12,7 @@ on:
         required: true
         type: string
       architecture_mode:
-        description: Fast amd64 validation by default; select multiarch for the final arm64 gate
+        description: Fast amd64 validation by default; select multiarch for the final amd64+arm64 artifact gate
         required: false
         default: amd64
         type: string
@@ -24,7 +24,7 @@ jobs:
     timeout-minutes: 60
     env:
       ARCHITECTURE_MODE: ${{ inputs.architecture_mode || 'amd64' }}
-      BUILD_PLATFORMS: ${{ inputs.architecture_mode == 'multiarch' && 'linux/arm64' || 'linux/amd64' }}
+      BUILD_PLATFORMS: ${{ inputs.architecture_mode == 'multiarch' && 'linux/amd64,linux/arm64' || 'linux/amd64' }}
     steps:
       - name: Checkout
         uses: actions/checkout@v6
@@ -95,12 +95,14 @@ jobs:
           test -f doc/lp4-local-web.md
           test -f doc/lp5-local-operations-capacity.md
           test -f doc/lp6-local-backup-dr.md
+          test -f doc/lp7-local-upgrade.md
           test -f release/v1-release-evidence.template.json
           test -f release/lp2-local-services.json
           test -f release/lp3-local-mail.json
           test -f release/lp4-local-web.json
           test -f release/lp5-local-operations-capacity.json
           test -f release/lp6-local-backup-dr.json
+          test -f release/lp7-local-upgrade.json
           test -f scripts/m10-release-audit.mjs
           test -f scripts/lp2-compose-audit.mjs
           test -f scripts/lp2-compose-smoke.mjs
@@ -123,6 +125,10 @@ jobs:
           test -f scripts/lp6-compose-audit.ts
           test -f scripts/lp6-compose-smoke.ts
           test -f tsconfig.lp6.json
+          test -f scripts/lp7-compose-audit.ts
+          test -f scripts/lp7-proof-check.ts
+          test -f scripts/lp7-compose-smoke.ts
+          test -f tsconfig.lp7.json
           test -f src/backup/backup-contract.ts
           test -f src/backup/backup-contract.test.ts
           test -f src/backup/index.ts
@@ -293,6 +299,13 @@ jobs:
           test -f src/upgrade/rollout.mjs
           test -f src/upgrade/index.mjs
           test -f src/upgrade/upgrade-contract.test.mjs
+          test -f src/upgrade/compatibility.ts
+          test -f src/upgrade/control-plane.ts
+          test -f src/upgrade/rollout.ts
+          test -f src/upgrade/index.ts
+          test -f src/upgrade/upgrade-contract.test.ts
+          test -f src/upgrade/rehearsal.ts
+          test -f src/upgrade/rehearsal.test.ts
           test -f src/release/index.mjs
           test -f src/release/release-evidence.mjs
           test -f src/release/release-evidence.test.mjs
@@ -317,6 +330,14 @@ jobs:
           grep -Fq 'profiles: ["lp2-check"]' compose.yaml
           grep -Fq 'profiles: ["lp3"]' compose.yaml
           grep -Fq 'profiles: ["lp3-check"]' compose.yaml
+          grep -Fq 'gulogulo-lp7-blue' compose.yaml
+          grep -Fq 'gulogulo-lp7-green' compose.yaml
+          grep -Fq 'gulogulo-lp7-proof-check' compose.yaml
+          grep -Fq 'profiles: ["lp7"]' compose.yaml
+          grep -Fq 'profiles: ["lp7-check"]' compose.yaml
+          grep -Fq 'platform: ${GULOGULO_LP7_COMPOSE_PLATFORM:-linux/amd64}' compose.yaml
+          grep -Fq 'lp7-runtime:' compose.yaml
+          grep -Fq 'lp7-dav-data:/var/lib/gulogulo/dav' compose.yaml
 
       - name: Validate MIT and SPDX metadata
         shell: bash
@@ -355,6 +376,16 @@ jobs:
             scripts/lp6-restore-worker.ts \
             scripts/lp6-compose-audit.ts \
             scripts/lp6-compose-smoke.ts \
+            scripts/lp7-compose-audit.ts \
+            scripts/lp7-proof-check.ts \
+            scripts/lp7-compose-smoke.ts \
+            src/upgrade/compatibility.ts \
+            src/upgrade/control-plane.ts \
+            src/upgrade/rollout.ts \
+            src/upgrade/index.ts \
+            src/upgrade/upgrade-contract.test.ts \
+            src/upgrade/rehearsal.ts \
+            src/upgrade/rehearsal.test.ts \
             scripts/m10-release-audit.mjs \
             .gitignore \
             .github/workflows/commit-tests.yml \
@@ -438,6 +469,8 @@ jobs:
           grep -Fq 'Author: Sythos (https://www.sythos.net)' tsconfig.lp4.json
           grep -Fq 'SPDX-License-Identifier: MIT' tsconfig.lp5.json
           grep -Fq 'Author: Sythos (https://www.sythos.net)' tsconfig.lp5.json
+          grep -Fq 'SPDX-License-Identifier: MIT' tsconfig.lp7.json
+          grep -Fq 'Author: Sythos (https://www.sythos.net)' tsconfig.lp7.json
           grep -Fq 'SPDX-License-Identifier: MIT' web/README.md
           grep -Fq 'Author: Sythos (https://www.sythos.net)' web/README.md
           grep -Fq 'SPDX-License-Identifier: MIT' assets/README.md
@@ -499,18 +532,37 @@ jobs:
           grep -Fq 'profiles: ["lp6"]' compose.yaml
           grep -Fq 'profiles: ["lp6-check"]' compose.yaml
           grep -Fq 'lp6-backup-data:/var/lib/gulogulo/lp6-backup:ro' compose.yaml
+          grep -Fq 'gulogulo-lp7-blue' compose.yaml
+          grep -Fq 'gulogulo-lp7-green' compose.yaml
+          grep -Fq 'gulogulo-lp7-proof-check' compose.yaml
+          grep -Fq 'profiles: ["lp7"]' compose.yaml
+          grep -Fq 'profiles: ["lp7-check"]' compose.yaml
+          grep -Fq 'lp7-queue-data:/var/lib/gulogulo/queue' compose.yaml
+          grep -Fq 'lp7-backup-data:/var/lib/gulogulo/backups' compose.yaml
+          grep -Fq 'external: ${GULOGULO_LP7_VOLUMES_EXTERNAL:-false}' compose.yaml
+          grep -Fq '172.29.7.0/24' compose.yaml
+          grep -Fq 'fd42:4755:756c:7037::/64' compose.yaml
+          grep -Fq 'multiarchFunctionalProof' release/lp7-local-upgrade.json
+          grep -Fq 'artifact_and_provenance_only' release/lp7-local-upgrade.json
           grep -Fq "BACKUP_ENCRYPTION_ALGORITHM = 'aes-256-gcm'" src/backup/backup-contract.ts
           grep -Fq "export * from './backup-contract.ts'" src/backup/backup-contract.mjs
           grep -Fq 'DEFAULT_TRASH_RETENTION_DAYS = 28' src/lifecycle/retention.ts
           grep -Fq "export * from './retention.ts'" src/lifecycle/retention.mjs
-          grep -Fq 'MIGRATION_PHASES' src/upgrade/compatibility.mjs
-          grep -Fq 'createSchemaMigrationPlan' src/upgrade/compatibility.mjs
-          grep -Fq 'createUpgradeController' src/upgrade/control-plane.mjs
-          grep -Fq 'TENANT_CONTROL_PLANE_FORBIDDEN' src/upgrade/control-plane.mjs
-          grep -Fq 'PREFLIGHT_FAILED' src/upgrade/control-plane.mjs
-          grep -Fq 'createDockerReplacementPlan' src/upgrade/rollout.mjs
-          grep -Fq 'createKubernetesBlueGreenPlan' src/upgrade/rollout.mjs
-          grep -Fq 'ACTION_NOT_ALLOWLISTED' src/upgrade/rollout.mjs
+          grep -Fq 'MIGRATION_PHASES' src/upgrade/compatibility.ts
+          grep -Fq 'createSchemaMigrationPlan' src/upgrade/compatibility.ts
+          grep -Fq "export * from './compatibility.ts'" src/upgrade/compatibility.mjs
+          grep -Fq 'createUpgradeController' src/upgrade/control-plane.ts
+          grep -Fq 'TENANT_CONTROL_PLANE_FORBIDDEN' src/upgrade/control-plane.ts
+          grep -Fq 'PREFLIGHT_FAILED' src/upgrade/control-plane.ts
+          grep -Fq "export * from './control-plane.ts'" src/upgrade/control-plane.mjs
+          grep -Fq 'createDockerReplacementPlan' src/upgrade/rollout.ts
+          grep -Fq 'createKubernetesBlueGreenPlan' src/upgrade/rollout.ts
+          grep -Fq 'ACTION_NOT_ALLOWLISTED' src/upgrade/rollout.ts
+          grep -Fq "export * from './rollout.ts'" src/upgrade/rollout.mjs
+          grep -Fq 'createDockerReplacementRehearsal' src/upgrade/rehearsal.ts
+          grep -Fq 'createKubernetesBlueGreenRehearsal' src/upgrade/rehearsal.ts
+          grep -Fq 'runDockerReplacementRehearsal' src/upgrade/rehearsal.ts
+          grep -Fq 'runKubernetesBlueGreenRehearsal' src/upgrade/rehearsal.ts
           grep -Fq 'REQUIRED_SECTION30_ITEMS' src/release/release-evidence.mjs
           grep -Fq 'M10_REVIEWS_INCOMPLETE' src/release/release-evidence.mjs
           grep -Fq 'productionReady' src/release/release-evidence.mjs
@@ -551,6 +603,7 @@ jobs:
           node -e "const t=require('./release/lp4-local-web.json'); if (t.spdxLicenseIdentifier !== 'MIT' || t.author !== 'Sythos (https://www.sythos.net)' || t.milestone !== 'LP4' || t.proofType !== 'local_synthetic_web_dav' || t.networkPolicy !== 'offline_dependencies' || t.internalNetwork !== true || t.enableIpv6 !== true || t.ipFamilies?.join(',') !== 'ipv4,ipv6' || t.syntheticDataOnly !== true || t.publicDnsRequired !== false || t.publicAcmeEnabled !== false || t.hostPortsPublished !== false || t.dockerSocketMounted !== false || t.credentialsCommitted !== false || t.web?.sameOriginOnly !== true || t.session?.csrfOnAuthenticatedMutations !== true || t.dav?.tenantBoundEtags !== true || t.dav?.tenantBoundSyncTokens !== true || t.dav?.masterContentAccess !== false || t.discovery?.tenantBound !== true || t.architectureValidation?.defaultWorkflowMode !== 'amd64' || t.architectureValidation?.finalWorkflowMode !== 'multiarch' || t.architectureValidation?.finalModePlatforms?.join(',') !== 'linux/arm64' || t.architectureValidation?.arm64RequiredBeforeMergeOrRelease !== true || t.architectureValidation?.composeProofPlatform !== 'linux/amd64') process.exit(1)"
           node -e "const t=require('./release/lp5-local-operations-capacity.json'); if (t.spdxLicenseIdentifier !== 'MIT' || t.author !== 'Sythos (https://www.sythos.net)' || t.milestone !== 'LP5' || t.proofType !== 'local_synthetic_operations_capacity' || t.networkPolicy !== 'offline_dependencies' || t.internalNetwork !== true || t.enableIpv6 !== true || t.ipFamilies?.join(',') !== 'ipv4,ipv6' || t.hostPortsPublished !== false || t.dockerSocketMounted !== false || t.capacity?.claim !== 'bounded_local_proof_only' || t.capacity?.amd64Budget?.activeIdleConnections !== 8 || t.architectureValidation?.defaultWorkflowMode !== 'amd64' || t.architectureValidation?.finalWorkflowMode !== 'multiarch' || t.architectureValidation?.finalModePlatforms?.join(',') !== 'linux/arm64' || t.architectureValidation?.arm64RequiredBeforeMergeOrRelease !== true) process.exit(1)"
           node -e "const t=require('./release/lp6-local-backup-dr.json'); if (t.spdxLicenseIdentifier !== 'MIT' || t.author !== 'Sythos (https://www.sythos.net)' || t.milestone !== 'LP6' || t.proofType !== 'local_synthetic_backup_restore_retention_dr' || t.networkPolicy !== 'offline_dependencies' || t.internalNetwork !== true || t.enableIpv6 !== true || t.ipFamilies?.join(',') !== 'ipv4,ipv6' || t.syntheticDataOnly !== true || t.hostPortsPublished !== false || t.dockerSocketMounted !== false || t.recovery?.metadataEncryption !== 'aes-256-gcm' || t.recovery?.checksumAlgorithm !== 'sha256' || t.recovery?.retentionDays !== 28 || t.recovery?.rpoMinutes !== 15 || t.recovery?.rtoMinutes !== 60 || t.recovery?.failedRestorePreservesSource !== true || t.recovery?.holdsPreventPurge !== true || t.recovery?.idempotentPurge !== true || t.architectureValidation?.defaultWorkflowMode !== 'amd64' || t.architectureValidation?.composeProofPlatform !== 'linux/amd64' || t.architectureValidation?.finalWorkflowMode !== 'multiarch' || t.architectureValidation?.finalModePlatforms?.join(',') !== 'linux/arm64' || t.architectureValidation?.arm64RequiredBeforeMergeOrRelease !== true) process.exit(1)"
+          node -e "const t=require('./release/lp7-local-upgrade.json'); if (t.spdxLicenseIdentifier !== 'MIT' || t.author !== 'Sythos (https://www.sythos.net)' || t.milestone !== 'LP7' || t.proofType !== 'local_synthetic_docker_replacement_blue_green' || t.networkPolicy !== 'offline_dependencies' || t.internalNetwork !== true || t.enableIpv6 !== true || t.ipFamilies?.join(',') !== 'ipv4,ipv6' || t.syntheticDataOnly !== true || t.publicDnsRequired !== false || t.publicAcmeEnabled !== false || t.externalDeliveryEnabled !== false || t.hostNetwork !== false || t.hostPortsPublished !== false || t.dockerSocketMounted !== false || t.externalPersistentVolumes !== true || t.architectureValidation?.defaultWorkflowMode !== 'amd64' || t.architectureValidation?.composeProofPlatform !== 'linux/amd64' || t.architectureValidation?.functionalProofPlatform !== 'linux/amd64' || t.architectureValidation?.finalWorkflowMode !== 'multiarch' || t.architectureValidation?.finalModePlatforms?.join(',') !== 'linux/amd64,linux/arm64' || t.architectureValidation?.arm64RequiredBeforeMergeOrRelease !== true || t.architectureValidation?.multiarchFunctionalProof !== false || t.architectureValidation?.multiarchEvidence !== 'artifact_and_provenance_only' || t.upgrade?.strategy !== 'docker_replacement_and_blue_green' || t.upgrade?.readinessGatedCutover !== true || t.upgrade?.connectionDrainRequired !== true || t.upgrade?.rollbackSupported !== true || t.upgrade?.rollbackKeepsBlueServing !== true || t.upgrade?.noDestructiveSchemaCleanup !== true || t.upgrade?.finalizeRequiresObservationAndRestoreCheck !== true || t.upgrade?.imapIdleReconnectRequired !== true || t.upgrade?.smtpQueueHandoffRequired !== true || t.upgrade?.migrationPhases?.join(',') !== 'expand,backfill,switch,contract' || t.upgrade?.kubernetes?.maxUnavailable !== 0 || t.upgrade?.kubernetes?.maxSurge !== 1 || t.upgrade?.kubernetes?.podDisruptionBudgetMinAvailable !== 1 || t.upgrade?.kubernetes?.drainHooks !== true || t.upgrade?.kubernetes?.rollback !== true) process.exit(1)"
           bash -n docker/lp1-network/entrypoint-ca.sh
           bash -n docker/lp1-network/entrypoint-dns.sh
           bash -n docker/lp2-tls/entrypoint-tls.sh
@@ -731,6 +784,11 @@ jobs:
         shell: bash
         run: npm run test:lp6
 
+      - name: Run LP7 static and typed replacement/blue-green gates
+        if: inputs.architecture_mode != 'multiarch' && hashFiles('scripts/lp7-compose-audit.ts') != '' && hashFiles('scripts/lp7-proof-check.ts') != '' && hashFiles('scripts/lp7-compose-smoke.ts') != '' && hashFiles('tsconfig.lp7.json') != ''
+        shell: bash
+        run: npm run test:lp7
+
       # In the default amd64 mode, the Compose proofs run on the amd64 GitHub
       # runner before any architecture image work that could be expensive.
       - name: Run LP3 local mail Compose proof (amd64)
@@ -754,6 +812,14 @@ jobs:
         if: inputs.architecture_mode != 'multiarch' && hashFiles('scripts/lp6-compose-smoke.ts') != '' && hashFiles('compose.yaml') != '' && hashFiles('src/backup/backup-contract.ts') != '' && hashFiles('src/lifecycle/retention.ts') != ''
         shell: bash
         run: npm run test:lp6:docker
+
+      # LP7 is a functional AMD64 Compose rehearsal. The explicit multiarch
+      # mode below is the short AMD64+ARM64 artifact/provenance gate after
+      # the AMD64 functional proof is green.
+      - name: Run LP7 local replacement and blue/green Compose proof (amd64)
+        if: inputs.architecture_mode != 'multiarch' && hashFiles('scripts/lp7-compose-smoke.ts') != '' && hashFiles('compose.yaml') != ''
+        shell: bash
+        run: npm run test:lp7:docker
 
       - name: Validate LP3 mail images on amd64
         if: inputs.architecture_mode != 'multiarch' && hashFiles('docker/lp3-tls/Dockerfile') != '' && hashFiles('docker/lp3-postfix/Dockerfile') != '' && hashFiles('docker/lp3-dovecot/Dockerfile') != '' && hashFiles('docker/lp3-rspamd/Dockerfile') != '' && hashFiles('docker/lp3-clamav/Dockerfile') != '' && hashFiles('docker/lp3-proof/Dockerfile') != ''
@@ -781,23 +847,26 @@ jobs:
           lp3-proof|docker/lp3-proof/Dockerfile|docker/lp3-proof
           EOF
 
-      - name: Validate LP3 mail images on arm64 (final multiarch gate)
+      - name: Validate LP3 mail images on amd64 and arm64 (final multiarch gate)
         if: inputs.architecture_mode == 'multiarch' && hashFiles('docker/lp3-tls/Dockerfile') != '' && hashFiles('docker/lp3-postfix/Dockerfile') != '' && hashFiles('docker/lp3-dovecot/Dockerfile') != '' && hashFiles('docker/lp3-rspamd/Dockerfile') != '' && hashFiles('docker/lp3-clamav/Dockerfile') != '' && hashFiles('docker/lp3-proof/Dockerfile') != ''
         shell: bash
         run: |
           set -euo pipefail
           while IFS='|' read -r name dockerfile context; do
-            output="$RUNNER_TEMP/gulogulo-${name}-arm64-ubuntu-26.04.oci.tar"
-            docker buildx build \
-              --platform linux/arm64 \
-              --pull \
-              --provenance=false \
-              --sbom=false \
-              --tag "gulogulo:ci-${name}-arm64-ubuntu-26.04" \
-              --file "$dockerfile" \
-              --output "type=oci,dest=$output" \
-              "$context"
-            test -s "$output"
+            for platform in linux/amd64 linux/arm64; do
+              arch="${platform##*/}"
+              output="$RUNNER_TEMP/gulogulo-${name}-${arch}-ubuntu-26.04.oci.tar"
+              docker buildx build \
+                --platform "$platform" \
+                --pull \
+                --provenance=false \
+                --sbom=false \
+                --tag "gulogulo:ci-${name}-${arch}-ubuntu-26.04" \
+                --file "$dockerfile" \
+                --output "type=oci,dest=$output" \
+                "$context"
+              test -s "$output"
+            done
           done <<'EOF'
           lp3-tls|docker/lp3-tls/Dockerfile|docker/lp3-tls
           lp3-postfix|docker/lp3-postfix/Dockerfile|docker/lp3-postfix

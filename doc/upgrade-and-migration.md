@@ -7,11 +7,13 @@ Author: Sythos (https://www.sythos.net)
 -->
 
 This is the operator manual for replacing a Gulo Gulo container with a newer
-image and for preparing the Kubernetes zero-downtime path. M9 now provides a
-dependency-light, deterministic contract boundary in `src/upgrade/`. It
-validates the provider-only operation model, the expand/backfill/switch/contract
-schema window, shared external state, queue hand-off, connection draining,
-Docker replacement, Kubernetes readiness, rollback, and finalization gates.
+image and for preparing the Kubernetes zero-downtime path. M9 established the
+dependency-light, deterministic contract boundary in `src/upgrade/`; LP7 carries
+that contract into a bounded synthetic Docker replacement and Kubernetes
+blue/green rehearsal. Together they validate the provider-only operation model,
+the expand/backfill/switch/contract schema window, shared external state, queue
+hand-off, connection draining, Docker replacement, Kubernetes readiness,
+rollback, and finalization gates.
 
 The contract is deliberately not a claim that this checkout can already mutate
 a live Docker host or Kubernetes cluster. A deployment controller still has to
@@ -65,20 +67,22 @@ correlation ID. It does not return secrets, registry credentials, message
 content, or raw deployment command output. Repeating an idempotency key returns
 the original operation state instead of starting a second rollout.
 
-## Implemented M9 contract
+## Canonical M9 contract and LP7 rehearsal
 
 The implementation is split into three small modules:
 
-- `src/upgrade/compatibility.mjs` owns version/digest validation, the
+- `src/upgrade/compatibility.ts` owns version/digest validation, the
   expand/backfill/switch/contract sequence, forward-compatible checkpoints,
   and the rollback-safe schema window;
-- `src/upgrade/rollout.mjs` owns external-state references, queue hand-off,
+- `src/upgrade/rollout.ts` owns external-state references, queue hand-off,
   connection drain/reconnect behavior, Docker replacement plans, Kubernetes
   blue/green readiness, and the action allowlist;
-- `src/upgrade/control-plane.mjs` owns provider/operator authorization,
+- `src/upgrade/control-plane.ts` owns provider/operator authorization,
   idempotency, the operation state machine, sanitized status, and audit events.
 
-The public barrel is `src/upgrade/index.mjs`. Run the focused contract suite
+The `.mjs` files in this directory are behavior-free compatibility bridges for
+legacy callers. The canonical public barrel is `src/upgrade/index.ts`; the
+legacy `src/upgrade/index.mjs` re-exports it. Run the focused contract suite
 with:
 
 ```text
@@ -106,7 +110,7 @@ validated platform. The returned objects contain no secret, raw shell text,
 Docker socket path, unrestricted `kubectl`, mailbox content, or registry
 credential.
 
-The M9 tests cover:
+The M9 contract tests cover:
 
 - strict request and digest validation, including unsafe command rejection;
 - idempotent plans and provider-versus-tenant authorization;
@@ -116,6 +120,15 @@ The M9 tests cover:
 - Docker external-volume replacement without mailbox copying;
 - Kubernetes readiness, zero `maxUnavailable`, PDB, and rollback readiness;
 - preflight, prepare, cutover, rollback, and observation/restore finalization.
+
+LP7 adds the strict TypeScript rehearsal in `src/upgrade/rehearsal.ts` and its
+five direct tests. The rehearsal models Docker replacement and Kubernetes
+blue/green state transitions without invoking a host runtime: external
+PostgreSQL/LDAP references and named volumes remain shared, readiness gates the
+switch, queue entries are deduplicated and handed off, IMAP IDLE reconnect
+sequence numbers continue, and rollback keeps blue serving while retaining
+green metadata for audit. Its Compose proof is documented in
+`doc/lp7-local-upgrade.md` and is intentionally synthetic and offline.
 
 ## Docker-to-Docker replacement
 

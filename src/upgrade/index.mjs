@@ -2,6 +2,6 @@
 // SPDX-FileCopyrightText: 2026 Sythos (https://www.sythos.net)
 // Author: Sythos (https://www.sythos.net)
 
-export * from './compatibility.mjs';
-export * from './control-plane.mjs';
-export * from './rollout.mjs';
+// Temporary compatibility bridge. Upgrade contract behavior lives in
+// TypeScript.
+export * from './index.ts';

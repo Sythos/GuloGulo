@@ -2,5 +2,6 @@
 // SPDX-FileCopyrightText: 2026 Sythos (https://www.sythos.net)
 // Author: Sythos (https://www.sythos.net)
 
-// Temporary compatibility bridge. Upgrade contract tests are TypeScript.
-import './upgrade-contract.test.ts';
+export * from './compatibility.ts';
+export * from './control-plane.ts';
+export * from './rollout.ts';
