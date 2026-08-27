@@ -88,6 +88,7 @@ where the item depends on external infrastructure.
 - [x] fast amd64-first CI with an explicit multiarch amd64+arm64 final gate;
 - [x] tenant-bound DAV ETags and sync tokens;
 - [x] OCI build-provenance attestations generated and verified;
+- [x] reproducible local release evidence and consumer-verifiable provenance metadata;
 - [x] provenance permissions are granted only by push or manual callers, while pull-request validation remains read-only;
 - [x] log rotation;
 - [x] alerts;

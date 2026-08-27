@@ -6,7 +6,7 @@
   "product": "Gulo Gulo",
   "milestone": "LP9",
   "proofType": "local_synthetic_release",
-  "status": "ready_for_owner_review",
+  "status": "complete",
   "generatedAt": "2026-08-27T00:00:00Z",
   "safeToShare": true,
   "syntheticDataOnly": true,
@@ -43,6 +43,13 @@
       "result": "passed",
       "mode": "multiarch",
       "scope": "LP8 post-publication baseline inherited by the local release proof"
+    },
+    {
+      "id": "33111428443",
+      "url": "https://github.com/Sythos/GuloGulo/actions/runs/33111428443",
+      "result": "passed",
+      "mode": "amd64",
+      "scope": "LP9 source-language, local proof, multiarch artifact, provenance, attestation, and integration gates"
     }
   ],
   "deferredEvidence": [
