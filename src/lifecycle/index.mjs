@@ -2,5 +2,5 @@
 // SPDX-FileCopyrightText: 2026 Sythos (https://www.sythos.net)
 // Author: Sythos (https://www.sythos.net)
 
-export * from './retention.mjs';
-export * from './account-lifecycle.mjs';
+// Temporary compatibility bridge. Lifecycle behavior lives in TypeScript.
+export * from './index.ts';

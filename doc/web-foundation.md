@@ -24,8 +24,8 @@ web/
 ├── styles.css          responsive, keyboard-friendly presentation
 ├── manifest.json       optional PWA metadata
 ├── src/app.ts          browser source
-├── build.mjs           pinned TypeScript build entry point
-└── test/web-shell.test.mjs
+├── build.ts            pinned TypeScript build entry point
+└── test/web-shell.test.ts
 ```
 
 Run the normal checks from the repository root:
@@ -73,7 +73,7 @@ mailbox.
 
 ## Session contract
 
-Session state is server-side. `src/web/security/session-manager.mjs` provides
+Session state is server-side. `src/web/security/session-manager.ts` provides
 the in-memory contract that a PostgreSQL-backed store can implement without
 changing the security semantics.
 
@@ -111,7 +111,7 @@ the URL or browser storage.
 
 ## CSRF contract
 
-State-changing browser requests use a synchronizer token. `csrf.mjs` creates a
+State-changing browser requests use a synchronizer token. `csrf.ts` creates a
 32-byte token, stores only its SHA-256 digest, binds it to the session ID, and
 expires it after a short TTL. Tokens are single-use by default and can be
 revoked with the session. A request may send the value in `X-CSRF-Token` or in
@@ -125,14 +125,14 @@ failure; it must not degrade into a best-effort warning.
 
 ## Mail HTML and attachments
 
-Email body HTML is hostile input. `src/web/content/email-content.mjs` uses a
+Email body HTML is hostile input. `src/web/content/email-content.ts` uses a
 small element and attribute allow-list. It drops scripts, forms, iframes,
 styles, event handlers, active protocols, unsafe attributes, and remote images
 unless the caller explicitly enables a constrained image policy. The function
 returns sanitized HTML, plain text, and redacted rendering metadata; it never
 executes the input.
 
-Attachment links are download-only. `attachment-policy.mjs` rejects unsafe
+Attachment links are download-only. `attachment-policy.ts` rejects unsafe
 protocols, embedded credentials, private/link-local/metadata addresses,
 non-allow-listed ports, executable MIME types, unsafe filenames, and DNS names
 that resolve to private addresses. A real downloader must use the validated
@@ -146,7 +146,7 @@ does not replace server-side sanitization.
 
 ## Time and locale
 
-`timezone.mjs` canonicalizes IANA timezone names through `Intl`, gives a manual
+`timezone.ts` canonicalizes IANA timezone names through `Intl`, gives a manual
 override priority over browser detection, and falls back to UTC. The source of
 truth remains the UTC timestamp; local strings are presentation only.
 
@@ -162,7 +162,7 @@ authorization.
 
 ## Realtime events
 
-`event-normalizer.mjs` accepts SSE, WebSocket, and IMAP IDLE input and emits a
+`event-normalizer.ts` accepts SSE, WebSocket, and IMAP IDLE input and emits a
 single, versioned envelope:
 
 ```json
@@ -193,7 +193,7 @@ the server contract; event payloads must remain metadata-only.
 
 ## User backup hook
 
-`src/web/backup/backup-request.mjs` is the small application hook for a user's
+`src/web/backup/backup-request.ts` is the small application hook for a user's
 self-service backup. It accepts an already authenticated server session and
 returns an immutable, metadata-only request envelope. The requested user must
 be the session user; a master or provider cannot use this hook to silently

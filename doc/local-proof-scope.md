@@ -22,8 +22,8 @@ is `v0.1.0-local-proof.1`.
 
 The machine-readable source for this boundary is
 [`release/local-proof-scope.json`](../release/local-proof-scope.json). The
-validator and its tests live in `src/release/local-proof-scope.mjs` and
-`src/release/local-proof-scope.test.mjs`; `npm run test:lp0` and
+validator and its tests live in `src/release/local-proof-scope.ts` and
+`src/release/local-proof-scope.test.ts`; `npm run test:lp0` and
 `npm run test:lp0:audit` are the two convenient entry points.
 
 ## What LP0 freezes

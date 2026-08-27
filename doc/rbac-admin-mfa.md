@@ -20,17 +20,17 @@ The M6 modules live in two folders:
 
 ```text
 src/admin/
-├── rbac.mjs           role and permission matrix
-├── delegation.mjs     one active colleague delegation per user
-├── quota.mjs          gross tenant quota ledger and reservations
-└── admin-tools.mjs    queue and audit metadata tools
+├── rbac.ts            role and permission matrix
+├── delegation.ts      one active colleague delegation per user
+├── quota.ts           gross tenant quota ledger and reservations
+└── admin-tools.ts     queue and audit metadata tools
 
 src/auth/
-├── password-policy.mjs
-├── password-hashing.mjs
-├── totp.mjs
-├── webauthn.mjs
-└── recovery-codes.mjs
+├── password-policy.ts
+├── password-hashing.ts
+├── totp.ts
+├── webauthn.ts
+└── recovery-codes.ts
 ```
 
 Every public operation receives an explicit actor and tenant scope. Missing or
@@ -40,7 +40,7 @@ tokens, private keys, or factor secrets in an audit or administration result.
 
 ## Roles and tenant boundaries
 
-`src/admin/rbac.mjs` defines four roles:
+`src/admin/rbac.ts` defines four roles:
 
 | Role | Intended scope | Content access |
 | --- | --- | --- |
@@ -58,7 +58,7 @@ jobs, backup service, and realtime event broker; an API route must not treat a
 successful LDAP lookup as authorization.
 
 ```js
-import { authorize } from './src/admin/rbac.mjs';
+import { authorize } from './src/admin/rbac.ts';
 
 authorize(
   { role: 'tenant_master', tenantId: 'example.test', actorId: 'master' },
@@ -114,7 +114,7 @@ The baseline password policy is intentionally simple and portable:
 - no Unicode normalization or locale-specific character classes;
 - configurable expiry from zero (no expiry) through 9,999 days.
 
-`password-hashing.mjs` uses versioned `scrypt` records with a per-password
+`password-hashing.ts` uses versioned `scrypt` records with a per-password
 salt and constant-time verification. The encoded record carries the algorithm
 and cost version so a later cost increase can be rolled out at login without
 storing plaintext. LDAP remains the identity source of truth; this module is a
@@ -137,7 +137,7 @@ logs, audit events, API responses, or backups.
 
 ## WebAuthn
 
-`webauthn.mjs` validates the ceremony envelope before an external cryptographic
+`webauthn.ts` validates the ceremony envelope before an external cryptographic
 verifier is called. It checks the HTTPS origin, relying-party ID, challenge
 ownership and expiry, credential scope, user presence/verification flags, and
 monotonic signature counters. Registration and assertion challenges are

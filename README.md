@@ -37,47 +37,6 @@ check mark means that the repository contains an implementation contract and a
 passing verification gate for that item; deployment evidence is still required
 where the item depends on external infrastructure.
 
-LP5 is complete at the bounded synthetic operations and capacity boundary. Its
-local operations, patch-state, abuse, observability, and capacity contracts
-passed the integrated GitHub AMD64 Compose proof, followed by the final ARM64
-artifact and attestation gate. This remains local-proof evidence, not a claim
-of production capacity or external service interoperability.
-
-LP6 is complete at the bounded local backup, restore, retention, and
-disaster-recovery boundary. Its synthetic proof passed the AMD64-first GitHub
-run [32949664266](https://github.com/Sythos/GuloGulo/actions/runs/32949664266),
-followed by the final ARM64 artifact and provenance run
-[32950490366](https://github.com/Sythos/GuloGulo/actions/runs/32950490366). The
-post-merge `main` run [32954486125](https://github.com/Sythos/GuloGulo/actions/runs/32954486125)
-also passed. The smoke harness checks the internal dual-stack network IPAM
-before starting the one-shot workers, the source fixture declares its
-container-internal source path explicitly, and static audit checks that
-binding. This remains local synthetic evidence, not a production backup,
-storage, or RPO/RTO claim.
-
-LP7 is complete at the bounded synthetic Docker replacement and Kubernetes
-blue/green rehearsal boundary. The AMD64 functional proof passed in commit run
-[33051046932](https://github.com/Sythos/GuloGulo/actions/runs/33051046932), PR
-run [33051049933](https://github.com/Sythos/GuloGulo/actions/runs/33051049933),
-and post-merge `main` run
-[33051921809](https://github.com/Sythos/GuloGulo/actions/runs/33051921809).
-The final multiarch artifact/provenance gate passed in
-[33052679820](https://github.com/Sythos/GuloGulo/actions/runs/33052679820) for
-AMD64 and ARM64. Functional Compose proof remains AMD64-only by policy; this
-is synthetic local evidence, not a production availability or interoperability
-claim.
-
-LP8 packages the local proof as a reproducible, safe-to-share evidence bundle
-and operator handbook. The AMD64 functional gate passed in
-[33103198420](https://github.com/Sythos/GuloGulo/actions/runs/33103198420), and
-the final AMD64+ARM64 artifact/provenance gate passed in
-[33104017482](https://github.com/Sythos/GuloGulo/actions/runs/33104017482).
-The multiarch run built the declared OCI artifacts, generated GitHub Artifact
-Attestations, and verified them; functional Compose proof remained AMD64-only
-by policy. LP8 is complete at the reproducible local-proof hand-off boundary,
-ready for owner approval of LP9. It does not claim registry publication, live
-provider interoperability, or production readiness.
-
 ### Security
 
 - [x] no open relay;
@@ -133,7 +92,7 @@ provider interoperability, or production readiness.
 - [x] log rotation;
 - [x] alerts;
 - [x] Postfix queue visibility;
-- [x] bounded LP5 operations and capacity proof (AMD64 Compose first, ARM64 final artifact gate);
+- [x] bounded operations and capacity proof (AMD64 Compose first, ARM64 final artifact gate);
 - [x] fail-closed disposable patch helper and sanitized read-only patch status;
 - [ ] automatic Rspamd/ClamAV updates;
 - [x] provider-only migration contract, compatibility window, and rollback state machine;
@@ -150,6 +109,7 @@ provider interoperability, or production readiness.
 - [x] API/MCP are read-only;
 - [x] future features are not enabled;
 - [x] ADRs are current;
+- [x] canonical TypeScript source tree and behavior-free compatibility bridges audited;
 - [x] deployment documentation is complete for the local-proof hand-off;
   provider runbooks remain an external release responsibility.
 
@@ -316,6 +276,7 @@ gulogulo/
 │   │   ├── account-lifecycle.ts
 │   │   ├── account-lifecycle.test.ts
 │   │   ├── index.mjs
+│   │   ├── index.ts
 │   │   ├── retention.mjs
 │   │   ├── retention.test.mjs
 │   │   ├── retention.ts
@@ -377,10 +338,12 @@ gulogulo/
 ├── web/
 │   ├── README.md
 │   ├── build.mjs
+│   ├── build.ts
 │   ├── index.html
 │   ├── manifest.json
 │   ├── src/
 │   └── test/
+│       └── web-shell.test.ts
 ├── .dockerignore
 ├── .env.example
 ├── Dockerfile

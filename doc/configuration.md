@@ -14,7 +14,7 @@ different deployment.
 ## The contract
 
 The normative machine-readable schema is `config/schema.v1.json`. The
-implementation lives in `src/runtime/config.mjs` and exposes two entry points:
+implementation lives in `src/runtime/config.ts` and exposes two entry points:
 
 - `loadConfiguration()` returns the complete, frozen contract;
 - `loadConfig()` keeps the small M0 runtime shape (`host`, `port`,
@@ -104,7 +104,7 @@ Run the config tests directly when Windows process isolation prevents the
 Node test runner from spawning child workers:
 
 ```powershell
-node src/foundation/config.test.mjs
+node --experimental-strip-types src/foundation/config.test.ts
 ```
 
 For a normal package run, use `npm test`. The CI image executes the same script

@@ -16,11 +16,11 @@ do not give the master a back door into a user's content.
 
 | Area | Source | What it owns |
 | --- | --- | --- |
-| CalDAV | `src/dav/caldav/caldav-contract.mjs` | iCalendar validation, collections, ACL, ETags, conditional writes, sync tokens, tombstones, metadata-only audit events |
-| CardDAV | `src/dav/carddav/carddav-store.mjs` | vCard validation, address books, ETags, conditional writes, sync tokens, tombstones, metadata exports |
-| CardDAV exports | `src/dav/carddav/index.mjs` | stable public module aliases for future adapters |
-| Discovery | `src/dav/discovery/index.mjs` | tenant-bound `.well-known` resources, mail autoconfig, service endpoints, safe manual overrides |
-| HTTP well-known | `src/runtime/server.mjs` | optional, explicitly injected discovery contract for GET/HEAD resources |
+| CalDAV | `src/dav/caldav/caldav-contract.ts` | iCalendar validation, collections, ACL, ETags, conditional writes, sync tokens, tombstones, metadata-only audit events |
+| CardDAV | `src/dav/carddav/carddav-store.ts` | vCard validation, address books, ETags, conditional writes, sync tokens, tombstones, metadata exports |
+| CardDAV exports | `src/dav/carddav/index.ts` | stable public module aliases for future adapters |
+| Discovery | `src/dav/discovery/index.ts` | tenant-bound `.well-known` resources, mail autoconfig, service endpoints, safe manual overrides |
+| HTTP well-known | `src/runtime/server.ts` | optional, explicitly injected discovery contract for GET/HEAD resources |
 | Browser surface | `web/index.html`, `web/src/app.ts` | read-only Calendar and Contacts views, discovery status, and manual-fallback messaging |
 
 The stores are deterministic in-memory contract doubles for now. A persistent
@@ -57,7 +57,7 @@ delegated session is still distinguishable from the owner in the audit event.
 Create a store for one tenant and use it from a verified user context:
 
 ```js
-import { createCalDavStore } from './src/dav/caldav/caldav-contract.mjs';
+import { createCalDavStore } from './src/dav/caldav/caldav-contract.ts';
 
 const store = createCalDavStore({ tenantId: 'acme' });
 const alice = { tenantId: 'acme', userId: 'alice', role: 'user' };
@@ -130,7 +130,7 @@ CardDAV uses the same user/tenant boundary, with address-book collections and
 single-object vCards:
 
 ```js
-import { createCardDAVStore } from './src/dav/carddav/carddav-store.mjs';
+import { createCardDAVStore } from './src/dav/carddav/carddav-store.ts';
 
 const store = createCardDAVStore();
 const scope = { tenantId: 'acme', userId: 'alice', role: 'user' };
@@ -196,7 +196,7 @@ import {
   createDiscoveryContract,
   getWellKnownResource,
   WELL_KNOWN_PATHS,
-} from './src/dav/discovery/index.mjs';
+} from './src/dav/discovery/index.ts';
 
 const discovery = createDiscoveryContract({
   tenantId: 'acme',
@@ -250,12 +250,12 @@ not create, modify, delete, ACL-share, or export DAV content.
 Run the focused checks when changing these modules:
 
 ```text
-node src/dav/caldav/caldav-contract.test.mjs
-node src/dav/carddav/carddav-store.test.mjs
-node src/dav/discovery/index.test.mjs
-node src/runtime/runtime.test.mjs
+node --experimental-strip-types src/dav/caldav/caldav-contract.test.ts
+node --experimental-strip-types src/dav/carddav/carddav-store.test.ts
+node --experimental-strip-types src/dav/discovery/index.test.ts
+node dist/server/src/runtime/runtime.test.js
 npm run build:web
-node web/test/web-shell.test.mjs
+node --experimental-strip-types web/test/web-shell.test.ts
 ```
 
 `npm test` includes all of the above contract tests. The GitHub quality gate

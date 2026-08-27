@@ -1,0 +1,24 @@
+// SPDX-License-Identifier: MIT
+// SPDX-FileCopyrightText: 2026 Sythos (https://www.sythos.net)
+// Author: Sythos (https://www.sythos.net)
+{
+  "extends": "./tsconfig.server.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "rootDir": ".",
+    "lib": ["ES2022", "DOM"],
+    "allowJs": false
+  },
+  "include": [
+    "src/**/*.ts",
+    "scripts/**/*.ts",
+    "web/src/**/*.ts",
+    "web/build.ts",
+    "web/test/web-shell.test.ts"
+  ],
+  "exclude": [
+    "dist",
+    "web/dist",
+    "node_modules"
+  ]
+}

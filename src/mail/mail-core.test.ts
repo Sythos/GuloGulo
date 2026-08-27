@@ -9,7 +9,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { createImapIdleBroker } from './imap-idle.mjs';
+import { createImapIdleBroker } from './imap-idle.ts';
 import { createMailCore } from './mail-core.ts';
 import { createMailPolicy } from './mail-policy.ts';
 import { createMailQueue } from './mail-queue.ts';

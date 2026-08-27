@@ -1,0 +1,55 @@
+{
+  "spdxLicenseIdentifier": "MIT",
+  "spdxFileCopyrightText": "2026 Sythos (https://www.sythos.net)",
+  "author": "Sythos (https://www.sythos.net)",
+  "schemaVersion": 1,
+  "product": "Gulo Gulo",
+  "milestone": "LP9",
+  "proofType": "local_synthetic_release",
+  "status": "ready_for_owner_review",
+  "generatedAt": "2026-08-27T00:00:00Z",
+  "safeToShare": true,
+  "syntheticDataOnly": true,
+  "externalPhaseDeferred": true,
+  "sourceLanguage": {
+    "canonical": "TypeScript",
+    "browserRuntime": "compiled JavaScript generated from TypeScript",
+    "applicationBackendAndNodeTests": "TypeScript",
+    "behaviorFreeMjsBridges": true,
+    "bridgeInventory": "complete scan of tracked src/, scripts/, and web/ .mjs files",
+    "removalOwner": "Sythos",
+    "generatedBrowserJavaScriptAllowed": true,
+    "existingTypeScriptWaivers": "reported by the audit and retained as pre-existing debt"
+  },
+  "architecture": {
+    "baseImage": "ubuntu:26.04",
+    "defaultWorkflowMode": "amd64",
+    "functionalProofPlatform": "linux/amd64",
+    "finalWorkflowMode": "multiarch",
+    "finalModePlatforms": ["linux/amd64", "linux/arm64"],
+    "artifactProvenanceOnly": true
+  },
+  "localChecks": [
+    "npm ci --ignore-scripts --no-audit --no-fund",
+    "npm run test:lp9",
+    "npm test",
+    "npm run typecheck",
+    "git diff --check"
+  ],
+  "ciRuns": [
+    {
+      "id": "33106749677",
+      "url": "https://github.com/Sythos/GuloGulo/actions/runs/33106749677",
+      "result": "passed",
+      "mode": "multiarch",
+      "scope": "LP8 post-publication baseline inherited by the local release proof"
+    }
+  ],
+  "deferredEvidence": [
+    "public DNS and public ACME",
+    "external LDAP and PostgreSQL production protection",
+    "registry publication and consumer-side attestation verification",
+    "live provider interoperability and Kubernetes traffic cutover",
+    "measured production RPO/RTO and incident rehearsals"
+  ]
+}

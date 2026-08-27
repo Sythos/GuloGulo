@@ -6,7 +6,7 @@
 
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { createMailQueue } from '../mail/mail-queue.mjs';
+import { createMailQueue } from '../mail/mail-queue.ts';
 import { createAdminTools, createAuditStore } from './admin-tools.ts';
 
 const alice = Object.freeze({ tenantId: 'acme', domain: 'acme.example', actorId: 'alice', userId: 'alice', role: 'user' });

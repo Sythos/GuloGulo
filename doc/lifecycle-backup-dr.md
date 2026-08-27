@@ -17,16 +17,16 @@ connected.
 
 ```text
 src/lifecycle/
-├── retention.mjs              28-day trash purge and restore-safe locks
-└── account-lifecycle.mjs      deletion, recovery window, and purge states
+├── retention.ts               28-day trash purge and restore-safe locks
+└── account-lifecycle.ts       deletion, recovery window, and purge states
 
 src/backup/
-└── backup-contract.mjs        user/provider scope, encrypted manifests, restore
+└── backup-contract.ts         user/provider scope, encrypted manifests, restore
 
 src/observability/
-├── log-policy.mjs              bounded Docker/journald/sidecar rotation
-├── structured-event.mjs        redacted audit and operational envelopes
-└── alert-policy.mjs            deterministic health and capacity alerts
+├── log-policy.ts               bounded Docker/journald/sidecar rotation
+├── structured-event.ts         redacted audit and operational envelopes
+└── alert-policy.ts             deterministic health and capacity alerts
 ```
 
 Run the focused suite with:
