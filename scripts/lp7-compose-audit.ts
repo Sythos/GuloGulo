@@ -150,6 +150,10 @@ for (const [name, section] of [['blue', blue], ['green', green]] as const) {
 for (const marker of ['gulogulo-lp7-blue:', 'gulogulo-lp7-green:', 'LP7_BLUE_BASE_URL:', 'LP7_GREEN_BASE_URL:', 'LP7_BLUE_DIGEST:', 'LP7_GREEN_DIGEST:']) {
   requireText(checker, marker, `LP7 checker marker ${marker}`);
 }
+requireText(checker, 'user: "10001:10001"', 'LP7 checker unprivileged UID');
+const checkerSource = await readFile(resolve(root, 'scripts/lp7-proof-check.ts'), 'utf8');
+requireText(checkerSource, 'saved.signature === continuitySignature', 'LP7 continuity signature comparison');
+if (checkerSource.includes('JSON.stringify(saved.signature)')) fail('LP7 checker double-serializes the saved continuity signature');
 for (const marker of ['gulogulo-lp7-blue:', 'gulogulo-lp7-green:']) {
   requireText(checker, marker, `LP7 checker dependency ${marker}`);
 }

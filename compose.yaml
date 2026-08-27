@@ -1241,7 +1241,7 @@ services:
     platform: ${GULOGULO_LP7_COMPOSE_PLATFORM:-linux/amd64}
     profiles: ["lp7-check"]
     command: ["node", "--experimental-strip-types", "scripts/lp7-proof-check.ts"]
-    user: "0:0"
+    user: "10001:10001"
     environment:
       LP7_BLUE_BASE_URL: http://gulogulo-lp7-blue:8080
       LP7_GREEN_BASE_URL: http://gulogulo-lp7-green:8080
