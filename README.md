@@ -53,8 +53,19 @@ also passed. The smoke harness checks the internal dual-stack network IPAM
 before starting the one-shot workers, the source fixture declares its
 container-internal source path explicitly, and static audit checks that
 binding. This remains local synthetic evidence, not a production backup,
-storage, or RPO/RTO claim. LP7 is the next owner-gated local replacement and
-blue/green rehearsal.
+storage, or RPO/RTO claim.
+
+LP7 is complete at the bounded synthetic Docker replacement and Kubernetes
+blue/green rehearsal boundary. The AMD64 functional proof passed in commit run
+[33051046932](https://github.com/Sythos/GuloGulo/actions/runs/33051046932), PR
+run [33051049933](https://github.com/Sythos/GuloGulo/actions/runs/33051049933),
+and post-merge `main` run
+[33051921809](https://github.com/Sythos/GuloGulo/actions/runs/33051921809).
+The final multiarch artifact/provenance gate passed in
+[33052679820](https://github.com/Sythos/GuloGulo/actions/runs/33052679820) for
+AMD64 and ARM64. Functional Compose proof remains AMD64-only by policy; this
+is synthetic local evidence, not a production availability or interoperability
+claim.
 
 ### Security
 
@@ -115,6 +126,7 @@ blue/green rehearsal.
 - [x] fail-closed disposable patch helper and sanitized read-only patch status;
 - [ ] automatic Rspamd/ClamAV updates;
 - [x] provider-only migration contract, compatibility window, and rollback state machine;
+- [x] bounded Docker replacement and Kubernetes blue/green rehearsal with external-volume continuity (AMD64 functional proof plus AMD64+ARM64 artifact/provenance gate);
 - [ ] live blue/green rehearsal;
 - [ ] live rollback rehearsal;
 - [ ] RPO/RTO approved;
@@ -217,6 +229,7 @@ gulogulo/
 │   ├── lp4-local-web.md
 │   ├── lp5-local-operations-capacity.md
 │   ├── lp6-local-backup-dr.md
+│   ├── lp7-local-upgrade.md
 │   ├── mail-core.md
 │   ├── rbac-admin-mfa.md
 │   ├── release-readiness.md
@@ -251,6 +264,9 @@ gulogulo/
 │   ├── lp6-restore-worker.ts
 │   ├── lp6-compose-audit.ts
 │   ├── lp6-compose-smoke.ts
+│   ├── lp7-compose-audit.ts
+│   ├── lp7-compose-smoke.ts
+│   ├── lp7-proof-check.ts
 │   ├── m10-release-audit.mjs
 │   ├── container-patch.sh
 │   └── runtime, fixture, and patch utilities
@@ -262,6 +278,7 @@ gulogulo/
 │   ├── lp4-local-web.json
 │   ├── lp5-local-operations-capacity.json
 │   ├── lp6-local-backup-dr.json
+│   ├── lp7-local-upgrade.json
 │   └── v1-release-evidence.template.json
 ├── src/
 │   ├── admin/ (TypeScript RBAC, delegation, quota, and admin tools)
@@ -317,10 +334,17 @@ gulogulo/
 │   │   └── patch/ (typed sanitized patch-status contract)
 │   ├── upgrade/
 │   │   ├── compatibility.mjs
+│   │   ├── compatibility.ts
 │   │   ├── control-plane.mjs
+│   │   ├── control-plane.ts
 │   │   ├── index.mjs
+│   │   ├── index.ts
 │   │   ├── rollout.mjs
-│   │   └── upgrade-contract.test.mjs
+│   │   ├── rollout.ts
+│   │   ├── rehearsal.test.ts
+│   │   ├── rehearsal.ts
+│   │   ├── upgrade-contract.test.mjs
+│   │   └── upgrade-contract.test.ts
 │   ├── runtime/ (TypeScript HTTP runtime and observability)
 │   ├── dav/
 │   │   ├── caldav/ (strict TypeScript CalDAV contract and tests)
@@ -352,6 +376,7 @@ gulogulo/
 ├── tsconfig.lp4.json
 ├── tsconfig.lp5.json
 ├── tsconfig.lp6.json
+├── tsconfig.lp7.json
 └── tsconfig.server.json
 ~~~
 
