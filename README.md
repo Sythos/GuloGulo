@@ -67,6 +67,13 @@ AMD64 and ARM64. Functional Compose proof remains AMD64-only by policy; this
 is synthetic local evidence, not a production availability or interoperability
 claim.
 
+LP8 packages the local proof as a reproducible, safe-to-share evidence bundle
+and operator handbook. The AMD64 functional gate and the final AMD64+ARM64
+artifact/provenance gate are the acceptance checks for this change; the final
+Actions evidence link is added here after the pushed commit is green. LP8 does
+not claim registry publication, live provider interoperability, or production
+readiness.
+
 ### Security
 
 - [x] no open relay;
@@ -139,7 +146,8 @@ claim.
 - [x] API/MCP are read-only;
 - [x] future features are not enabled;
 - [x] ADRs are current;
-- [ ] deployment documentation is complete.
+- [x] deployment documentation is complete for the local-proof hand-off;
+  provider runbooks remain an external release responsibility.
 
 ## Repository layout
 
@@ -230,6 +238,7 @@ gulogulo/
 │   ├── lp5-local-operations-capacity.md
 │   ├── lp6-local-backup-dr.md
 │   ├── lp7-local-upgrade.md
+│   ├── lp8-evidence-operator.md
 │   ├── mail-core.md
 │   ├── rbac-admin-mfa.md
 │   ├── release-readiness.md
@@ -241,16 +250,19 @@ gulogulo/
 ├── scripts/
 │   ├── m0-smoke.ps1
 │   ├── m1-fixture-smoke.ps1
-│   ├── lp0-scope-audit.mjs
-│   ├── lp1-compose-audit.mjs
-│   ├── lp1-proof-check.mjs
-│   ├── lp1-proof-smoke.mjs
-│   ├── lp2-compose-audit.mjs
-│   ├── lp2-compose-smoke.mjs
-│   ├── lp2-proof-smoke.mjs
-│   ├── lp3-compose-audit.mjs
-│   ├── lp3-compose-smoke.mjs
-│   ├── lp3-proof-smoke.mjs
+│   ├── lp0-scope-audit.ts (+ .mjs compatibility bridge)
+│   ├── lp1-compose-audit.ts (+ .mjs compatibility bridge)
+│   ├── lp1-proof-check.ts (+ .mjs compatibility bridge)
+│   ├── lp1-proof-smoke.ts (+ .mjs compatibility bridge)
+│   ├── lp2-compose-audit.ts (+ .mjs compatibility bridge)
+│   ├── lp2-compose-smoke.ts (+ .mjs compatibility bridge)
+│   ├── lp2-proof-smoke.ts (+ .mjs compatibility bridge)
+│   ├── lp3-compose-audit.ts (+ .mjs compatibility bridge)
+│   ├── lp3-compose-smoke.ts (+ .mjs compatibility bridge)
+│   ├── lp3-proof-smoke.ts (+ .mjs compatibility bridge)
+│   ├── lp8-bundle-smoke.ts
+│   ├── lp8-evidence-audit.test.ts
+│   ├── lp8-evidence-audit.ts
 │   ├── lp4-compose-audit.ts
 │   ├── lp4-compose-smoke.ts
 │   ├── lp4-proof-check.ts
@@ -267,7 +279,7 @@ gulogulo/
 │   ├── lp7-compose-audit.ts
 │   ├── lp7-compose-smoke.ts
 │   ├── lp7-proof-check.ts
-│   ├── m10-release-audit.mjs
+│   ├── m10-release-audit.ts (+ .mjs compatibility bridge)
 │   ├── container-patch.sh
 │   └── runtime, fixture, and patch utilities
 ├── release/
@@ -279,6 +291,7 @@ gulogulo/
 │   ├── lp5-local-operations-capacity.json
 │   ├── lp6-local-backup-dr.json
 │   ├── lp7-local-upgrade.json
+│   ├── lp8-local-proof-bundle.json
 │   └── v1-release-evidence.template.json
 ├── src/
 │   ├── admin/ (TypeScript RBAC, delegation, quota, and admin tools)
@@ -321,13 +334,13 @@ gulogulo/
 │   ├── observability/
 │   ├── capacity/ (typed bounded local-proof measurement contracts)
 │   ├── release/
-│   │   ├── index.mjs
-│   │   ├── local-proof-scope.mjs
-│   │   ├── local-proof-scope.test.mjs
-│   │   ├── local-proof-topology.mjs
-│   │   ├── local-proof-topology.test.mjs
-│   │   ├── release-evidence.mjs
-│   │   └── release-evidence.test.mjs
+│   │   ├── index.ts (+ .mjs compatibility bridge)
+│   │   ├── local-proof-scope.ts (+ .mjs compatibility bridge)
+│   │   ├── local-proof-scope.test.ts (+ .mjs compatibility bridge)
+│   │   ├── local-proof-topology.ts (+ .mjs compatibility bridge)
+│   │   ├── local-proof-topology.test.ts (+ .mjs compatibility bridge)
+│   │   ├── release-evidence.ts (+ .mjs compatibility bridge)
+│   │   └── release-evidence.test.ts (+ .mjs compatibility bridge)
 │   ├── ops/
 │   │   ├── abuse/ (typed rate and abuse controls)
 │   │   ├── acme/ (typed ACME and certificate health contracts)
@@ -377,6 +390,7 @@ gulogulo/
 ├── tsconfig.lp5.json
 ├── tsconfig.lp6.json
 ├── tsconfig.lp7.json
+├── tsconfig.lp8.json
 └── tsconfig.server.json
 ~~~
 

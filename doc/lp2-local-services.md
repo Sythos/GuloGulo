@@ -35,9 +35,10 @@ keeping the proof deliberately offline.
 
 The machine-readable contract lives in
 [`release/lp2-local-services.json`](../release/lp2-local-services.json). The
-static audit is `scripts/lp2-compose-audit.mjs`; the live proof client is
-`scripts/lp2-proof-smoke.mjs`, orchestrated from the host by
-`scripts/lp2-compose-smoke.mjs`.
+static audit is `scripts/lp2-compose-audit.ts`; the live proof client is
+`scripts/lp2-proof-smoke.ts`, orchestrated from the host by
+`scripts/lp2-compose-smoke.ts`. The old `.mjs` names remain thin compatibility
+bridges during the TypeScript migration.
 
 ## Prerequisites
 
@@ -49,7 +50,7 @@ From the `git/` checkout:
 
 ```powershell
 Copy-Item .env.example .env
-node scripts/lp2-compose-audit.mjs
+node --experimental-strip-types scripts/lp2-compose-audit.ts
 docker compose --profile lp2 --profile lp2-check --file compose.yaml --env-file .env config --quiet
 ```
 
@@ -66,7 +67,7 @@ only that project and its disposable volumes:
 
 ```powershell
 $env:GITHUB_RUN_ID = "local"
-node scripts/lp2-compose-smoke.mjs
+node --experimental-strip-types scripts/lp2-compose-smoke.ts
 ```
 
 The proof client itself is executed from the `gulogulo-lp2-proof-check` service,

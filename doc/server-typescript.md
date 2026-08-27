@@ -52,6 +52,13 @@ also run directly from TypeScript with Node 26's
 adding a second application runtime. The typecheck and build remain mandatory
 CI gates in both commit and pull-request workflows.
 
+LP8 extends the same boundary to the release validators and LP0–LP3 audit and
+smoke scripts. The canonical files are now `.ts` and are executed with
+`node --experimental-strip-types`; package scripts and the quality workflow
+use those paths directly. Their old `.mjs` names remain as behavior-free
+compatibility bridges for one transition window. The complete bridge list and
+the LP9 cleanup owner are recorded in the LP8 evidence bundle.
+
 ## Temporary compatibility bridges
 
 Some mail and legacy runtime consumers are still JavaScript until their own

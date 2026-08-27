@@ -76,6 +76,16 @@ normal workflow.
   fail-closed patch status, typed abuse and observability controls, bounded
   web/DAV/mail/IMAP-IDLE measurements, resource limits, and the AMD64-first /
   ARM64-final workflow.
+- [LP6 local backup and disaster-recovery proof](lp6-local-backup-dr.md) —
+  deterministic encrypted backup metadata, isolated restore, 28-day retention,
+  holds, idempotent purge, and the provider evidence boundary.
+- [LP7 local upgrade proof](lp7-local-upgrade.md) — Docker replacement and
+  Kubernetes blue/green rehearsal, readiness and drain gates, queue/IDLE
+  continuity, rollback, external volumes, and the AMD64-first workflow.
+- [LP8 evidence bundle and operator handbook](lp8-evidence-operator.md) — the
+  reproducible hand-off manifest, exact base digest, checksums, safe-sharing
+  rules, API/MCP examples, CI provenance, and the temporary TypeScript bridge
+  inventory owned by LP9.
 - [Server TypeScript boundary](server-typescript.md) — compiler settings,
   build and test commands, compiled production startup, and the temporary
   compatibility-bridge rule.

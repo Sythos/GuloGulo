@@ -70,13 +70,13 @@
   ],
   "securityFindings": [],
   "tests": [
-    { "name": "M10 contract suite", "command": "npm run test:m10", "status": "passed", "evidence": "src/release/release-evidence.test.mjs" },
+    { "name": "M10 contract suite", "command": "npm run test:m10", "status": "passed", "evidence": "src/release/release-evidence.test.ts" },
     { "name": "full Node test suite", "command": "npm test", "status": "passed", "evidence": "github-actions/quality-gates" },
     { "name": "Docker and external-service rehearsal", "command": "provider deployment pipeline", "status": "conditional", "evidence": "doc/release-readiness.md#external-evidence" }
   ],
   "artifacts": [
     { "name": "release readiness guide", "path": "doc/release-readiness.md", "purpose": "Operator-facing M10 evidence and release boundary." },
-    { "name": "release evidence contract", "path": "src/release/release-evidence.mjs", "purpose": "Deterministic validation of Section 30 evidence." },
+    { "name": "release evidence contract", "path": "src/release/release-evidence.ts", "purpose": "Deterministic validation of Section 30 evidence." },
     { "name": "upgrade runbook", "path": "doc/upgrade-and-migration.md", "purpose": "Provider-only Docker and Kubernetes migration contract." },
     { "name": "configuration schema", "path": "config/schema.v1.json", "purpose": "Reproducible configuration shape." }
   ],

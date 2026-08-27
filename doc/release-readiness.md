@@ -35,6 +35,14 @@ The source of truth for the checklist remains Section 30 of `GULOGULO.md`.
 The repository copy is deliberately an evidence boundary, not a second product
 specification.
 
+LP8 packages this boundary in
+[`release/lp8-local-proof-bundle.json`](../release/lp8-local-proof-bundle.json)
+and [`doc/lp8-evidence-operator.md`](lp8-evidence-operator.md). The bundle
+indexes the local proof manifests, fixtures, operator notes, CI provenance,
+and temporary TypeScript bridges. It remains safe to share because it contains
+synthetic references and sanitized links only; registry publication, SBOM,
+signing, and live provider evidence remain outside this checkout.
+
 ## Artifact provenance in GitHub Actions
 
 Trusted push builds generate signed GitHub Artifact Attestations for every OCI
@@ -76,14 +84,16 @@ The focused M10 checks can be run while iterating:
 npm run test:m10
 ```
 
-That command runs `src/release/release-evidence.test.mjs` and then audits the
-portable example at `release/v1-release-evidence.template.json`. The audit
+That command runs `src/release/release-evidence.test.ts` through Node's native
+TypeScript stripping mode and then audits the portable example at
+`release/v1-release-evidence.template.json`. The audit
 prints only a sanitized decision summary. It never prints credentials, raw
 deployment output, mailbox content, or local workstation paths.
 
 ## Evidence object
 
-The validator lives in `src/release/release-evidence.mjs`. Its public API is
+The canonical validator lives in `src/release/release-evidence.ts`; the `.mjs`
+file is a thin compatibility bridge. Its public API is
 small on purpose:
 
 ```js
@@ -91,7 +101,7 @@ import {
   createReleaseEvidence,
   evaluateReleaseEvidence,
   REQUIRED_SECTION30_ITEMS,
-} from './src/release/release-evidence.mjs';
+} from './src/release/release-evidence.ts';
 
 const evidence = createReleaseEvidence({
   evidenceVersion: '1.0',
@@ -118,7 +128,7 @@ const summary = evaluateReleaseEvidence(evidence);
 `createReleaseEvidence` returns a frozen, normalized object. It enforces the
 following rules before a release can be discussed:
 
-- all 45 applicable Section 30 item IDs must occur exactly once;
+- all 46 applicable Section 30 item IDs must occur exactly once;
 - `verified` and `contract` entries must point to repository-relative evidence;
 - `deferred` and `exception` entries must name an owner, mitigation, rationale,
   and dated approval;

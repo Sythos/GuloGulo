@@ -96,6 +96,7 @@ jobs:
           test -f doc/lp5-local-operations-capacity.md
           test -f doc/lp6-local-backup-dr.md
           test -f doc/lp7-local-upgrade.md
+          test -f doc/lp8-evidence-operator.md
           test -f release/v1-release-evidence.template.json
           test -f release/lp2-local-services.json
           test -f release/lp3-local-mail.json
@@ -103,6 +104,29 @@ jobs:
           test -f release/lp5-local-operations-capacity.json
           test -f release/lp6-local-backup-dr.json
           test -f release/lp7-local-upgrade.json
+          test -f release/lp8-local-proof-bundle.json
+          test -f tsconfig.lp8.json
+          test -f scripts/lp8-evidence-audit.ts
+          test -f scripts/lp8-evidence-audit.test.ts
+          test -f scripts/lp8-bundle-smoke.ts
+          test -f scripts/lp0-scope-audit.ts
+          test -f scripts/lp1-compose-audit.ts
+          test -f scripts/lp1-proof-check.ts
+          test -f scripts/lp1-proof-smoke.ts
+          test -f scripts/lp2-compose-audit.ts
+          test -f scripts/lp2-compose-smoke.ts
+          test -f scripts/lp2-proof-smoke.ts
+          test -f scripts/lp3-compose-audit.ts
+          test -f scripts/lp3-compose-smoke.ts
+          test -f scripts/lp3-proof-smoke.ts
+          test -f scripts/m10-release-audit.ts
+          test -f src/release/index.ts
+          test -f src/release/local-proof-scope.ts
+          test -f src/release/local-proof-scope.test.ts
+          test -f src/release/local-proof-topology.ts
+          test -f src/release/local-proof-topology.test.ts
+          test -f src/release/release-evidence.ts
+          test -f src/release/release-evidence.test.ts
           test -f scripts/m10-release-audit.mjs
           test -f scripts/lp2-compose-audit.mjs
           test -f scripts/lp2-compose-smoke.mjs
@@ -363,6 +387,19 @@ jobs:
             scripts/lp3-compose-audit.mjs \
             scripts/lp3-compose-smoke.mjs \
             scripts/lp3-proof-smoke.mjs \
+            scripts/lp0-scope-audit.ts \
+            scripts/lp1-compose-audit.ts \
+            scripts/lp1-proof-check.ts \
+            scripts/lp1-proof-smoke.ts \
+            scripts/lp2-compose-audit.ts \
+            scripts/lp2-compose-smoke.ts \
+            scripts/lp2-proof-smoke.ts \
+            scripts/lp3-compose-audit.ts \
+            scripts/lp3-compose-smoke.ts \
+            scripts/lp3-proof-smoke.ts \
+            scripts/lp8-evidence-audit.ts \
+            scripts/lp8-evidence-audit.test.ts \
+            scripts/lp8-bundle-smoke.ts \
             scripts/lp4-compose-audit.ts \
             scripts/lp4-compose-smoke.ts \
             scripts/lp4-proof-check.ts \
@@ -379,6 +416,14 @@ jobs:
             scripts/lp7-compose-audit.ts \
             scripts/lp7-proof-check.ts \
             scripts/lp7-compose-smoke.ts \
+            scripts/m10-release-audit.ts \
+            src/release/index.ts \
+            src/release/local-proof-scope.ts \
+            src/release/local-proof-scope.test.ts \
+            src/release/local-proof-topology.ts \
+            src/release/local-proof-topology.test.ts \
+            src/release/release-evidence.ts \
+            src/release/release-evidence.test.ts \
             src/upgrade/compatibility.ts \
             src/upgrade/control-plane.ts \
             src/upgrade/rollout.ts \
@@ -471,6 +516,8 @@ jobs:
           grep -Fq 'Author: Sythos (https://www.sythos.net)' tsconfig.lp5.json
           grep -Fq 'SPDX-License-Identifier: MIT' tsconfig.lp7.json
           grep -Fq 'Author: Sythos (https://www.sythos.net)' tsconfig.lp7.json
+          grep -Fq 'SPDX-License-Identifier: MIT' tsconfig.lp8.json
+          grep -Fq 'Author: Sythos (https://www.sythos.net)' tsconfig.lp8.json
           grep -Fq 'SPDX-License-Identifier: MIT' web/README.md
           grep -Fq 'Author: Sythos (https://www.sythos.net)' web/README.md
           grep -Fq 'SPDX-License-Identifier: MIT' assets/README.md
@@ -563,9 +610,21 @@ jobs:
           grep -Fq 'createKubernetesBlueGreenRehearsal' src/upgrade/rehearsal.ts
           grep -Fq 'runDockerReplacementRehearsal' src/upgrade/rehearsal.ts
           grep -Fq 'runKubernetesBlueGreenRehearsal' src/upgrade/rehearsal.ts
+          grep -Fq 'export async function auditBundle' scripts/lp8-evidence-audit.ts
+          grep -Fq 'LP8_UNSAFE_CONTENT' scripts/lp8-evidence-audit.ts
+          grep -Fq 'LP8_BRIDGE_NOT_THIN' scripts/lp8-evidence-audit.ts
+          grep -Fq 'actions/attest-build-provenance@v4' .github/workflows/quality-gates.yml
+          grep -Fq 'ready_for_lp9' release/lp8-local-proof-bundle.json
+          grep -Fq 'syntheticDataOnly' release/lp8-local-proof-bundle.json
+          grep -Fq 'artifactProvenanceOnly' release/lp8-local-proof-bundle.json
+          grep -Fq 'temporaryShims' release/lp8-local-proof-bundle.json
+          grep -Fq 'LP9' release/lp8-local-proof-bundle.json
           grep -Fq 'REQUIRED_SECTION30_ITEMS' src/release/release-evidence.mjs
           grep -Fq 'M10_REVIEWS_INCOMPLETE' src/release/release-evidence.mjs
           grep -Fq 'productionReady' src/release/release-evidence.mjs
+          grep -Fq 'REQUIRED_SECTION30_ITEMS' src/release/release-evidence.ts
+          grep -Fq 'M10_REVIEWS_INCOMPLETE' src/release/release-evidence.ts
+          grep -Fq 'productionReady' src/release/release-evidence.ts
 
           grep -Fq 'SPDX-License-Identifier: MIT' config/schema.v1.json
           grep -Fq 'Sythos (https://www.sythos.net)' config/schema.v1.json
@@ -620,7 +679,7 @@ jobs:
           bash -n docker/lp3-clamav/healthcheck-clamav.sh
 
       - name: Set up Node.js when package metadata exists
-        if: inputs.architecture_mode != 'multiarch' && hashFiles('package.json') != ''
+        if: hashFiles('package.json') != ''
         uses: actions/setup-node@v6
         with:
           node-version: latest
@@ -719,14 +778,14 @@ jobs:
           "${compose[@]}" --profile test run --rm --no-deps gulogulo-test
 
       - name: Run LP1 isolated local proof topology
-        if: inputs.architecture_mode != 'multiarch' && hashFiles('docker/lp1-network/Dockerfile') != '' && hashFiles('scripts/lp1-proof-smoke.mjs') != ''
+        if: inputs.architecture_mode != 'multiarch' && hashFiles('docker/lp1-network/Dockerfile') != '' && hashFiles('scripts/lp1-proof-smoke.ts') != ''
         shell: bash
         run: npm run test:lp1:docker
 
       - name: Run LP2 static Compose audit
-        if: inputs.architecture_mode != 'multiarch' && hashFiles('scripts/lp2-compose-audit.mjs') != ''
+        if: inputs.architecture_mode != 'multiarch' && hashFiles('scripts/lp2-compose-audit.ts') != ''
         shell: bash
-        run: node scripts/lp2-compose-audit.mjs
+        run: node --experimental-strip-types scripts/lp2-compose-audit.ts
 
       - name: Validate LP2 dependency images (${{ inputs.architecture_mode || 'amd64' }})
         if: hashFiles('docker/lp2-tls/Dockerfile') != '' && hashFiles('docker/lp2-ldap/Dockerfile') != '' && hashFiles('docker/lp2-postgres/Dockerfile') != ''
@@ -752,14 +811,14 @@ jobs:
           EOF
 
       - name: Run LP2 synthetic LDAP and PostgreSQL proof
-        if: inputs.architecture_mode != 'multiarch' && hashFiles('scripts/lp2-compose-smoke.mjs') != ''
+        if: inputs.architecture_mode != 'multiarch' && hashFiles('scripts/lp2-compose-smoke.ts') != ''
         shell: bash
         run: npm run test:lp2:docker
 
       - name: Run LP3 static Compose and TypeScript audit
-        if: inputs.architecture_mode != 'multiarch' && hashFiles('scripts/lp3-compose-audit.mjs') != ''
+        if: inputs.architecture_mode != 'multiarch' && hashFiles('scripts/lp3-compose-audit.ts') != ''
         shell: bash
-        run: node scripts/lp3-compose-audit.mjs
+        run: node --experimental-strip-types scripts/lp3-compose-audit.ts
 
       - name: Run LP3 typed mail contract gates
         if: inputs.architecture_mode != 'multiarch' && hashFiles('src/mail/mail-core.test.ts') != ''
@@ -789,12 +848,25 @@ jobs:
         shell: bash
         run: npm run test:lp7
 
+      - name: Run LP8 evidence and migrated-audit gates (amd64)
+        if: inputs.architecture_mode != 'multiarch' && hashFiles('scripts/lp8-evidence-audit.ts') != '' && hashFiles('tsconfig.lp8.json') != ''
+        shell: bash
+        run: npm run test:lp8
+
+      # The multiarch workflow deliberately checks the portable evidence
+      # manifest without repeating the stateful AMD64 Compose rehearsal under
+      # ARM emulation. Image artifacts and their attestations are gated below.
+      - name: Validate LP8 evidence metadata (multiarch)
+        if: inputs.architecture_mode == 'multiarch' && hashFiles('scripts/lp8-evidence-audit.ts') != ''
+        shell: bash
+        run: node --experimental-strip-types scripts/lp8-evidence-audit.ts
+
       # In the default amd64 mode, the Compose proofs run on the amd64 GitHub
       # runner before any architecture image work that could be expensive.
       - name: Run LP3 local mail Compose proof (amd64)
-        if: inputs.architecture_mode != 'multiarch' && hashFiles('scripts/lp3-compose-smoke.mjs') != '' && hashFiles('compose.yaml') != ''
+        if: inputs.architecture_mode != 'multiarch' && hashFiles('scripts/lp3-compose-smoke.ts') != '' && hashFiles('compose.yaml') != ''
         shell: bash
-        run: node scripts/lp3-compose-smoke.mjs
+        run: node --experimental-strip-types scripts/lp3-compose-smoke.ts
 
       # LP4 remains an amd64 live proof on GitHub. The explicit multiarch mode
       # is a short arm64 artifact/attestation gate after this proof is green.

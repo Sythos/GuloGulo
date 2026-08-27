@@ -15,11 +15,12 @@ inside are made up.
 
 The machine-readable contract is
 [release/lp3-local-mail.json](../release/lp3-local-mail.json). The static
-Compose audit is [scripts/lp3-compose-audit.mjs](../scripts/lp3-compose-audit.mjs),
+Compose audit is [scripts/lp3-compose-audit.ts](../scripts/lp3-compose-audit.ts),
 the Docker orchestration smoke is
-[scripts/lp3-compose-smoke.mjs](../scripts/lp3-compose-smoke.mjs), and the
+[scripts/lp3-compose-smoke.ts](../scripts/lp3-compose-smoke.ts), and the
 client-side protocol probe is
-[scripts/lp3-proof-smoke.mjs](../scripts/lp3-proof-smoke.mjs).
+[scripts/lp3-proof-smoke.ts](../scripts/lp3-proof-smoke.ts). The old `.mjs`
+names remain thin compatibility bridges during the TypeScript migration.
 
 ## What this proof does and does not mean
 
@@ -135,14 +136,14 @@ From git/, install the locked dependencies and run the normal package gates:
 npm ci --ignore-scripts --no-audit --no-fund
 npm run typecheck:server
 npm run test:lp3
-node scripts/lp3-compose-audit.mjs
+node --experimental-strip-types scripts/lp3-compose-audit.ts
 ~~~
 
 When Docker is available, the complete disposable proof is:
 
 ~~~powershell
 $env:GULOGULO_LP3_VOLUMES_EXTERNAL = 'false'
-node scripts/lp3-compose-smoke.mjs
+node --experimental-strip-types scripts/lp3-compose-smoke.ts
 ~~~
 
 The runner creates a unique Compose project from GITHUB_RUN_ID when CI is
@@ -170,7 +171,7 @@ docker compose --project-name gulogulo-lp3-manual --profile lp3 --profile lp3-ch
 docker compose --project-name gulogulo-lp3-manual --profile lp3 --profile lp3-check --file compose.yaml --env-file .env.example down --volumes --remove-orphans
 ~~~
 
-The lp3-proof-smoke.mjs defaults are the service names and ports in the
+The lp3-proof-smoke.ts defaults are the service names and ports in the
 manifest. For a deliberately different local fixture, set
 LP3_POSTFIX_HOST, LP3_DOVECOT_HOST, LP3_RSPAMD_HOST, LP3_CLAMAV_HOST, or the
 corresponding LP3_*_PORT variable. Do not point these variables at a real

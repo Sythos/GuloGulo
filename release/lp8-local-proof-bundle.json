@@ -1,0 +1,169 @@
+{
+  "$comment": "SPDX-License-Identifier: MIT; SPDX-FileCopyrightText: 2026 Sythos (https://www.sythos.net); Author: Sythos (https://www.sythos.net)",
+  "spdxLicenseIdentifier": "MIT",
+  "spdxFileCopyrightText": "2026 Sythos (https://www.sythos.net)",
+  "author": "Sythos (https://www.sythos.net)",
+  "schemaVersion": 1,
+  "milestone": "LP8",
+  "product": "Gulo Gulo",
+  "proofType": "local_synthetic_evidence_bundle",
+  "status": "ready_for_lp9",
+  "generatedAt": "2026-08-27T00:00:00Z",
+  "syntheticDataOnly": true,
+  "publicDnsRequired": false,
+  "publicAcmeEnabled": false,
+  "externalPhaseDeferred": true,
+  "safeToShare": true,
+  "architecture": {
+    "defaultWorkflowMode": "amd64",
+    "functionalProofPlatform": "linux/amd64",
+    "finalWorkflowMode": "multiarch",
+    "finalModePlatforms": ["linux/amd64", "linux/arm64"],
+    "multiarchFunctionalProof": false,
+    "artifactProvenanceOnly": true,
+    "baseImage": {
+      "name": "ubuntu:26.04",
+      "digest": "sha256:2260313b31c8c011cd2eebe728008efac1b3982be73eb71348ea2648d2c0e09b",
+      "evidenceRun": "https://github.com/Sythos/GuloGulo/actions/runs/33052679820"
+    }
+  },
+  "imageDigests": [
+    {
+      "name": "ubuntu:26.04 base image",
+      "platforms": ["linux/amd64", "linux/arm64"],
+      "digest": "sha256:2260313b31c8c011cd2eebe728008efac1b3982be73eb71348ea2648d2c0e09b",
+      "digestStatus": "exact",
+      "evidence": "https://github.com/Sythos/GuloGulo/actions/runs/33052679820"
+    },
+    {
+      "name": "gulogulo OCI service artifacts",
+      "platforms": ["linux/amd64", "linux/arm64"],
+      "digestStatus": "not_published_local_proof",
+      "evidence": "https://github.com/Sythos/GuloGulo/actions/runs/33052679820",
+      "note": "The multiarch gate built and attested OCI archives. Registry manifest digests are intentionally not claimed until an external release registry is selected."
+    }
+  ],
+  "manifests": [
+    {"path": "README.md", "purpose": "Current repository status and layout."},
+    {"path": ".github/workflows/quality-gates.yml", "purpose": "AMD64-first and multiarch CI gates with provenance."},
+    {"path": "package.json", "purpose": "Reproducible package scripts and runtime metadata."},
+    {"path": "package-lock.json", "purpose": "Locked dependency resolution."},
+    {"path": "doc/README.md", "purpose": "Documentation index."},
+    {"path": "doc/release-readiness.md", "purpose": "Conditional V1 release boundary."},
+    {"path": "doc/server-typescript.md", "purpose": "TypeScript compiler and bridge policy."},
+    {"path": "doc/lp8-evidence-operator.md", "purpose": "This LP8 operator handbook."},
+    {"path": "scripts/lp0-scope-audit.ts", "purpose": "Canonical LP0 static audit."},
+    {"path": "scripts/lp1-compose-audit.ts", "purpose": "Canonical LP1 Compose audit."},
+    {"path": "scripts/lp1-proof-check.ts", "purpose": "Canonical LP1 proof checker."},
+    {"path": "scripts/lp1-proof-smoke.ts", "purpose": "Canonical LP1 Compose smoke."},
+    {"path": "scripts/lp2-compose-audit.ts", "purpose": "Canonical LP2 Compose audit."},
+    {"path": "scripts/lp2-compose-smoke.ts", "purpose": "Canonical LP2 Compose smoke."},
+    {"path": "scripts/lp2-proof-smoke.ts", "purpose": "Canonical LP2 dependency proof."},
+    {"path": "scripts/lp3-compose-audit.ts", "purpose": "Canonical LP3 Compose audit."},
+    {"path": "scripts/lp3-compose-smoke.ts", "purpose": "Canonical LP3 Compose smoke."},
+    {"path": "scripts/lp3-proof-smoke.ts", "purpose": "Canonical LP3 mail proof."},
+    {"path": "scripts/m10-release-audit.ts", "purpose": "Canonical M10 release audit."},
+    {"path": "scripts/lp8-evidence-audit.ts", "purpose": "LP8 portable evidence validator."},
+    {"path": "scripts/lp8-evidence-audit.test.ts", "purpose": "LP8 validator regression tests."},
+    {"path": "scripts/lp8-bundle-smoke.ts", "purpose": "LP8 audit and checksum smoke."},
+    {"path": "compose.yaml", "purpose": "Offline dual-stack Compose topology and persistent volumes."},
+    {"path": "Dockerfile", "purpose": "Ubuntu 26.04 multi-architecture application image."},
+    {"path": "tsconfig.server.json", "purpose": "Strict server TypeScript compiler boundary."},
+    {"path": "tsconfig.lp4.json", "purpose": "LP4 typed web and DAV gate."},
+    {"path": "tsconfig.lp5.json", "purpose": "LP5 typed operations and capacity gate."},
+    {"path": "tsconfig.lp6.json", "purpose": "LP6 typed backup and lifecycle gate."},
+    {"path": "tsconfig.lp7.json", "purpose": "LP7 typed upgrade gate."},
+    {"path": "tsconfig.lp8.json", "purpose": "LP8 evidence and migrated-audit compiler boundary."},
+    {"path": "release/local-proof-scope.json", "purpose": "LP0 local-only proof boundary."},
+    {"path": "release/local-proof-topology.json", "purpose": "LP1 local network and CA topology."},
+    {"path": "release/lp2-local-services.json", "purpose": "LP2 external dependency simulation."},
+    {"path": "release/lp3-local-mail.json", "purpose": "LP3 mail protocol and scanner proof."},
+    {"path": "release/lp4-local-web.json", "purpose": "LP4 browser, DAV, and session proof."},
+    {"path": "release/lp5-local-operations-capacity.json", "purpose": "LP5 operations and bounded capacity proof."},
+    {"path": "release/lp6-local-backup-dr.json", "purpose": "LP6 backup, restore, retention, and DR proof."},
+    {"path": "release/lp7-local-upgrade.json", "purpose": "LP7 replacement and blue-green proof."},
+    {"path": "release/lp8-local-proof-bundle.json", "purpose": "This reproducible LP8 hand-off manifest."},
+    {"path": "release/v1-release-evidence.template.json", "purpose": "Conditional V1 evidence template."},
+    {"path": "docker/lp1-network/Dockerfile", "purpose": "LP1 network utility image."},
+    {"path": "docker/lp2-tls/Dockerfile", "purpose": "LP2 TLS utility image."},
+    {"path": "docker/lp2-ldap/Dockerfile", "purpose": "LP2 synthetic LDAP image."},
+    {"path": "docker/lp2-postgres/Dockerfile", "purpose": "LP2 synthetic PostgreSQL image."},
+    {"path": "docker/lp3-tls/Dockerfile", "purpose": "LP3 local certificate image."},
+    {"path": "docker/lp3-postfix/Dockerfile", "purpose": "LP3 Postfix image."},
+    {"path": "docker/lp3-dovecot/Dockerfile", "purpose": "LP3 Dovecot image."},
+    {"path": "docker/lp3-rspamd/Dockerfile", "purpose": "LP3 Rspamd image."},
+    {"path": "docker/lp3-clamav/Dockerfile", "purpose": "LP3 ClamAV image."},
+    {"path": "docker/lp3-proof/Dockerfile", "purpose": "LP3 synthetic protocol proof image."}
+  ],
+  "fixtures": [
+    {"path": "test/fixtures/manifest.json", "purpose": "Deterministic fixture inventory."},
+    {"path": "test/fixtures/tenant.json", "purpose": "Synthetic tenant, users, and alias."},
+    {"path": "test/fixtures/failure-modes.json", "purpose": "Dependency outage and fail-closed cases."},
+    {"path": "test/fixtures/README.md", "purpose": "Fixture safety and execution notes."}
+  ],
+  "protocolEvidence": [
+    {"path": "doc/lp3-local-mail.md", "purpose": "SMTP, IMAP IDLE, LMTP, Sieve, queue, and scanner proof."},
+    {"path": "doc/lp4-local-web.md", "purpose": "Web, session, DAV, discovery, and restart proof."},
+    {"path": "doc/compose-and-fixtures.md", "purpose": "Compose profiles and synthetic fixture workflow."},
+    {"path": "doc/local-proof-scope.md", "purpose": "Local proof scope and external-phase boundary."},
+    {"path": "doc/local-proof-topology.md", "purpose": "Local CA, DNS, and dual-stack topology."}
+  ],
+  "operationsEvidence": [
+    {"path": "doc/observability.md", "purpose": "Sanitized logs, metrics, rotation, and alerts."},
+    {"path": "doc/container-patching.md", "purpose": "Patch-status and apt update/upgrade operator contract."},
+    {"path": "doc/acme-abuse-deployment.md", "purpose": "ACME and abuse controls with external boundary."},
+    {"path": "doc/lp5-local-operations-capacity.md", "purpose": "LP5 operations and bounded capacity procedure."}
+  ],
+  "apiMcpExamples": [
+    {"path": "doc/api-and-mcp.md", "purpose": "Read-only API and MCP monitoring examples."}
+  ],
+  "backupRestore": [
+    {"path": "doc/lp6-local-backup-dr.md", "purpose": "Synthetic backup, restore, retention, and DR procedure."},
+    {"path": "doc/lifecycle-backup-dr.md", "purpose": "Provider boundary and authorization rules."}
+  ],
+  "migration": [
+    {"path": "doc/lp7-local-upgrade.md", "purpose": "LP7 replacement and blue-green rehearsal."},
+    {"path": "doc/upgrade-and-migration.md", "purpose": "Docker and Kubernetes migration contract."},
+    {"path": "src/upgrade/rehearsal.ts", "purpose": "Typed continuity and rollback rehearsal state machine."}
+  ],
+  "commands": [
+    "npm ci --ignore-scripts --no-audit --no-fund",
+    "npm test",
+    "npm run test:lp8",
+    "npm run test:lp8:bundle",
+    "node --experimental-strip-types scripts/lp8-evidence-audit.ts",
+    "node --experimental-strip-types scripts/lp8-bundle-smoke.ts"
+  ],
+  "ciRuns": [
+    {"id": "33051046932", "url": "https://github.com/Sythos/GuloGulo/actions/runs/33051046932", "mode": "amd64", "result": "passed", "scope": "LP7 functional baseline"},
+    {"id": "33051921809", "url": "https://github.com/Sythos/GuloGulo/actions/runs/33051921809", "mode": "amd64", "result": "passed", "scope": "post-merge functional baseline"},
+    {"id": "33052679820", "url": "https://github.com/Sythos/GuloGulo/actions/runs/33052679820", "mode": "multiarch", "result": "passed", "scope": "AMD64+ARM64 OCI artifacts and attestations"},
+    {"id": "33056004181", "url": "https://github.com/Sythos/GuloGulo/actions/runs/33056004181", "mode": "amd64", "result": "passed", "scope": "published README and repository gates"}
+  ],
+  "temporaryShims": [
+    {"bridge": "scripts/lp0-scope-audit.mjs", "canonical": "scripts/lp0-scope-audit.ts", "owner": "LP9", "reason": "Legacy Node entry point retained while consumers migrate."},
+    {"bridge": "scripts/lp1-compose-audit.mjs", "canonical": "scripts/lp1-compose-audit.ts", "owner": "LP9", "reason": "Legacy Node entry point retained while consumers migrate."},
+    {"bridge": "scripts/lp1-proof-check.mjs", "canonical": "scripts/lp1-proof-check.ts", "owner": "LP9", "reason": "Legacy Node entry point retained while consumers migrate."},
+    {"bridge": "scripts/lp1-proof-smoke.mjs", "canonical": "scripts/lp1-proof-smoke.ts", "owner": "LP9", "reason": "Legacy Node entry point retained while consumers migrate."},
+    {"bridge": "scripts/lp2-compose-audit.mjs", "canonical": "scripts/lp2-compose-audit.ts", "owner": "LP9", "reason": "Legacy Node entry point retained while consumers migrate."},
+    {"bridge": "scripts/lp2-compose-smoke.mjs", "canonical": "scripts/lp2-compose-smoke.ts", "owner": "LP9", "reason": "Legacy Node entry point retained while consumers migrate."},
+    {"bridge": "scripts/lp2-proof-smoke.mjs", "canonical": "scripts/lp2-proof-smoke.ts", "owner": "LP9", "reason": "Legacy Node entry point retained while consumers migrate."},
+    {"bridge": "scripts/lp3-compose-audit.mjs", "canonical": "scripts/lp3-compose-audit.ts", "owner": "LP9", "reason": "Legacy Node entry point retained while consumers migrate."},
+    {"bridge": "scripts/lp3-compose-smoke.mjs", "canonical": "scripts/lp3-compose-smoke.ts", "owner": "LP9", "reason": "Legacy Node entry point retained while consumers migrate."},
+    {"bridge": "scripts/lp3-proof-smoke.mjs", "canonical": "scripts/lp3-proof-smoke.ts", "owner": "LP9", "reason": "Legacy Node entry point retained while consumers migrate."},
+    {"bridge": "scripts/m10-release-audit.mjs", "canonical": "scripts/m10-release-audit.ts", "owner": "LP9", "reason": "Legacy Node entry point retained while consumers migrate."},
+    {"bridge": "src/release/index.mjs", "canonical": "src/release/index.ts", "owner": "LP9", "reason": "Legacy module entry point retained for older consumers."},
+    {"bridge": "src/release/local-proof-scope.mjs", "canonical": "src/release/local-proof-scope.ts", "owner": "LP9", "reason": "Legacy module entry point retained for older consumers."},
+    {"bridge": "src/release/local-proof-scope.test.mjs", "canonical": "src/release/local-proof-scope.test.ts", "owner": "LP9", "reason": "Legacy test entry point retained for older consumers."},
+    {"bridge": "src/release/local-proof-topology.mjs", "canonical": "src/release/local-proof-topology.ts", "owner": "LP9", "reason": "Legacy module entry point retained for older consumers."},
+    {"bridge": "src/release/local-proof-topology.test.mjs", "canonical": "src/release/local-proof-topology.test.ts", "owner": "LP9", "reason": "Legacy test entry point retained for older consumers."},
+    {"bridge": "src/release/release-evidence.mjs", "canonical": "src/release/release-evidence.ts", "owner": "LP9", "reason": "Legacy module entry point retained for older consumers."},
+    {"bridge": "src/release/release-evidence.test.mjs", "canonical": "src/release/release-evidence.test.ts", "owner": "LP9", "reason": "Legacy test entry point retained for older consumers."}
+  ],
+  "residualRisks": [
+    "External LDAP, PostgreSQL, Postfix, Dovecot, CalDAV, and CardDAV adapters still require a provider rehearsal.",
+    "Registry image manifest digests, SBOM publication, signing, and vulnerability scanning remain external release evidence.",
+    "Live Kubernetes traffic switching, rollback timings, and measured RPO/RTO remain provider evidence.",
+    "LP9 must remove temporary bootstrap shims or document a new compatibility owner and complete the final source audit."
+  ]
+}

@@ -1,0 +1,23 @@
+// SPDX-License-Identifier: MIT
+// SPDX-FileCopyrightText: 2026 Sythos (https://www.sythos.net)
+// Author: Sythos (https://www.sythos.net)
+{
+  "extends": "./tsconfig.server.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "rootDir": "."
+  },
+  "include": [
+    "scripts/lp0-*.ts",
+    "scripts/lp1-*.ts",
+    "scripts/lp2-*.ts",
+    "scripts/lp3-*.ts",
+    "scripts/m10-release-audit.ts",
+    "scripts/lp8-*.ts",
+    "src/release/**/*.ts"
+  ],
+  "exclude": [
+    "dist",
+    "node_modules"
+  ]
+}
