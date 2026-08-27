@@ -619,9 +619,6 @@ jobs:
           grep -Fq 'artifactProvenanceOnly' release/lp8-local-proof-bundle.json
           grep -Fq 'temporaryShims' release/lp8-local-proof-bundle.json
           grep -Fq 'LP9' release/lp8-local-proof-bundle.json
-          grep -Fq 'REQUIRED_SECTION30_ITEMS' src/release/release-evidence.mjs
-          grep -Fq 'M10_REVIEWS_INCOMPLETE' src/release/release-evidence.mjs
-          grep -Fq 'productionReady' src/release/release-evidence.mjs
           grep -Fq 'REQUIRED_SECTION30_ITEMS' src/release/release-evidence.ts
           grep -Fq 'M10_REVIEWS_INCOMPLETE' src/release/release-evidence.ts
           grep -Fq 'productionReady' src/release/release-evidence.ts
