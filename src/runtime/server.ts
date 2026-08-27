@@ -2,7 +2,7 @@
 // SPDX-FileCopyrightText: 2026 Sythos (https://www.sythos.net)
 // Author: Sythos (https://www.sythos.net)
 
-import { createHash, randomUUID, timingSafeEqual } from 'node:crypto';
+import { randomUUID, scrypt, timingSafeEqual } from 'node:crypto';
 import { existsSync, readFileSync, statSync } from 'node:fs';
 import { createServer as createHttpServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http';
 import { extname, join, relative, resolve } from 'node:path';
@@ -379,10 +379,38 @@ function publicSessionUser(session: WebSession) {
   });
 }
 
-function equalFixtureSecret(supplied: unknown, expected: string): boolean {
-  const suppliedDigest = createHash('sha256').update(String(supplied), 'utf8').digest();
-  const expectedDigest = createHash('sha256').update(expected, 'utf8').digest();
-  return timingSafeEqual(suppliedDigest, expectedDigest);
+function equalFixtureIdentifier(supplied: unknown, expected: string): boolean {
+  const suppliedBytes = Buffer.from(String(supplied), 'utf8');
+  const expectedBytes = Buffer.from(expected, 'utf8');
+  if (suppliedBytes.length !== expectedBytes.length) return false;
+  return timingSafeEqual(suppliedBytes, expectedBytes);
+}
+
+const FIXTURE_PASSWORD_SALT = 'gulogulo-fixture-password-v1';
+const FIXTURE_PASSWORD_KEYLEN = 32;
+
+function deriveFixturePassword(value: unknown): Promise<Buffer> {
+  return new Promise((resolve, reject) => {
+    scrypt(String(value), FIXTURE_PASSWORD_SALT, FIXTURE_PASSWORD_KEYLEN, (error, derivedKey) => {
+      if (error) {
+        reject(error);
+        return;
+      }
+      resolve(derivedKey as Buffer);
+    });
+  });
+}
+
+async function equalFixturePassword(supplied: unknown, expected: string): Promise<boolean> {
+  try {
+    const [suppliedKey, expectedKey] = await Promise.all([
+      deriveFixturePassword(supplied),
+      deriveFixturePassword(expected),
+    ]);
+    return timingSafeEqual(suppliedKey, expectedKey);
+  } catch {
+    return false;
+  }
 }
 
 /** Build an explicitly enabled local-proof authenticator; all other modes reject every login. */
@@ -396,8 +424,8 @@ export function createFixtureLoginAuthenticator(environment: Record<string, stri
   if (!enabled || !email || !password || !tenantId || !domain || !userId) return async () => null;
   const canonicalEmail = email.trim().toLowerCase();
   return async (credentials: LoginCredentials) => {
-    const emailMatches = equalFixtureSecret(credentials?.email ?? '', canonicalEmail);
-    const passwordMatches = equalFixtureSecret(credentials?.password ?? '', password);
+    const emailMatches = equalFixtureIdentifier(credentials?.email ?? '', canonicalEmail);
+    const passwordMatches = await equalFixturePassword(credentials?.password ?? '', password);
     if (!emailMatches || !passwordMatches) return null;
     return Object.freeze({ tenantId, domain, userId, actorId: userId, role: 'user' });
   };

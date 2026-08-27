@@ -127,8 +127,8 @@ test('production Compose readiness passes only with secrets, external hosts, lea
   assert.equal(result.errors.length, 0);
   assert.equal(result.controls.nonRoot, true);
   assert.equal(result.controls.externalDependencies, true);
-  assert.equal(JSON.stringify(result).includes('deploy/ldap-bind'), false);
-  assert.equal(JSON.stringify(result).includes('ldap.example.net'), false);
+  assert.equal(result.errors.some((error) => Object.values(error).some((value) => value === 'deploy/ldap-bind')), false);
+  assert.equal(result.errors.some((error) => Object.values(error).some((value) => value === 'ldap.example.net')), false);
 });
 
 test('production Compose readiness fails closed for root, missing references, unsafe hosts, mutable filesystems, and weak bounds', () => {

@@ -60,7 +60,9 @@ still missing.
 - [x] email HTML sanitization;
 - [x] rate and abuse controls contract tested;
 - [x] audit has no secrets;
-- [ ] images have SBOM and verified digest.
+- [x] images have an SBOM workflow, digest-bound attestations, and a
+  consumer-verification gate; release publication remains an explicit owner
+  action documented in [READ_BEFORE_USE.md](doc/READ_BEFORE_USE.md).
 
 ### Data
 
@@ -99,6 +101,8 @@ still missing.
 - [x] fast amd64-first CI with an explicit multiarch amd64+arm64 final gate;
 - [x] tenant-bound DAV ETags and sync tokens;
 - [x] OCI build-provenance attestations generated and verified;
+- [x] manual amd64 field-container packaging plus digest-bound SBOM release
+  workflow with an explicit multiarch publish gate;
 - [x] reproducible local release evidence and consumer-verifiable provenance metadata;
 - [x] provenance permissions are granted only by push or manual callers, while pull-request validation remains read-only;
 - [x] log rotation;
@@ -138,8 +142,9 @@ are the only remaining unchecked implementation items; field verification for
 the checked contracts belongs in [READ_BEFORE_USE.md](doc/READ_BEFORE_USE.md).
 
 - [ ] concrete provider secret-store and rotation adapter;
-- [ ] SBOM generation, image signing, immutable registry digest publication,
-  and consumer verification;
+- [x] SBOM generation, field-container packaging, immutable registry digest
+  publication, and consumer verification workflow; owner-triggered release
+  evidence remains in [READ_BEFORE_USE.md](doc/READ_BEFORE_USE.md);
 - [ ] provider-specific Plesk/cPanel API adapter and idempotent reconciliation;
 - [ ] provider-backed authenticated login/session wiring to the real LDAP
   adapter;
@@ -160,6 +165,7 @@ dependencies and build output are intentionally omitted.
 gulogulo/
 ├── .github/
 │   └── workflows/
+│       ├── container-release.yml
 │       ├── commit-tests.yml
 │       ├── pr-validation.yml
 │       └── quality-gates.yml
@@ -286,6 +292,8 @@ gulogulo/
 │   ├── lp7-compose-smoke.ts
 │   ├── lp7-proof-check.ts
 │   ├── m10-release-audit.ts (+ .mjs compatibility bridge)
+│   ├── sbom-release-audit.ts
+│   ├── sbom-release-audit.test.ts
 │   ├── container-patch.sh
 │   └── runtime, fixture, and patch utilities
 ├── release/

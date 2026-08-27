@@ -100,6 +100,8 @@ jobs:
           test -f doc/lp9-local-release.md
           test -f doc/scanner-signature-volume.md
           test -f doc/sbom-release-plan.md
+          test -f scripts/sbom-release-audit.ts
+          test -f scripts/sbom-release-audit.test.ts
           test -f doc/control-panel-integration.md
           test -f release/v1-release-evidence.template.json
           test -f release/lp2-local-services.json
@@ -225,10 +227,13 @@ jobs:
           test -f .github/workflows/commit-tests.yml
           test -f .github/workflows/pr-validation.yml
           test -f .github/workflows/quality-gates.yml
+          test -f .github/workflows/container-release.yml
           grep -Fq 'architecture_mode' .github/workflows/commit-tests.yml
           grep -Fq 'architecture_mode' .github/workflows/pr-validation.yml
           grep -Fq 'BUILD_PLATFORMS' .github/workflows/quality-gates.yml
           grep -Fq 'uses: actions/attest-build-provenance@v4' .github/workflows/quality-gates.yml
+          grep -Fq 'anchore/sbom-action@v0.24.0' .github/workflows/container-release.yml
+          grep -Fq 'uses: actions/attest@v4' .github/workflows/container-release.yml
           grep -Fq 'id-token: write' .github/workflows/commit-tests.yml
           grep -Fq 'attestations: write' .github/workflows/commit-tests.yml
           test -f src/dav/caldav/caldav-contract.mjs
@@ -426,6 +431,8 @@ jobs:
             scripts/lp9-source-audit.test.ts \
             scripts/lp9-release-audit.ts \
             scripts/lp9-release-audit.test.ts \
+            scripts/sbom-release-audit.ts \
+            scripts/sbom-release-audit.test.ts \
             scripts/lp4-compose-audit.ts \
             scripts/lp4-compose-smoke.ts \
             scripts/lp4-proof-check.ts \
@@ -467,7 +474,8 @@ jobs:
             .gitignore \
             .github/workflows/commit-tests.yml \
             .github/workflows/pr-validation.yml \
-            .github/workflows/quality-gates.yml; do
+            .github/workflows/quality-gates.yml \
+            .github/workflows/container-release.yml; do
             grep -Fq 'SPDX-License-Identifier: MIT' "$file"
             grep -Fq 'Author: Sythos (https://www.sythos.net)' "$file"
           done
@@ -907,6 +915,11 @@ jobs:
         if: inputs.architecture_mode != 'multiarch' && hashFiles('scripts/lp9-source-audit.ts') != '' && hashFiles('scripts/lp9-release-audit.ts') != '' && hashFiles('tsconfig.lp9.json') != ''
         shell: bash
         run: npm run test:lp9
+
+      - name: Run SBOM and container-release workflow audit
+        if: hashFiles('scripts/sbom-release-audit.ts') != ''
+        shell: bash
+        run: node --experimental-strip-types scripts/sbom-release-audit.ts
 
       # The multiarch workflow deliberately checks the portable evidence
       # manifest without repeating the stateful AMD64 Compose rehearsal under

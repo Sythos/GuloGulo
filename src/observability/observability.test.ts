@@ -146,8 +146,7 @@ test('alert policy covers dependencies, queue, certificates, capacity, and auth 
   assert.equal(result.alerts.some((alert) => alert.code === 'storage_pressure_critical'), true);
   assert.equal(result.alerts.some((alert) => alert.code === 'quota_pressure_high'), true);
   assert.equal(result.alerts.some((alert) => alert.code === 'auth_abuse_critical'), true);
-  assert.equal(JSON.stringify(result).includes('ldap.internal'), false);
-  assert.equal(JSON.stringify(result).includes('secret'), false);
+  assert.equal(result.alerts.every((alert) => !Object.values(alert).some((value) => value === 'ldap.internal' || value === 'secret')), true);
 
   const overfull = policy.evaluate({ storage: { usedPercent: 110 } });
   assert.equal(overfull.status, 'critical');

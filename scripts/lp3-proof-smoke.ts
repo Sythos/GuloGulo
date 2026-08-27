@@ -26,6 +26,14 @@ const clamavPort = Number(process.env.LP3_CLAMAV_PORT || 3310);
 const timeoutMs = Number(process.env.LP3_PROBE_TIMEOUT_MS || 15_000);
 const imapUser = process.env.LP3_IMAP_USER || 'alice@gulogulo.test';
 const imapPassword = process.env.LP3_IMAP_PASSWORD || 'lp3-synthetic-password';
+const tlsCaFile = process.env.LP3_TLS_CA_FILE || resolve(process.env.LP3_TLS_DIR || '/run/gulogulo-lp3-tls', 'ca.crt');
+let tlsCa;
+try {
+  tlsCa = await readFile(tlsCaFile, 'utf8');
+} catch {
+  // Keep the client fail-closed when the dedicated LP3 trust anchor is absent.
+  tlsCa = undefined;
+}
 
 function fail(message) {
   throw new Error(`LP3 mail proof failed: ${message}`);
@@ -46,7 +54,7 @@ function withTimeout(promise, label, milliseconds = timeoutMs) {
 function connectSocket(host, port, { secure = false } = {}) {
   return withTimeout(new Promise((resolveSocket, reject) => {
     const socket = secure
-      ? tls.connect({ host, port, servername: host, rejectUnauthorized: false })
+      ? tls.connect({ host, port, servername: host, ca: tlsCa, rejectUnauthorized: true })
       : net.createConnection({ host, port });
     const onError = (error) => {
       socket.destroy();

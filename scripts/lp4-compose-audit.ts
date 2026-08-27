@@ -80,7 +80,14 @@ for (const folder of ['src/dav/caldav', 'src/dav/carddav', 'src/dav/discovery'])
     if (!file.endsWith('.mjs')) continue;
     const source = await readFile(resolve(root, folder, file), 'utf8');
     if (!/compatibility bridge/iu.test(source)) fail(`${folder}/${file} is not a compatibility bridge`);
-    if (!/^(?:\s*\/\/[^\r\n]*(?:\r?\n|$)|\s*import\s+['"][^'"]+['"];?\s*(?:\r?\n|$)|\s*export\s+\*\s+from\s+['"][^'"]+['"];?\s*(?:\r?\n|$))*$/u.test(source)) {
+    const bridgeLines = source.split(/\r?\n/u).map((line) => line.trim());
+    const bridgeOnly = bridgeLines.every((line) => (
+      line === ''
+      || line.startsWith('//')
+      || /^import[^\S\r\n]+['"][^'"]+['"];?$/u.test(line)
+      || /^export[^\S\r\n]+\*[^\S\r\n]+from[^\S\r\n]+['"][^'"]+['"];?$/u.test(line)
+    ));
+    if (!bridgeOnly) {
       fail(`${folder}/${file} contains behavior beyond import/export bridge code`);
     }
   }

@@ -79,10 +79,13 @@ tester.
   content-like values. Verify redaction with representative logs and confirm
   that the chosen collector and retention policy do not reintroduce sensitive
   payloads.
-- [ ] **OPEN CODE — release SBOM and signed digest publication.** GitHub
-  Artifact Attestations prove build provenance, but this checkout does not yet
-  generate and verify a release SBOM plus signed registry digest. This needs
-  repository workflow code before production release.
+- [x] **DONE — release SBOM, field container, and signed digest workflow.** The
+  manual container-release workflow builds an amd64 field-test archive, emits
+  an SPDX JSON SBOM, and (on trusted `main` publish runs) builds the selected
+  amd64 or amd64+arm64 image, binds SBOM and build-provenance attestations to
+  the immutable digest, and verifies the result through the GitHub CLI. Verify
+  GHCR visibility/retention, vulnerability disposition, clean-consumer
+  verification, and field import before treating a release as operational.
 
 ### Data, retention, backup, and deletion
 
@@ -344,8 +347,11 @@ the scanner containers writable or add a Docker-socket escape hatch.
 5. Verify GitHub Artifact Attestation from a clean consumer context.
 6. Keep the previous image available for rollback and retain the evidence.
 
-Artifact provenance is implemented. SBOM generation, image signing, and
-consumer digest publication are still OPEN CODE in the repository.
+Artifact provenance, SBOM generation, the amd64 field-container package, and
+digest-bound release attestations are implemented in
+`.github/workflows/container-release.yml`. The release workflow is manual and
+main-only for publishing; registry policy, consumer verification, and field
+deployment evidence remain VERIFY BEFORE USE work.
 
 ### Docker replacement and Kubernetes blue/green runbook
 
@@ -462,8 +468,6 @@ as tester work:
 
 - [ ] concrete provider secret-store and rotation adapter behind the existing
   secret-reference boundary;
-- [ ] SBOM generation, image signing, immutable registry digest publication,
-  and consumer verification in the release workflow;
 - [ ] provider-backed authenticated login/session wiring that calls the real
   LDAP adapter instead of the fixture authenticator;
 - [ ] production Postfix/Dovecot mail adapters, persistent DAV backend, and

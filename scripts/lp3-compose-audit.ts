@@ -126,6 +126,9 @@ for (const service of ['lp3-rspamd', 'lp3-clamav', 'gulogulo-lp3-proof-check', '
   requireText(section, 'GULOGULO_SCANNER_SIGNATURE_ROOT:', `${service} signature root`);
   requireText(section, 'lp3-scanner-signatures:/var/lib/gulogulo/scanner-signatures:ro', `${service} read-only signature mount`);
 }
+const typedProofSection = lp3ServiceSection('gulogulo-lp3-proof-node');
+requireText(typedProofSection, 'LP3_TLS_DIR: /run/gulogulo-lp3-tls', 'typed LP3 proof TLS directory');
+requireText(typedProofSection, 'lp3-tls-data:/run/gulogulo-lp3-tls:ro', 'typed LP3 proof read-only TLS trust mount');
 
 for (const imagePath of ['docker/lp3-tls/Dockerfile', 'docker/lp3-postfix/Dockerfile', 'docker/lp3-dovecot/Dockerfile', 'docker/lp3-rspamd/Dockerfile', 'docker/lp3-clamav/Dockerfile', 'docker/lp3-proof/Dockerfile']) {
   let image;

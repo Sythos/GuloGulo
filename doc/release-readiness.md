@@ -25,11 +25,11 @@ The M10 gate covers five evidence domains:
 
 | Domain | What is checked in this checkout | What still needs an external rehearsal |
 |---|---|---|
-| Security | tenant/RBAC boundaries, session and CSRF contracts, MFA primitives, HTML sanitization, abuse limits, and secret-free audit events | provider secret rotation, real TLS/LDAP/DB configuration, image signing and SBOM publication |
+| Security | tenant/RBAC boundaries, session and CSRF contracts, MFA primitives, HTML sanitization, abuse limits, secret-free audit events, and the SBOM/digest release workflow | provider secret rotation, real TLS/LDAP/DB configuration, vulnerability disposition, registry policy, and clean-consumer release verification |
 | Data | quota allocation, 28-day purge, backup authorization, encrypted archive shape, idempotent lifecycle operations | an actual restore, deletion runbook execution, external-volume snapshots, measured RPO/RTO |
 | Interoperability | SMTP/IMAP/IDLE, Sieve, DAV object semantics, discovery, ICS/vCard, and timezone contracts | vendor client matrix and real protocol endpoints |
 | Operations | health, metrics, logging, alerts, queue visibility, Docker/Kubernetes migration contracts, multi-architecture build configuration, and the shared read-only scanner-signature boundary | host-side scanner feed publication, Docker host replacement, Kubernetes cutover, rollback, and incident tabletop |
-| Governance | role and delegation policy, default-deny master access, optional Plesk/cPanel tenant-tool boundary, read-only API/MCP, ADRs, documentation inventory, and GitHub Artifact Attestations for trusted push builds | owner approval of the deployment and disaster-recovery runbooks plus any provider-specific panel adapter |
+| Governance | role and delegation policy, default-deny master access, optional Plesk/cPanel tenant-tool boundary, read-only API/MCP, ADRs, documentation inventory, and GitHub Artifact Attestations/SBOM workflow for trusted releases | owner approval of the deployment and disaster-recovery runbooks plus any provider-specific panel adapter |
 
 The source of truth for the checklist remains Section 30 of `GULOGULO.md`.
 The repository copy is deliberately an evidence boundary, not a second product
@@ -45,9 +45,10 @@ LP8 packages this boundary in
 and [`doc/lp8-evidence-operator.md`](lp8-evidence-operator.md). The bundle
 indexes the local proof manifests, fixtures, operator notes, CI provenance,
 and temporary TypeScript bridges. It remains safe to share because it contains
-synthetic references and sanitized links only; registry publication, SBOM,
-signing, live provider evidence, and provider-specific Plesk/cPanel adapters
-remain outside this checkout.
+synthetic references and sanitized links only; live provider evidence and
+provider-specific Plesk/cPanel adapters remain outside this checkout. The
+repository now contains the manual SBOM/container release lane; its field and
+registry verification still belongs to the operator.
 
 ## Artifact provenance in GitHub Actions
 
@@ -68,11 +69,15 @@ connected checkout with:
 gh attestation verify PATH/TO/gulogulo-<image>-ubuntu-26.04.oci.tar --repo Sythos/GuloGulo
 ```
 
-For a registry release, publish the same digest and verify its registry subject
-with the OCI form documented by GitHub (`gh attestation verify
-oci://REGISTRY/IMAGE:TAG --repo Sythos/GuloGulo`). Artifact attestations are
-provenance evidence; they do not replace image vulnerability scanning, SBOM
-review, signatures, or the external deployment rehearsal.
+The manual `container-release.yml` workflow generates an SPDX SBOM with
+`anchore/sbom-action@v0.24.0`, binds it to the exact GHCR digest with
+`actions/attest@v4`, and keeps the separate build-provenance wrapper
+`actions/attest-build-provenance@v4`. For a registry release, publish the same
+digest and verify its registry subject with the OCI form documented by GitHub
+(`gh attestation verify oci://REGISTRY/IMAGE@sha256:DIGEST --repo
+Sythos/GuloGulo --predicate-type https://spdx.dev/Document/v2.3`). Artifact
+attestations do not replace image vulnerability scanning, SBOM review,
+signatures, or the external deployment rehearsal.
 
 ## Running the gate
 
