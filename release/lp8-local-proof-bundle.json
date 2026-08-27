@@ -138,7 +138,9 @@
     {"id": "33051046932", "url": "https://github.com/Sythos/GuloGulo/actions/runs/33051046932", "mode": "amd64", "result": "passed", "scope": "LP7 functional baseline"},
     {"id": "33051921809", "url": "https://github.com/Sythos/GuloGulo/actions/runs/33051921809", "mode": "amd64", "result": "passed", "scope": "post-merge functional baseline"},
     {"id": "33052679820", "url": "https://github.com/Sythos/GuloGulo/actions/runs/33052679820", "mode": "multiarch", "result": "passed", "scope": "AMD64+ARM64 OCI artifacts and attestations"},
-    {"id": "33056004181", "url": "https://github.com/Sythos/GuloGulo/actions/runs/33056004181", "mode": "amd64", "result": "passed", "scope": "published README and repository gates"}
+    {"id": "33056004181", "url": "https://github.com/Sythos/GuloGulo/actions/runs/33056004181", "mode": "amd64", "result": "passed", "scope": "published README and repository gates"},
+    {"id": "33103198420", "url": "https://github.com/Sythos/GuloGulo/actions/runs/33103198420", "mode": "amd64", "result": "passed", "scope": "LP8 AMD64 functional and evidence gates"},
+    {"id": "33104017482", "url": "https://github.com/Sythos/GuloGulo/actions/runs/33104017482", "mode": "multiarch", "result": "passed", "scope": "LP8 AMD64+ARM64 artifact and provenance gates"}
   ],
   "temporaryShims": [
     {"bridge": "scripts/lp0-scope-audit.mjs", "canonical": "scripts/lp0-scope-audit.ts", "owner": "LP9", "reason": "Legacy Node entry point retained while consumers migrate."},

@@ -68,11 +68,15 @@ is synthetic local evidence, not a production availability or interoperability
 claim.
 
 LP8 packages the local proof as a reproducible, safe-to-share evidence bundle
-and operator handbook. The AMD64 functional gate and the final AMD64+ARM64
-artifact/provenance gate are the acceptance checks for this change; the final
-Actions evidence link is added here after the pushed commit is green. LP8 does
-not claim registry publication, live provider interoperability, or production
-readiness.
+and operator handbook. The AMD64 functional gate passed in
+[33103198420](https://github.com/Sythos/GuloGulo/actions/runs/33103198420), and
+the final AMD64+ARM64 artifact/provenance gate passed in
+[33104017482](https://github.com/Sythos/GuloGulo/actions/runs/33104017482).
+The multiarch run built the declared OCI artifacts, generated GitHub Artifact
+Attestations, and verified them; functional Compose proof remained AMD64-only
+by policy. LP8 is complete at the reproducible local-proof hand-off boundary,
+ready for owner approval of LP9. It does not claim registry publication, live
+provider interoperability, or production readiness.
 
 ### Security
 
