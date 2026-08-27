@@ -207,7 +207,7 @@ await ensureSentinel('proof', join(stateDirectories.proof, 'lp7-proof-sentinel.j
 const savedContinuityPath = join(proofStateDirectory, 'lp7-dav-continuity.json');
 try {
   const saved = await readJson(savedContinuityPath, 'saved DAV continuity state');
-  assert(JSON.stringify(saved.signature) === continuitySignature, 'DAV continuity changed across the replacement rehearsal');
+  assert(saved.signature === continuitySignature, 'DAV continuity changed across the replacement rehearsal');
 } catch (error) {
   if (!isMissingFile(error)) throw error;
   await writeJson(savedContinuityPath, { schemaVersion: 1, milestone: 'LP7', signature: continuitySignature });
