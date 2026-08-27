@@ -144,6 +144,7 @@ for (const imagePath of ['docker/lp3-tls/Dockerfile', 'docker/lp3-postfix/Docker
 }
 
 const tlsEntrypoint = await readFile(resolve(root, 'docker/lp3-tls/entrypoint-tls.sh'), 'utf8');
+requireText(tlsEntrypoint, 'chmod 0755 "${tls_dir}"', 'LP3 shared TLS directory readability');
 requireText(tlsEntrypoint, 'basicConstraints=critical,CA:TRUE', 'LP3 synthetic CA basic constraints');
 requireText(tlsEntrypoint, 'keyUsage=critical,keyCertSign,cRLSign', 'LP3 synthetic CA key usage');
 

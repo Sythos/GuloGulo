@@ -7,7 +7,10 @@ set -euo pipefail
 
 tls_dir="${LP3_TLS_DIR:-/run/gulogulo-lp3-tls}"
 mkdir -p "${tls_dir}"
-chmod 0700 "${tls_dir}"
+# The volume is shared read-only with the Postfix, Dovecot, and non-root proof
+# clients.  The certificates and CA are public trust material (private keys
+# remain 0600 below), so the directory must be traversable by those clients.
+chmod 0755 "${tls_dir}"
 
 if [[ ! -s "${tls_dir}/ca.crt" || ! -s "${tls_dir}/lp3-postfix.crt" || \
   ! -s "${tls_dir}/lp3-postfix.key" || ! -s "${tls_dir}/lp3-dovecot.crt" || \
