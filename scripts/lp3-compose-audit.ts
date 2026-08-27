@@ -96,6 +96,7 @@ for (const marker of [
   'lp3-dovecot-state:',
   'lp3-rspamd-data:',
   'lp3-clamav-data:',
+  'lp3-scanner-signatures:',
   'external: ${GULOGULO_LP3_VOLUMES_EXTERNAL:-false}',
 ]) {
   requireText(compose, marker, `LP3 volume marker ${marker}`);
@@ -107,6 +108,23 @@ if (/docker\.sock|network_mode:\s*host|privileged:\s*true/m.test(lp3Section)) {
 }
 if (/GULOGULO_MAIL_CATCH_ALL:\s*\$\{[^}]*:-true\}|GULOGULO_MAIL_USER_FORWARDING:\s*\$\{[^}]*:-true\}/u.test(compose)) {
   fail('LP3 defaults enable catch-all or automatic forwarding');
+}
+
+const lp3ServiceNames = ['lp3-tls', 'lp3-dovecot', 'lp3-postfix', 'lp3-rspamd', 'lp3-clamav', 'gulogulo-lp3-proof-check', 'gulogulo-lp3-proof-node'];
+function lp3ServiceSection(service: string): string {
+  const start = lp3Section.indexOf(`  ${service}:`);
+  const nextStarts = lp3ServiceNames
+    .filter((candidate) => candidate !== service)
+    .map((candidate) => lp3Section.indexOf(`\n  ${candidate}:`, start + 1))
+    .filter((index) => index >= 0);
+  const end = nextStarts.length > 0 ? Math.min(...nextStarts) : lp3Section.length;
+  return lp3Section.slice(start, end);
+}
+
+for (const service of ['lp3-rspamd', 'lp3-clamav', 'gulogulo-lp3-proof-check', 'gulogulo-lp3-proof-node']) {
+  const section = lp3ServiceSection(service);
+  requireText(section, 'GULOGULO_SCANNER_SIGNATURE_ROOT:', `${service} signature root`);
+  requireText(section, 'lp3-scanner-signatures:/var/lib/gulogulo/scanner-signatures:ro', `${service} read-only signature mount`);
 }
 
 for (const imagePath of ['docker/lp3-tls/Dockerfile', 'docker/lp3-postfix/Dockerfile', 'docker/lp3-dovecot/Dockerfile', 'docker/lp3-rspamd/Dockerfile', 'docker/lp3-clamav/Dockerfile', 'docker/lp3-proof/Dockerfile']) {
@@ -156,15 +174,28 @@ equal(manifest.protocols.sieve.redirect, false, 'manifest Sieve redirect policy'
 equal(manifest.protocols.sieve.automaticForwarding, false, 'manifest Sieve forwarding policy');
 equal(manifest.scanners.rspamd.required, true, 'manifest Rspamd requirement');
 equal(manifest.scanners.rspamd.unavailableVerdict, 'deferred', 'manifest Rspamd unavailable verdict');
+equal(manifest.scanners.rspamd.signatureVolume, 'lp3-scanner-signatures', 'manifest Rspamd signature volume');
+equal(manifest.scanners.rspamd.signatureLayout, 'active_pointer_v1', 'manifest Rspamd signature layout');
+equal(manifest.scanners.rspamd.signatureMount, 'read_only', 'manifest Rspamd signature mount');
+equal(manifest.scanners.rspamd.hostUpdater, true, 'manifest Rspamd host updater');
 equal(manifest.scanners.clamav.required, true, 'manifest ClamAV requirement');
 equal(manifest.scanners.clamav.unavailableVerdict, 'deferred', 'manifest ClamAV unavailable verdict');
 equal(manifest.scanners.clamav.infectedVerdict, 'quarantined', 'manifest ClamAV infected verdict');
+equal(manifest.scanners.clamav.signatureVolume, 'lp3-scanner-signatures', 'manifest ClamAV signature volume');
+equal(manifest.scanners.clamav.signatureLayout, 'active_pointer_v1', 'manifest ClamAV signature layout');
+equal(manifest.scanners.clamav.signatureMount, 'read_only', 'manifest ClamAV signature mount');
+equal(manifest.scanners.clamav.hostUpdater, true, 'manifest ClamAV host updater');
+equal(manifest.signatureUpdateBoundary.externalHostUpdater, true, 'manifest external signature updater');
+equal(manifest.signatureUpdateBoundary.containerReadersReadOnly, true, 'manifest read-only signature readers');
+equal(manifest.signatureUpdateBoundary.activation, 'atomic_active_pointer_replace', 'manifest signature activation');
+equal(manifest.signatureUpdateBoundary.rollback, 'retain_previous_versioned_directories', 'manifest signature rollback');
+equal(manifest.signatureUpdateBoundary.sharedAcrossScanners, true, 'manifest shared scanner signature volume');
 equal(manifest.targetPlatforms, ['linux/amd64', 'linux/arm64'], 'manifest target platforms');
 
 for (const service of ['lp3-tls', 'lp3-postfix', 'lp3-dovecot', 'lp3-rspamd', 'lp3-clamav', 'gulogulo-lp3-proof-check', 'gulogulo-lp3-proof-node']) {
   if (!manifest.services.some((entry) => entry.name === service)) fail(`manifest service is missing: ${service}`);
 }
-for (const volume of ['lp3-tls-data', 'lp3-mail-data', 'lp3-postfix-spool', 'lp3-queue-data', 'lp3-postfix-state', 'lp3-dovecot-state', 'lp3-rspamd-data', 'lp3-clamav-data']) {
+for (const volume of ['lp3-tls-data', 'lp3-mail-data', 'lp3-postfix-spool', 'lp3-queue-data', 'lp3-postfix-state', 'lp3-dovecot-state', 'lp3-rspamd-data', 'lp3-clamav-data', 'lp3-scanner-signatures']) {
   if (!manifest.volumes.includes(volume)) fail(`manifest volume is missing: ${volume}`);
 }
 

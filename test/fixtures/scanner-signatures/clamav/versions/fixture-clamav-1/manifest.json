@@ -1,0 +1,17 @@
+{
+  "$comment": "SPDX-License-Identifier: MIT; SPDX-FileCopyrightText: 2026 Sythos (https://www.sythos.net); Author: Sythos (https://www.sythos.net)",
+  "schemaVersion": 1,
+  "scanner": "clamav",
+  "generation": "fixture-clamav-1",
+  "publishedAt": "2026-08-27T00:00:00.000Z",
+  "source": "fixture/clamav",
+  "contentDigest": "sha256:160586ddd90f1ace69c8b0c039f660b60eb425d1163c6b1855ee25b8e204e756",
+  "files": [
+    {
+      "path": "db/lp3-clamav.hdb",
+      "sha256": "cb7516a71678d566ef6948511a283681d0b359358f162e3ff731004741004750",
+      "size": 241
+    }
+  ],
+  "status": "ready"
+}

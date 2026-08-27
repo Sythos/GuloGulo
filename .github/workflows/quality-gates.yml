@@ -98,6 +98,9 @@ jobs:
           test -f doc/lp7-local-upgrade.md
           test -f doc/lp8-evidence-operator.md
           test -f doc/lp9-local-release.md
+          test -f doc/scanner-signature-volume.md
+          test -f doc/sbom-release-plan.md
+          test -f doc/control-panel-integration.md
           test -f release/v1-release-evidence.template.json
           test -f release/lp2-local-services.json
           test -f release/lp3-local-mail.json
@@ -195,6 +198,8 @@ jobs:
           test -f src/integrations/tenant-context.ts
           test -f src/integrations/tenant-context.mjs
           test -f src/integrations/types.ts
+          test -f src/integrations/control-panel.ts
+          test -f src/integrations/control-panel.test.ts
           test -f src/integrations/ldap-client.ts
           test -f src/integrations/postgres-store.ts
           test -f src/integrations/migration-runner.ts
@@ -215,6 +220,8 @@ jobs:
           test -f src/mail/imap-idle.ts
           test -f src/mail/mail-core.ts
           test -f src/mail/mail-core.test.ts
+          test -f src/mail/scanner-signatures.ts
+          test -f src/mail/scanner-signatures.test.ts
           test -f .github/workflows/commit-tests.yml
           test -f .github/workflows/pr-validation.yml
           test -f .github/workflows/quality-gates.yml
@@ -303,6 +310,11 @@ jobs:
           test -f docker/lp3-tls/entrypoint-tls.sh
           test -f docker/lp3-proof/Dockerfile
           test -f docker/lp3-proof/proof.py
+          test -f test/fixtures/scanner-signatures/rspamd/active.json
+          test -f test/fixtures/scanner-signatures/rspamd/versions/fixture-rspamd-1/manifest.json
+          test -f test/fixtures/scanner-signatures/clamav/active.json
+          test -f test/fixtures/scanner-signatures/clamav/versions/fixture-clamav-1/manifest.json
+          test -f test/fixtures/scanner-signatures/README.md
           test -f doc/rbac-admin-mfa.md
           test -f src/lifecycle/retention.mjs
           test -f src/lifecycle/retention.test.mjs
@@ -447,6 +459,10 @@ jobs:
             src/upgrade/upgrade-contract.test.ts \
             src/upgrade/rehearsal.ts \
             src/upgrade/rehearsal.test.ts \
+            src/integrations/control-panel.ts \
+            src/integrations/control-panel.test.ts \
+            src/mail/scanner-signatures.ts \
+            src/mail/scanner-signatures.test.ts \
             scripts/m10-release-audit.mjs \
             .gitignore \
             .github/workflows/commit-tests.yml \
@@ -662,6 +678,14 @@ jobs:
           grep -Fq 'GULOGULO_PATCH_STATUS_FILE' compose.yaml
           grep -Fq 'GULOGULO_MAIL_SCAN_FAILURE_MODE' compose.yaml
           grep -Fq 'GULOGULO_MAILBOX_ROOT' compose.yaml
+          grep -Fq 'lp3-scanner-signatures:/var/lib/gulogulo/scanner-signatures:ro' compose.yaml
+          grep -Fq 'GULOGULO_SCANNER_SIGNATURE_ROOT' compose.yaml
+          grep -Fq 'atomic_active_pointer_replace' release/lp3-local-mail.json
+          grep -Fq 'computeScannerSignatureContentDigest' src/mail/scanner-signatures.ts
+          grep -Fq 'createControlPanelConfig' src/integrations/control-panel.ts
+          grep -Fq 'CONTROL_PANEL_PROVIDER' compose.yaml
+          grep -Fq 'Plesk' doc/control-panel-integration.md
+          grep -Fq 'cPanel' doc/control-panel-integration.md
           grep -Fq 'providerOnly' config/schema.v1.json
           grep -Fq 'arbitraryCommands' config/schema.v1.json
           bash -n scripts/container-patch.sh
@@ -683,7 +707,7 @@ jobs:
           node -e "const s=require('./release/local-proof-scope.json'); if (s.spdxLicenseIdentifier !== 'MIT' || s.author !== 'Sythos (https://www.sythos.net)' || s.proofType !== 'local' || s.networkPolicy !== 'offline_runtime' || s.syntheticDataOnly !== true || s.publicDnsRequired !== false || s.publicAcmeEnabled !== false || s.externalPhaseDeferred !== true) process.exit(1)"
           node -e "const t=require('./release/local-proof-topology.json'); if (t.spdxLicenseIdentifier !== 'MIT' || t.author !== 'Sythos (https://www.sythos.net)' || t.milestone !== 'LP1' || t.networkPolicy !== 'offline_runtime' || t.internalNetwork !== true || t.ipFamilies?.join(',') !== 'ipv4,ipv6' || t.publicDnsRequired !== false || t.publicAcmeEnabled !== false || t.dockerSocketMounted !== false) process.exit(1)"
           node -e "const t=require('./release/lp2-local-services.json'); if (t.spdxLicenseIdentifier !== 'MIT' || t.author !== 'Sythos (https://www.sythos.net)' || t.milestone !== 'LP2' || t.proofType !== 'local_synthetic' || t.networkPolicy !== 'offline_dependencies' || t.internalNetwork !== true || t.enableIpv6 !== true || t.ipFamilies?.join(',') !== 'ipv4,ipv6' || t.publicDnsRequired !== false || t.publicAcmeEnabled !== false || t.hostPortsPublished !== false || t.dockerSocketMounted !== false) process.exit(1)"
-          node -e "const t=require('./release/lp3-local-mail.json'); if (t.spdxLicenseIdentifier !== 'MIT' || t.author !== 'Sythos (https://www.sythos.net)' || t.milestone !== 'LP3' || t.proofType !== 'local_synthetic_mail' || t.networkPolicy !== 'offline_dependencies' || t.internalNetwork !== true || t.enableIpv6 !== true || t.ipFamilies?.join(',') !== 'ipv4,ipv6' || t.syntheticDataOnly !== true || t.publicDnsRequired !== false || t.publicAcmeEnabled !== false || t.externalDeliveryEnabled !== false || t.hostPortsPublished !== false || t.dockerSocketMounted !== false || t.policy?.catchAll !== false || t.policy?.automaticForwarding !== false || t.policy?.scanFailureMode !== 'fail_closed' || t.policy?.trashRetentionDays !== 28 || t.protocols?.imap?.idle !== true || t.protocols?.lmtp?.quotaReservationBeforeAck !== true || t.protocols?.sieve?.redirect !== false) process.exit(1)"
+          node -e "const t=require('./release/lp3-local-mail.json'); if (t.spdxLicenseIdentifier !== 'MIT' || t.author !== 'Sythos (https://www.sythos.net)' || t.milestone !== 'LP3' || t.proofType !== 'local_synthetic_mail' || t.networkPolicy !== 'offline_dependencies' || t.internalNetwork !== true || t.enableIpv6 !== true || t.ipFamilies?.join(',') !== 'ipv4,ipv6' || t.syntheticDataOnly !== true || t.publicDnsRequired !== false || t.publicAcmeEnabled !== false || t.externalDeliveryEnabled !== false || t.hostPortsPublished !== false || t.dockerSocketMounted !== false || t.policy?.catchAll !== false || t.policy?.automaticForwarding !== false || t.policy?.scanFailureMode !== 'fail_closed' || t.policy?.trashRetentionDays !== 28 || t.protocols?.imap?.idle !== true || t.protocols?.lmtp?.quotaReservationBeforeAck !== true || t.protocols?.sieve?.redirect !== false || t.scanners?.rspamd?.signatureVolume !== 'lp3-scanner-signatures' || t.scanners?.clamav?.signatureVolume !== 'lp3-scanner-signatures' || t.signatureUpdateBoundary?.externalHostUpdater !== true || t.signatureUpdateBoundary?.containerReadersReadOnly !== true || t.signatureUpdateBoundary?.activation !== 'atomic_active_pointer_replace') process.exit(1)"
           node -e "const t=require('./release/lp4-local-web.json'); if (t.spdxLicenseIdentifier !== 'MIT' || t.author !== 'Sythos (https://www.sythos.net)' || t.milestone !== 'LP4' || t.proofType !== 'local_synthetic_web_dav' || t.networkPolicy !== 'offline_dependencies' || t.internalNetwork !== true || t.enableIpv6 !== true || t.ipFamilies?.join(',') !== 'ipv4,ipv6' || t.syntheticDataOnly !== true || t.publicDnsRequired !== false || t.publicAcmeEnabled !== false || t.hostPortsPublished !== false || t.dockerSocketMounted !== false || t.credentialsCommitted !== false || t.web?.sameOriginOnly !== true || t.session?.csrfOnAuthenticatedMutations !== true || t.dav?.tenantBoundEtags !== true || t.dav?.tenantBoundSyncTokens !== true || t.dav?.masterContentAccess !== false || t.discovery?.tenantBound !== true || t.architectureValidation?.defaultWorkflowMode !== 'amd64' || t.architectureValidation?.finalWorkflowMode !== 'multiarch' || t.architectureValidation?.finalModePlatforms?.join(',') !== 'linux/arm64' || t.architectureValidation?.arm64RequiredBeforeMergeOrRelease !== true || t.architectureValidation?.composeProofPlatform !== 'linux/amd64') process.exit(1)"
           node -e "const t=require('./release/lp5-local-operations-capacity.json'); if (t.spdxLicenseIdentifier !== 'MIT' || t.author !== 'Sythos (https://www.sythos.net)' || t.milestone !== 'LP5' || t.proofType !== 'local_synthetic_operations_capacity' || t.networkPolicy !== 'offline_dependencies' || t.internalNetwork !== true || t.enableIpv6 !== true || t.ipFamilies?.join(',') !== 'ipv4,ipv6' || t.hostPortsPublished !== false || t.dockerSocketMounted !== false || t.capacity?.claim !== 'bounded_local_proof_only' || t.capacity?.amd64Budget?.activeIdleConnections !== 8 || t.architectureValidation?.defaultWorkflowMode !== 'amd64' || t.architectureValidation?.finalWorkflowMode !== 'multiarch' || t.architectureValidation?.finalModePlatforms?.join(',') !== 'linux/arm64' || t.architectureValidation?.arm64RequiredBeforeMergeOrRelease !== true) process.exit(1)"
           node -e "const t=require('./release/lp6-local-backup-dr.json'); if (t.spdxLicenseIdentifier !== 'MIT' || t.author !== 'Sythos (https://www.sythos.net)' || t.milestone !== 'LP6' || t.proofType !== 'local_synthetic_backup_restore_retention_dr' || t.networkPolicy !== 'offline_dependencies' || t.internalNetwork !== true || t.enableIpv6 !== true || t.ipFamilies?.join(',') !== 'ipv4,ipv6' || t.syntheticDataOnly !== true || t.hostPortsPublished !== false || t.dockerSocketMounted !== false || t.recovery?.metadataEncryption !== 'aes-256-gcm' || t.recovery?.checksumAlgorithm !== 'sha256' || t.recovery?.retentionDays !== 28 || t.recovery?.rpoMinutes !== 15 || t.recovery?.rtoMinutes !== 60 || t.recovery?.failedRestorePreservesSource !== true || t.recovery?.holdsPreventPurge !== true || t.recovery?.idempotentPurge !== true || t.architectureValidation?.defaultWorkflowMode !== 'amd64' || t.architectureValidation?.composeProofPlatform !== 'linux/amd64' || t.architectureValidation?.finalWorkflowMode !== 'multiarch' || t.architectureValidation?.finalModePlatforms?.join(',') !== 'linux/arm64' || t.architectureValidation?.arm64RequiredBeforeMergeOrRelease !== true) process.exit(1)"

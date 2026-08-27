@@ -30,6 +30,13 @@ code comments in roughly a third of a century, the documentation for this
 project is entrusted to Enya, my virtual AI agent. She keeps the paperwork
 tidy while I focus on making the wolverine do useful things.
 
+If a tenant already runs its domain from Plesk or cPanel, Gulo Gulo can sit
+behind that panel as an optional upstream tool. The panel may own the hosting
+account and DNS workflow; Gulo Gulo still owns groupware policy, identity,
+mail, calendar, contacts, quotas, retention, and audit. The integration is
+deliberately read-only and tenant-bound today, with provider-specific API
+reconciliation kept as a separate backlog item.
+
 ## Production readiness checklist
 
 This is the implementation checklist derived from section 30 of the
@@ -99,7 +106,9 @@ still missing.
 - [x] Postfix queue visibility;
 - [x] bounded operations and capacity proof (AMD64 Compose first, ARM64 final artifact gate);
 - [x] fail-closed disposable patch helper and sanitized read-only patch status;
-- [ ] automatic Rspamd/ClamAV updates;
+- [x] externally managed Rspamd/ClamAV definition updates through a shared
+  read-only signature volume with freshness, atomic activation, and rollback
+  metadata; provider updater execution is tracked in READ_BEFORE_USE.md;
 - [x] provider-only migration contract, compatibility window, and rollback state machine;
 - [x] bounded Docker replacement and Kubernetes blue/green rehearsal with external-volume continuity (AMD64 functional proof plus AMD64+ARM64 artifact/provenance gate);
 - [x] blue/green cutover and rollback runbook defined; live rehearsal is
@@ -117,6 +126,8 @@ still missing.
 - [x] future features are not enabled;
 - [x] ADRs are current;
 - [x] canonical TypeScript source tree and behavior-free compatibility bridges audited;
+- [x] optional upstream Plesk/cPanel tenant-tool contract with safe binding and
+  read-only capabilities;
 - [x] deployment documentation is complete for the local-proof hand-off;
   provider runbooks remain an external release responsibility.
 
@@ -129,8 +140,7 @@ the checked contracts belongs in [READ_BEFORE_USE.md](doc/READ_BEFORE_USE.md).
 - [ ] concrete provider secret-store and rotation adapter;
 - [ ] SBOM generation, image signing, immutable registry digest publication,
   and consumer verification;
-- [ ] automatic Rspamd/ClamAV definition and map updater with freshness,
-  rollback, and monitoring tests;
+- [ ] provider-specific Plesk/cPanel API adapter and idempotent reconciliation;
 - [ ] provider-backed authenticated login/session wiring to the real LDAP
   adapter;
 - [ ] production Postfix/Dovecot mail adapters, persistent DAV backend, and
@@ -218,6 +228,7 @@ gulogulo/
 │   ├── api-and-mcp.md
 │   ├── acme-abuse-deployment.md
 │   ├── compose-and-fixtures.md
+│   ├── control-panel-integration.md
 │   ├── configuration.md
 │   ├── container-patching.md
 │   ├── dav-and-discovery.md
@@ -235,6 +246,8 @@ gulogulo/
 │   ├── mail-core.md
 │   ├── rbac-admin-mfa.md
 │   ├── release-readiness.md
+│   ├── sbom-release-plan.md
+│   ├── scanner-signature-volume.md
 │   ├── server-typescript.md
 │   ├── observability.md
 │   ├── storage-and-quotas.md
@@ -298,7 +311,7 @@ gulogulo/
 │   │   └── index.ts
 │   ├── db/migrations/
 │   ├── foundation/
-│   ├── integrations/ (TypeScript LDAP, PostgreSQL, tenant, and migration adapters)
+│   ├── integrations/ (TypeScript LDAP, PostgreSQL, tenant, migration, and optional Plesk/cPanel adapters)
 │   ├── lifecycle/
 │   │   ├── account-lifecycle.mjs
 │   │   ├── account-lifecycle.test.mjs
@@ -324,7 +337,9 @@ gulogulo/
 │   │   ├── mail-queue.ts
 │   │   ├── mail-scanners.mjs
 │   │   ├── mail-scanners.test.ts
-│   │   └── mail-scanners.ts
+│   │   ├── mail-scanners.ts
+│   │   ├── scanner-signatures.test.ts
+│   │   └── scanner-signatures.ts
 │   ├── observability/
 │   ├── capacity/ (typed bounded local-proof measurement contracts)
 │   ├── release/
@@ -364,6 +379,7 @@ gulogulo/
 │       └── security/ (typed sessions, cookies, and CSRF)
 ├── test/
 │   └── fixtures/
+│       └── scanner-signatures/ (offline shared-volume fixture)
 ├── web/
 │   ├── README.md
 │   ├── build.mjs

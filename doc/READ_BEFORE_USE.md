@@ -131,10 +131,12 @@ tester.
   tenant-scoped and does not create an implicit recipient. Verify addresses,
   loops, disabled users, abuse limits, and sender authorization in the actual
   directory and MTA.
-- [x] **DONE — Rspamd and ClamAV fail-closed adapters.** Verdicts are
-  normalized to safe metadata and an unavailable scanner cannot silently turn
-  into an accepted message. Verify real scanner endpoints, timeouts,
-  quarantine/reject policy, queue behavior, and malware/spam samples.
+- [x] **DONE — Rspamd and ClamAV fail-closed adapters and shared signature
+  boundary.** Verdicts are normalized to safe metadata, an unavailable scanner
+  cannot silently turn into an accepted message, and both readers consume
+  verified generations from a shared read-only signature volume. Verify real
+  scanner endpoints, timeouts, quarantine/reject policy, queue behavior,
+  malware/spam samples, feed licensing, and the host-side updater.
 - [x] **DONE — CalDAV/CardDAV object contracts.** Tenant/user scope,
   conditional writes, opaque ETags, sync tokens, tombstones, bounded
   iCalendar/vCard parsing, and metadata-only export are implemented. Verify
@@ -170,11 +172,12 @@ tester.
   Ubuntu update steps and the maintenance helper exposes sanitized status.
   Verify the operator check/apply path, root boundary, maintenance window,
   rollback image, alerting, and package-change record.
-- [ ] **OPEN CODE — automatic Rspamd and ClamAV updates.** The current scanner
-  code is a fail-closed verdict boundary and the Docker images are deterministic
-  proof stubs. A production updater for freshclam, Rspamd maps/rules/fuzzy
-  data/reputation feeds, freshness health, rollback, and monitoring still
-  needs to be implemented.
+- [x] **DONE — external Rspamd and ClamAV definition boundary.** The scanner
+  readers, active-pointer layout, digest/freshness checks, read-only Compose
+  mounts, health metadata, atomic activation, and rollback-preserving
+  generation contract are implemented. The provider still has to install and
+  verify its host-side freshclam/map updater, feed permissions, alerting, and
+  filesystem policy; those are VERIFY BEFORE USE work, not container code.
 - [x] **DONE — Docker replacement and Kubernetes blue/green contract.** The
   repository models plan, preflight, prepare, readiness, connection drain,
   queue/IMAP IDLE continuity, cutover, rollback, observation, and finalize
@@ -203,6 +206,12 @@ tester.
   plan/preflight/prepare/status/cutover/rollback/finalize names, idempotency,
   allowlists, and audit metadata are documented. Verify the provider
   controller and approval process once it exists.
+- [x] **DONE — optional upstream Plesk/cPanel tenant-tool boundary.** The
+  provider-neutral configuration, tenant binding, read-only capability matrix,
+  pull/webhook/hybrid vocabulary, secret-reference rules, and default-deny
+  behavior are implemented. Verify the selected panel API version, least-
+  privilege account, callback verification, DNS ownership, reconciliation,
+  rotation, and disable/rollback behavior in the real deployment.
 - [x] **DONE — ADRs, documentation, license, and artifact governance.** The
   accepted TypeScript architecture, MIT/SPDX attribution, documentation
   inventory, and trusted-push attestation policy are present. Verify owner
@@ -247,6 +256,34 @@ is still needed outside the repository is the transactional adapter execution,
 durable worker, approval, and a witnessed rehearsal. Those are verification
 tasks unless a provider-specific adapter is still absent.
 
+### Optional Plesk and cPanel upstream tenant-tool runbook
+
+Plesk or cPanel may sit upstream of Gulo Gulo as the tenant's hosting-account
+and (where selected) DNS tool. It is optional and is not a second source of
+truth for users, quotas, aliases, mailbox content, calendars, contacts,
+authentication decisions, retention, or audit semantics.
+
+1. Create a dedicated least-privilege panel account or API token and store the
+   value in the provider secret store. Put only its reference in Gulo Gulo.
+2. Confirm the panel's HTTPS certificate, API version, account identifier, and
+   tenant/domain mapping. One panel account or domain must map to one intended
+   Gulo Gulo tenant binding.
+3. Decide explicitly whether the panel or another provider owns DNS. Gulo Gulo
+   may read DNS/domain state for diagnostics, but the V1 contract does not
+   authorize panel-driven DNS or deployment writes.
+4. Select pull, signed webhook, or hybrid reconciliation. Every event must
+   include a bounded timestamp, tenant/domain binding, idempotency key, and
+   audit record; an unknown or mismatched external ID fails closed.
+5. Exercise duplicate, delayed, malformed, replayed, cross-tenant, revoked,
+   and provider-outage cases. A webhook is only a reconciliation hint and
+   never an instruction to execute an arbitrary command.
+6. Disable the integration and confirm that Gulo Gulo policy, mail, DAV, and
+   monitoring remain usable. Record credential rotation and rollback evidence.
+
+The repository currently proves the safe configuration and binding contract.
+It does not claim a live Plesk/cPanel API adapter, automatic DNS mutation,
+Docker-socket access, SSH execution, or unrestricted panel command execution.
+
 ### Backup and restore runbook
 
 1. Declare the tenant scope, archive scope, operator, encryption-key reference,
@@ -269,10 +306,12 @@ The repository provides the manifest, integrity, privacy, and objective
 contracts. External snapshot connectors, key management, scheduled workers,
 and measured restore timing remain OPEN CODE or provider integration work.
 
-### Scanner update runbook
+### Scanner definition publication runbook
 
-Until the automatic updater is implemented, do not describe the proof images as
-production Rspamd or ClamAV:
+The scanner containers intentionally do not run a feed updater. They read
+verified generations from the provider-owned shared volume, mounted read-only.
+Do not describe the deterministic proof images as production Rspamd or ClamAV
+until the provider has completed the host-side feed rehearsal:
 
 1. Pin the vendor image and package/definition source.
 2. Update ClamAV definitions through freshclam or the supported equivalent, and
@@ -286,8 +325,11 @@ production Rspamd or ClamAV:
 7. Emit sanitized freshness, result, and rollback metadata to operations
    monitoring.
 
-The procedure is defined here so a future updater has a clear acceptance
-boundary. The updater worker and its tests are still OPEN CODE.
+The repository implements the reader, digest, freshness, atomic-pointer, and
+rollback-preserving boundary. The feed-specific host job and its operational
+evidence remain VERIFY BEFORE USE. A cron, systemd timer, Task Scheduler job,
+or Kubernetes maintenance job must be the single writer; it must never make
+the scanner containers writable or add a Docker-socket escape hatch.
 
 ### Container patch and image release runbook
 
@@ -367,6 +409,8 @@ release evidence system as sanitized records.
   and replacement without data loss.
 - Verify vendor Postfix, Dovecot, Rspamd, ClamAV, freshclam, CalDAV, and
   CardDAV images, versions, digests, configuration, and update sources.
+- Verify the optional Plesk/cPanel panel account, API version, TLS, tenant/domain
+  binding, webhook or pull policy, DNS ownership, and credential rotation.
 - Verify queue, scanner, certificate, storage, authentication, and dependency
   alerts reach the assigned operator.
 - Verify Docker replacement, Kubernetes cutover, connection drain, rollback,
@@ -420,8 +464,6 @@ as tester work:
   secret-reference boundary;
 - [ ] SBOM generation, image signing, immutable registry digest publication,
   and consumer verification in the release workflow;
-- [ ] automatic Rspamd/ClamAV definition and map updater with freshness,
-  rollback, and monitoring tests;
 - [ ] provider-backed authenticated login/session wiring that calls the real
   LDAP adapter instead of the fixture authenticator;
 - [ ] production Postfix/Dovecot mail adapters, persistent DAV backend, and
@@ -431,6 +473,8 @@ as tester work:
   object-store adapters;
 - [ ] provider migration controller plus live provider API/MCP wiring for the
   documented Docker and Kubernetes operations;
+- [ ] provider-specific Plesk/cPanel API adapter and idempotent reconciliation
+  behind the validated read-only tenant binding;
 - [ ] provider ACME/DNS client integration and deployed log collector,
   alert-delivery, and paging adapters.
 

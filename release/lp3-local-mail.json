@@ -77,13 +77,25 @@
     "rspamd": {
       "service": "lp3-rspamd",
       "required": true,
-      "unavailableVerdict": "deferred"
+      "unavailableVerdict": "deferred",
+      "signatureVolume": "lp3-scanner-signatures",
+      "signatureRoot": "/var/lib/gulogulo/scanner-signatures",
+      "signatureLayout": "active_pointer_v1",
+      "signatureMount": "read_only",
+      "hostUpdater": true,
+      "maxAgeSeconds": 604800
     },
     "clamav": {
       "service": "lp3-clamav",
       "required": true,
       "unavailableVerdict": "deferred",
-      "infectedVerdict": "quarantined"
+      "infectedVerdict": "quarantined",
+      "signatureVolume": "lp3-scanner-signatures",
+      "signatureRoot": "/var/lib/gulogulo/scanner-signatures",
+      "signatureLayout": "active_pointer_v1",
+      "signatureMount": "read_only",
+      "hostUpdater": true,
+      "maxAgeSeconds": 604800
     }
   },
   "services": [
@@ -131,8 +143,16 @@
     "lp3-postfix-state",
     "lp3-dovecot-state",
     "lp3-rspamd-data",
-    "lp3-clamav-data"
+    "lp3-clamav-data",
+    "lp3-scanner-signatures"
   ],
+  "signatureUpdateBoundary": {
+    "externalHostUpdater": true,
+    "containerReadersReadOnly": true,
+    "activation": "atomic_active_pointer_replace",
+    "rollback": "retain_previous_versioned_directories",
+    "sharedAcrossScanners": true
+  },
   "requiredLabels": [
     "com.sythos.gulogulo.milestone",
     "com.sythos.gulogulo.proof",

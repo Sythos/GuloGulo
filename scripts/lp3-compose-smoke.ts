@@ -6,17 +6,21 @@
 
 import { spawnSync } from 'node:child_process';
 import { inspect } from 'node:util';
+import { resolve } from 'node:path';
 
 const runId = String(process.env.GITHUB_RUN_ID || Date.now()).replace(/[^0-9]/g, '') || 'local';
 const project = `gulogulo-lp3-${runId}`;
 const network = `gulogulo-lp3-network-${runId}`;
 const volumePrefix = `gulogulo-lp3-${runId}`;
+const signatureVolume = `${volumePrefix}-lp3-scanner-signatures`;
+const signatureFixture = resolve(process.cwd(), 'test/fixtures/scanner-signatures');
 const composeBase = ['compose', '--project-name', project, '--file', 'compose.yaml', '--env-file', '.env.example'];
 const environment = {
   ...process.env,
   GULOGULO_VOLUME_PREFIX: volumePrefix,
   GULOGULO_LP3_VOLUMES_EXTERNAL: 'false',
   GULOGULO_LP3_NETWORK: network,
+  GULOGULO_LP3_SCANNER_SIGNATURES_VOLUME: signatureVolume,
   GULOGULO_MAIL_CATCH_ALL: 'false',
   GULOGULO_MAIL_USER_FORWARDING: 'false',
   GULOGULO_MAIL_SCAN_FAILURE_MODE: 'fail_closed',
@@ -39,6 +43,17 @@ function execute(args, { capture = false, allowFailure = false } = {}) {
 
 function compose(args, options) {
   return execute([...composeBase, ...args], options);
+}
+
+function seedScannerSignatureVolume() {
+  execute(['volume', 'create', signatureVolume], { capture: true });
+  execute([
+    'run', '--rm', '--user', '0:0',
+    '-v', `${signatureVolume}:/target`,
+    '-v', `${signatureFixture}:/source:ro`,
+    'ubuntu:26.04', 'bash', '-ceu',
+    'install -d /target; rm -rf /target/rspamd /target/clamav; cp -a /source/rspamd /source/clamav /target/',
+  ]);
 }
 
 function serviceContainer(service) {
@@ -110,6 +125,18 @@ function assertPersistentVolume(container, service, suffix, destination) {
   }
 }
 
+function assertReadOnlySignatureVolume(container, service) {
+  const matching = (container.Mounts || []).some((mount) => (
+    mount.Type === 'volume'
+    && mount.Name === signatureVolume
+    && mount.Destination === '/var/lib/gulogulo/scanner-signatures'
+    && mount.RW === false
+  ));
+  if (!matching) {
+    throw new Error(`${service} does not mount the shared scanner-signature volume read-only.`);
+  }
+}
+
 function runProofClient() {
   compose(['--profile', 'lp3', '--profile', 'lp3-check', 'run', '--rm', '--no-deps', 'gulogulo-lp3-proof-check']);
 }
@@ -127,6 +154,7 @@ let started = false;
 try {
   compose(['--profile', 'lp3', '--profile', 'lp3-check', 'config', '--quiet']);
   compose(['--profile', 'lp3', '--profile', 'lp3-check', 'build', '--pull']);
+  seedScannerSignatureVolume();
   compose(['--profile', 'lp3', 'up', '--detach', '--remove-orphans']);
   started = true;
 
@@ -150,6 +178,8 @@ try {
   assertPersistentVolume(inspectContainer(containers.find(([service]) => service === 'lp3-postfix')[1]), 'lp3-postfix', 'lp3-queue-data', '/var/lib/gulogulo/queue');
   assertPersistentVolume(inspectContainer(containers.find(([service]) => service === 'lp3-dovecot')[1]), 'lp3-dovecot', 'lp3-mail-data', '/var/mail/vhosts');
   assertPersistentVolume(inspectContainer(containers.find(([service]) => service === 'lp3-tls')[1]), 'lp3-tls', 'lp3-tls-data', '/run/gulogulo-lp3-tls');
+  assertReadOnlySignatureVolume(inspectContainer(containers.find(([service]) => service === 'lp3-rspamd')[1]), 'lp3-rspamd');
+  assertReadOnlySignatureVolume(inspectContainer(containers.find(([service]) => service === 'lp3-clamav')[1]), 'lp3-clamav');
 
   // A restart must leave the mailbox and queue volumes attached and the mail
   // contracts reachable. The second proof run catches a lost socket/config
@@ -172,6 +202,8 @@ try {
     imapIdleReconnects: 2,
     lmtpAndQuotaContract: true,
     scannerFailureMode: 'fail_closed',
+    sharedScannerSignatureVolume: signatureVolume,
+    scannerSignatureMountReadOnly: true,
     queueRetryBounceContract: true,
     trashRetentionDays: 28,
     restartContinuity: true,

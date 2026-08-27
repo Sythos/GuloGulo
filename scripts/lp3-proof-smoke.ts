@@ -235,12 +235,21 @@ async function probeClamav() {
   }), 'ClamAV zPING');
   assert(/PONG/iu.test(pong), 'ClamAV did not return PONG');
   closeSocket(socket);
+  const versionSocket = await connectSocket(clamavHost, clamavPort);
+  versionSocket.write('VERSIONCOMMAND\0');
+  const version = await withTimeout(new Promise((resolveVersion, reject) => {
+    versionSocket.once('data', (chunk) => resolveVersion(chunk.toString('utf8')));
+    versionSocket.once('error', reject);
+  }), 'ClamAV VERSIONCOMMAND');
+  assert(/signature=ready/iu.test(version), 'ClamAV did not expose a ready signature database');
+  closeSocket(versionSocket);
 }
 
 async function probeRspamd() {
-  const response = await fetch(`http://${rspamdHost}:${rspamdPort}/stat`, { signal: AbortSignal.timeout(timeoutMs) });
-  assert(response.status >= 200 && response.status < 500, `Rspamd returned an unusable status: ${response.status}`);
-  await response.body?.cancel();
+  const response = await fetch(`http://${rspamdHost}:${rspamdPort}/health`, { signal: AbortSignal.timeout(timeoutMs) });
+  assert(response.status === 200, `Rspamd health returned an unusable status: ${response.status}`);
+  const health = await response.json();
+  assert(health.signatureStatus === 'ready' && typeof health.signatureGeneration === 'string' && typeof health.signatureDigest === 'string', 'Rspamd did not expose ready signature metadata');
 }
 
 async function probeTypedMailContracts() {

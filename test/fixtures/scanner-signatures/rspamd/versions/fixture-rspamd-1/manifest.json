@@ -1,0 +1,17 @@
+{
+  "$comment": "SPDX-License-Identifier: MIT; SPDX-FileCopyrightText: 2026 Sythos (https://www.sythos.net); Author: Sythos (https://www.sythos.net)",
+  "schemaVersion": 1,
+  "scanner": "rspamd",
+  "generation": "fixture-rspamd-1",
+  "publishedAt": "2026-08-27T00:00:00.000Z",
+  "source": "fixture/rspamd",
+  "contentDigest": "sha256:8ae2e86e9a3ce393b063cbec89489bc04ce4a7195293ecc8198b7384e33cb548",
+  "files": [
+    {
+      "path": "maps/lp3-rspamd.map",
+      "sha256": "e2ff28d13f94ad8e3149054c9718d5cb942df1873714578069d58ad38d685e37",
+      "size": 226
+    }
+  ],
+  "status": "ready"
+}

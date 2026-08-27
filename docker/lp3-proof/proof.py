@@ -99,7 +99,7 @@ def imap_delivery_and_idle():
 def scanners():
     with urllib.request.urlopen("http://lp3-rspamd:11333/health", timeout=5) as response:
         health = json.load(response)
-    if health.get("status") != "ok" or health.get("production") is not False:
+    if health.get("status") != "ok" or health.get("production") is not False or health.get("signatureStatus") != "ready":
         raise RuntimeError("LP3 Rspamd proof endpoint is not healthy")
     request = urllib.request.Request(
         "http://lp3-rspamd:11333/checkv2",
@@ -115,6 +115,10 @@ def scanners():
         sock.sendall(b"PING\0")
         if b"PONG" not in sock.recv(64):
             raise RuntimeError("LP3 ClamAV PING contract failed")
+    with socket.create_connection(("lp3-clamav", 3310), timeout=5) as sock:
+        sock.sendall(b"VERSIONCOMMAND\0")
+        if b"signature=ready" not in sock.recv(512):
+            raise RuntimeError("LP3 ClamAV signature database is not ready")
     with socket.create_connection(("lp3-clamav", 3310), timeout=5) as sock:
         sock.sendall(b"zINSTREAM\0")
         body = b"Subject: LP3 scanner proof\n\nclean fixture\n"

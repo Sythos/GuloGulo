@@ -76,6 +76,21 @@
         "retryAttempts": { "type": "integer", "minimum": 0, "maximum": 5, "default": 2 }
       }
     },
+    "controlPanel": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Optional upstream Plesk or cPanel tenant tool. It is a metadata and reconciliation boundary; Gulo Gulo remains authoritative for policy, content, LDAP, PostgreSQL, and mailbox state.",
+      "properties": {
+        "enabled": { "type": "boolean", "default": false },
+        "provider": { "type": "string", "enum": ["none", "plesk", "cpanel"], "default": "none" },
+        "baseUrl": { "type": ["string", "null"], "pattern": "^https://" },
+        "accountRef": { "type": ["string", "null"], "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$" },
+        "credentialSecretRef": { "type": ["string", "null"], "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$" },
+        "webhookSecretRef": { "type": ["string", "null"], "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$" },
+        "syncMode": { "type": "string", "enum": ["pull", "webhook", "hybrid"], "default": "pull" },
+        "allowDnsChanges": { "type": "boolean", "const": false, "default": false }
+      }
+    },
     "mail": {
       "type": "object",
       "additionalProperties": false,

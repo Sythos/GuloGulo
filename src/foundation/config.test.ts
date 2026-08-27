@@ -55,6 +55,16 @@ test('configuration defaults are versioned, deterministic, and secret-free', () 
   assert.equal(first.upgrade.strategy, 'blue_green');
   assert.equal(first.patching.mode, 'build_and_operator');
   assert.equal(first.patching.statusFile, '/var/lib/gulogulo/patch/status.json');
+  assert.deepEqual(first.controlPanel, {
+    enabled: false,
+    provider: 'none',
+    baseUrl: null,
+    accountRef: null,
+    credentialSecretRef: null,
+    webhookSecretRef: null,
+    syncMode: 'pull',
+    allowDnsChanges: false,
+  });
   assert.deepEqual(first, second);
   assert.equal(JSON.stringify(first), JSON.stringify(second));
   assert.equal(JSON.stringify(first).includes('password'), false);
@@ -80,6 +90,52 @@ test('empty Compose secret-reference placeholders remain unset', () => {
 
   assert.equal(configuration.ldap.bindSecretRef, null);
   assert.equal(configuration.postgres.dsnSecretRef, null);
+});
+
+test('optional upstream Plesk or cPanel configuration is loaded and remains read-only', () => {
+  const configuration = loadConfiguration(
+    {
+      GULOGULO_CONTROL_PANEL_ENABLED: 'true',
+      GULOGULO_CONTROL_PANEL_PROVIDER: 'plesk',
+      GULOGULO_CONTROL_PANEL_BASE_URL: 'https://panel.example.test/api/',
+      GULOGULO_CONTROL_PANEL_ACCOUNT_REF: 'tenant/acme',
+      GULOGULO_CONTROL_PANEL_CREDENTIAL_SECRET_REF: 'secret/panel-token',
+      GULOGULO_CONTROL_PANEL_WEBHOOK_SECRET_REF: 'secret/panel-webhook',
+      GULOGULO_CONTROL_PANEL_SYNC_MODE: 'hybrid',
+    },
+    { configFilePath: null },
+  );
+
+  assert.deepEqual(configuration.controlPanel, {
+    enabled: true,
+    provider: 'plesk',
+    baseUrl: 'https://panel.example.test/api',
+    accountRef: 'tenant/acme',
+    credentialSecretRef: 'secret/panel-token',
+    webhookSecretRef: 'secret/panel-webhook',
+    syncMode: 'hybrid',
+    allowDnsChanges: false,
+  });
+
+  withConfigFile({
+    schemaVersion: 1,
+    controlPanel: {
+      enabled: true,
+      provider: 'cpanel',
+      baseUrl: 'https://cpanel.example.test',
+      accountRef: 'tenant/acme',
+      credentialSecretRef: 'secret/cpanel-token',
+      syncMode: 'pull',
+    },
+  }, (filePath) => {
+    const fromFile = loadConfiguration({}, { configFilePath: filePath });
+    assert.equal(fromFile.controlPanel.provider, 'cpanel');
+    assert.equal(fromFile.controlPanel.allowDnsChanges, false);
+  });
+
+  withConfigFile({ schemaVersion: 1, controlPanel: { allowDnsChanges: true } }, (filePath) => {
+    assert.throws(() => loadConfiguration({}, { configFilePath: filePath }), /allowDnsChanges is permanently false/);
+  });
 });
 
 test('environment variables override mounted file values with canonical names first', () => {

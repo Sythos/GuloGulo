@@ -38,6 +38,9 @@ The proof does exercise the boundaries we care about:
   and metadata-only queue views;
 - explicit Sieve actions with redirect/automatic forwarding denied;
 - the 28-day trash contract;
+- a shared scanner-signature volume with deterministic Rspamd and ClamAV
+  generations, active-pointer digest checks, freshness gating, and read-only
+  mounts;
 - dual-stack addressing on an internal Compose network;
 - persistent mail and queue volumes, including a service restart;
 - Ubuntu 26.04 LTS image construction for linux/amd64 and linux/arm64;
@@ -92,6 +95,7 @@ LP3 uses the following named volumes:
 | lp3-dovecot-state | Dovecot | Service/index state separate from the mailbox volume |
 | lp3-rspamd-data | Rspamd adapter | Local maps and scanner state used by the rehearsal |
 | lp3-clamav-data | ClamAV adapter | Local database/cache state used by the rehearsal |
+| lp3-scanner-signatures | Rspamd and ClamAV readers | Shared verified generations, populated by a host-side writer and mounted read-only |
 
 The Compose variable GULOGULO_LP3_VOLUMES_EXTERNAL follows the same pattern
 as the earlier local-proof volumes. CI leaves it false, so its disposable
@@ -103,6 +107,13 @@ The smoke runner checks the actual container mounts, restarts Postfix and
 Dovecot, waits for health again, and runs the protocol proof a second time.
 That catches the classic "it worked during first boot, then lost its socket or
 configuration" failure.
+
+The scanner-signature volume is deliberately separate from the mutable scanner
+state volumes. The LP3 harness seeds it with synthetic fixtures before startup,
+then asserts the exact read-only mount in both scanner containers and the proof
+clients. A production deployment must pre-create the same provider-owned
+volume and populate it through the external publication sequence documented in
+[`scanner-signature-volume.md`](scanner-signature-volume.md).
 
 ## Mail safety rules
 
@@ -191,10 +202,11 @@ logs out, and repeats the sequence on a fresh connection. It checks protocol
 continuity, not a fake browser event. The actual typed IMAP IDLE broker test
 also checks monotonic event IDs and tenant/user scope.
 
-The Rspamd and ClamAV probes only establish that the local scanner endpoints
-are alive (/stat and zPING). The important acceptance decision is in the
-typed contracts: missing or malformed scanner responses become explicit
-unavailable verdicts and cannot be treated as a clean message.
+The Rspamd and ClamAV probes establish endpoint liveness and verify that the
+active synthetic generation is ready. The important acceptance decision is in
+the typed contracts: missing, stale, or malformed scanner responses become
+explicit unavailable verdicts and cannot be treated as a clean message. The
+proof never exposes raw map rules, database bytes, or host paths.
 
 The proof client imports the compiled server mail modules from
 dist/server/src/mail. That is intentional. LP3's source is TypeScript, and

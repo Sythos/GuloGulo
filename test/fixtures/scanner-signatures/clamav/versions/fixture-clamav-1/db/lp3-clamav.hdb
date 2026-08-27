@@ -1,0 +1,5 @@
+# SPDX-License-Identifier: MIT
+# SPDX-FileCopyrightText: 2026 Sythos (https://www.sythos.net)
+# Author: Sythos (https://www.sythos.net)
+# Deterministic offline fixture; never use as a production ClamAV database.
+LP3_FIXTURE_HASH:0:*:fixture

@@ -6,6 +6,7 @@
 
 import { readFileSync } from 'node:fs';
 import { isIP } from 'node:net';
+import { createControlPanelConfig } from '../integrations/control-panel.ts';
 
 export const CONFIG_SCHEMA_VERSION = 1;
 export const DEFAULT_CONFIG_FILE = '/etc/gulogulo/config.json';
@@ -29,8 +30,9 @@ const SAFE_BUILD_DIGEST_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._:+/-]{0,127}$/;
 const PATCH_STATUS_PATH_PATTERN = /^\/[A-Za-z0-9._/-]{1,255}$/;
 const MAILBOX_PATH_PATTERN = /^\/[A-Za-z0-9._/-]{1,255}$/;
 const SECRET_REFERENCE_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._/-]{0,127}$/;
+const CONTROL_PANEL_REFERENCE_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$/;
 const DISTINGUISHED_NAME_PATTERN = /^[\x20-\x7E]{1,512}$/;
-const SECRET_KEY_PATTERN = /(password|passphrase|token|private[_-]?key|credential|authorization|cookie|api[_-]?key|secret(?!ref)|(^|[_-])dsn($|[_-]))/i;
+const SECRET_KEY_PATTERN = /(password|passphrase|token|private[_-]?key|credential(?!secretref)|authorization|cookie|api[_-]?key|secret(?!ref)|(^|[_-])dsn($|[_-]))/i;
 const MAX_CONFIGURATION_FILE_BYTES = 1024 * 1024;
 
 const TOP_LEVEL_KEYS = new Set([
@@ -42,6 +44,7 @@ const TOP_LEVEL_KEYS = new Set([
   'runtime',
   'ldap',
   'postgres',
+  'controlPanel',
   'mail',
   'certificates',
   'webAuth',
@@ -78,6 +81,16 @@ const SECTION_KEYS = Object.freeze({
     'idleTimeoutMs',
     'poolMax',
     'retryAttempts',
+  ]),
+  controlPanel: new Set([
+    'enabled',
+    'provider',
+    'baseUrl',
+    'accountRef',
+    'credentialSecretRef',
+    'webhookSecretRef',
+    'syncMode',
+    'allowDnsChanges',
   ]),
   mail: new Set([
     'imapIdle',
@@ -143,6 +156,15 @@ const ENVIRONMENT_VARIABLES = Object.freeze({
     idleTimeoutMs: ['GULOGULO_POSTGRES_IDLE_TIMEOUT_MS', 'POSTGRES_IDLE_TIMEOUT_MS'],
     poolMax: ['GULOGULO_POSTGRES_POOL_MAX', 'POSTGRES_POOL_MAX'],
     retryAttempts: ['GULOGULO_POSTGRES_RETRY_ATTEMPTS', 'POSTGRES_RETRY_ATTEMPTS'],
+  },
+  controlPanel: {
+    enabled: ['GULOGULO_CONTROL_PANEL_ENABLED', 'CONTROL_PANEL_ENABLED'],
+    provider: ['GULOGULO_CONTROL_PANEL_PROVIDER', 'CONTROL_PANEL_PROVIDER'],
+    baseUrl: ['GULOGULO_CONTROL_PANEL_BASE_URL', 'CONTROL_PANEL_BASE_URL'],
+    accountRef: ['GULOGULO_CONTROL_PANEL_ACCOUNT_REF', 'CONTROL_PANEL_ACCOUNT_REF'],
+    credentialSecretRef: ['GULOGULO_CONTROL_PANEL_CREDENTIAL_SECRET_REF', 'CONTROL_PANEL_CREDENTIAL_SECRET_REF'],
+    webhookSecretRef: ['GULOGULO_CONTROL_PANEL_WEBHOOK_SECRET_REF', 'CONTROL_PANEL_WEBHOOK_SECRET_REF'],
+    syncMode: ['GULOGULO_CONTROL_PANEL_SYNC_MODE', 'CONTROL_PANEL_SYNC_MODE'],
   },
   mail: {
     imapIdle: ['GULOGULO_MAIL_IMAP_IDLE', 'MAIL_IMAP_IDLE'],
@@ -310,6 +332,14 @@ function readEnvironmentOptionalSecretReference(value, name) {
   return readSecretReference(value, name);
 }
 
+function readEnvironmentOptionalControlPanelReference(value, name) {
+  if (value === '') {
+    return null;
+  }
+
+  return readEnvironmentString(value, name, CONTROL_PANEL_REFERENCE_PATTERN);
+}
+
 function readDistinguishedName(value, name) {
   return readString(value, name, DISTINGUISHED_NAME_PATTERN);
 }
@@ -433,6 +463,7 @@ function buildConfiguration(fileConfiguration, environment) {
   const runtimeFile = readSection(fileConfiguration, 'runtime');
   const ldapFile = readSection(fileConfiguration, 'ldap');
   const postgresFile = readSection(fileConfiguration, 'postgres');
+  const controlPanelFile = readSection(fileConfiguration, 'controlPanel');
   const mailFile = readSection(fileConfiguration, 'mail');
   const certificatesFile = readSection(fileConfiguration, 'certificates');
   const webAuthFile = readSection(fileConfiguration, 'webAuth');
@@ -489,6 +520,16 @@ function buildConfiguration(fileConfiguration, environment) {
       idleTimeoutMs: readInteger(postgresFile.idleTimeoutMs ?? 30_000, 'postgres.idleTimeoutMs', 1_000, 600_000),
       poolMax: readInteger(postgresFile.poolMax ?? 8, 'postgres.poolMax', 1, 32),
       retryAttempts: readInteger(postgresFile.retryAttempts ?? 2, 'postgres.retryAttempts', 0, 5),
+    },
+    controlPanel: {
+      enabled: controlPanelFile.enabled ?? false,
+      provider: controlPanelFile.provider ?? 'none',
+      baseUrl: controlPanelFile.baseUrl ?? null,
+      accountRef: controlPanelFile.accountRef ?? null,
+      credentialSecretRef: controlPanelFile.credentialSecretRef ?? null,
+      webhookSecretRef: controlPanelFile.webhookSecretRef ?? null,
+      syncMode: controlPanelFile.syncMode ?? 'pull',
+      allowDnsChanges: controlPanelFile.allowDnsChanges ?? false,
     },
     mail: {
       imapIdle: readBoolean(mailFile.imapIdle ?? true, 'mail.imapIdle'),
@@ -556,6 +597,7 @@ function buildConfiguration(fileConfiguration, environment) {
     ['runtime', config.runtime, ENVIRONMENT_VARIABLES.runtime],
     ['ldap', config.ldap, ENVIRONMENT_VARIABLES.ldap],
     ['postgres', config.postgres, ENVIRONMENT_VARIABLES.postgres],
+    ['controlPanel', config.controlPanel, ENVIRONMENT_VARIABLES.controlPanel],
     ['mail', config.mail, ENVIRONMENT_VARIABLES.mail],
     ['certificates', config.certificates, ENVIRONMENT_VARIABLES.certificates],
     ['webAuth', config.webAuth, ENVIRONMENT_VARIABLES.webAuth],
@@ -601,6 +643,18 @@ function buildConfiguration(fileConfiguration, environment) {
       applyEnvironmentValue(target, 'idleTimeoutMs', environment, variables.idleTimeoutMs, (value, name) => readEnvironmentInteger(value, name, 1_000, 600_000));
       applyEnvironmentValue(target, 'poolMax', environment, variables.poolMax, (value, name) => readEnvironmentInteger(value, name, 1, 32));
       applyEnvironmentValue(target, 'retryAttempts', environment, variables.retryAttempts, (value, name) => readEnvironmentInteger(value, name, 0, 5));
+      continue;
+    }
+
+    if (sectionName === 'controlPanel') {
+      applyEnvironmentValue(target, 'enabled', environment, variables.enabled, readEnvironmentBoolean);
+      applyEnvironmentValue(target, 'provider', environment, variables.provider, (value, name) => readEnvironmentEnum(value, name, ['none', 'plesk', 'cpanel']));
+      applyEnvironmentValue(target, 'baseUrl', environment, variables.baseUrl, (value, name) => value === '' ? null : readEnvironmentString(value, name));
+      applyEnvironmentValue(target, 'accountRef', environment, variables.accountRef, readEnvironmentOptionalControlPanelReference);
+      applyEnvironmentValue(target, 'credentialSecretRef', environment, variables.credentialSecretRef, readEnvironmentOptionalControlPanelReference);
+      applyEnvironmentValue(target, 'webhookSecretRef', environment, variables.webhookSecretRef, readEnvironmentOptionalControlPanelReference);
+      applyEnvironmentValue(target, 'syncMode', environment, variables.syncMode, (value, name) => readEnvironmentEnum(value, name, ['pull', 'webhook', 'hybrid']));
+      config.controlPanel = createControlPanelConfig(target);
       continue;
     }
 
@@ -684,6 +738,8 @@ function buildConfiguration(fileConfiguration, environment) {
   if (config.postgres.enabled && config.postgres.dsnSecretRef === null) {
     throw configurationError('postgres.dsnSecretRef is required when postgres.enabled is true');
   }
+
+  config.controlPanel = createControlPanelConfig(config.controlPanel);
 
   if (config.mail.catchAll) {
     throw configurationError('mail.catchAll is a V1 invariant and must remain false');

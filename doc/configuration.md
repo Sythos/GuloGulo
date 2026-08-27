@@ -49,6 +49,7 @@ port: 8080
 environment: development
 LDAP: disabled
 PostgreSQL: disabled
+upstream Plesk/cPanel tenant tool: disabled
 IMAP IDLE: enabled
 catch-all: false
 automatic user forwarding: false
@@ -73,6 +74,42 @@ the configuration file. A scanner failure cannot be configured as permissive.
 
 The full mail behavior, adapter interfaces, queue states, Sieve rules, and
 vendor-wiring checklist are in [M3 mail core](mail-core.md).
+
+## Optional upstream Plesk or cPanel
+
+The optional `controlPanel` section describes a tenant's upstream hosting
+panel. Supported provider values are `plesk`, `cpanel`, and `none` (the default).
+When enabled, it requires an HTTPS `baseUrl`, an external `accountRef`, and a
+`credentialSecretRef`; `webhook` and `hybrid` synchronization additionally
+require a `webhookSecretRef`. Environment variables use the same names with
+the `CONTROL_PANEL_` prefix, for example:
+
+```text
+CONTROL_PANEL_ENABLED=false
+CONTROL_PANEL_PROVIDER=none
+CONTROL_PANEL_BASE_URL=
+CONTROL_PANEL_ACCOUNT_REF=
+CONTROL_PANEL_CREDENTIAL_SECRET_REF=
+CONTROL_PANEL_WEBHOOK_SECRET_REF=
+CONTROL_PANEL_SYNC_MODE=pull
+```
+
+The panel may own its hosting account and, if the provider chooses, DNS
+workflow. Gulo Gulo remains authoritative for tenant policy, identity,
+PostgreSQL state, mailbox/DAV content, retention, and audit. The contract is
+read-only and rejects embedded URL credentials, arbitrary writes, shell/SSH,
+Docker-socket, and unrestricted `kubectl` access. See [Optional Plesk and cPanel
+integration](control-panel-integration.md) for the binding and field runbook.
+
+## External scanner signature volume
+
+Rspamd and ClamAV definition data is intentionally not stored in the image.
+`GULOGULO_SCANNER_SIGNATURE_ROOT`,
+`GULOGULO_SCANNER_SIGNATURE_MAX_AGE_SECONDS`, and
+`GULOGULO_LP3_SCANNER_SIGNATURES_VOLUME` describe the provider-owned shared
+volume and its freshness policy. The host-side updater is the single writer;
+scanner containers mount the volume read-only and fail closed for missing,
+stale, or invalid generations. See [Shared scanner-signature volume](scanner-signature-volume.md).
 
 ## Secrets
 
@@ -100,11 +137,12 @@ credential or a message identifier.
 
 ## Troubleshooting
 
-Run the config tests directly when Windows process isolation prevents the
-Node test runner from spawning child workers:
+Run the compiled config tests directly when Windows process isolation prevents
+the Node test runner from spawning child workers:
 
 ```powershell
-node --experimental-strip-types src/foundation/config.test.ts
+npm run build:server
+node dist/server/src/foundation/config.test.js
 ```
 
 For a normal package run, use `npm test`. The CI image executes the same script

@@ -35,6 +35,12 @@ normal workflow.
 - [M3 mail core](mail-core.md) — explicit mailbox and alias delivery, closed
   submission, scanner verdicts, LMTP retry/bounce behavior, queue visibility,
   Sieve forwarding protection, and deterministic IMAP IDLE events.
+- [Shared scanner-signature volume](scanner-signature-volume.md) — the external
+  Rspamd/ClamAV definition layout, atomic activation, read-only mounts, host
+  updater boundary, and freshness/rollback rules.
+- [Optional Plesk and cPanel integration](control-panel-integration.md) — the
+  upstream tenant-tool boundary, ownership rules, safe references, pull and
+  webhook modes, and provider verification checklist.
 - [RBAC, administration, and web MFA](rbac-admin-mfa.md) — role and permission
   matrices, delegation, quota/admin metadata, password policy, TOTP, WebAuthn,
   recovery, and the content/session privacy boundary.
@@ -93,6 +99,9 @@ normal workflow.
 - [Server TypeScript boundary](server-typescript.md) — compiler settings,
   build and test commands, compiled production startup, and the temporary
   compatibility-bridge rule.
+- [SBOM and signed-image release plan](sbom-release-plan.md) — the planned
+  registry release lane, digest-bound SBOM attestations, permissions, and
+  consumer verification gates.
 
 The project is still intentionally small. The documents describe real behavior
 only: DAV, administration, lifecycle, backup, observability, ACME, abuse, and

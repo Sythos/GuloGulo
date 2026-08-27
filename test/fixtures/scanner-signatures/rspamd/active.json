@@ -1,0 +1,7 @@
+{
+  "$comment": "SPDX-License-Identifier: MIT; SPDX-FileCopyrightText: 2026 Sythos (https://www.sythos.net); Author: Sythos (https://www.sythos.net)",
+  "schemaVersion": 1,
+  "scanner": "rspamd",
+  "generation": "fixture-rspamd-1",
+  "directory": "versions/fixture-rspamd-1"
+}

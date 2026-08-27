@@ -11,6 +11,6 @@ import urllib.request
 
 with urllib.request.urlopen('http://127.0.0.1:11333/health', timeout=2) as response:
     payload = json.load(response)
-if payload.get('status') != 'ok' or payload.get('production') is not False:
+if payload.get('status') != 'ok' or payload.get('production') is not False or payload.get('signatureStatus') != 'ready':
     raise SystemExit(1)
 PY

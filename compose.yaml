@@ -50,6 +50,13 @@ x-gulogulo-service: &gulogulo-service
     POSTGRES_IDLE_TIMEOUT_MS: ${POSTGRES_IDLE_TIMEOUT_MS:-30000}
     POSTGRES_POOL_MAX: ${POSTGRES_POOL_MAX:-8}
     POSTGRES_RETRY_ATTEMPTS: ${POSTGRES_RETRY_ATTEMPTS:-2}
+    CONTROL_PANEL_ENABLED: ${CONTROL_PANEL_ENABLED:-false}
+    CONTROL_PANEL_PROVIDER: ${CONTROL_PANEL_PROVIDER:-none}
+    CONTROL_PANEL_BASE_URL: ${CONTROL_PANEL_BASE_URL:-}
+    CONTROL_PANEL_ACCOUNT_REF: ${CONTROL_PANEL_ACCOUNT_REF:-}
+    CONTROL_PANEL_CREDENTIAL_SECRET_REF: ${CONTROL_PANEL_CREDENTIAL_SECRET_REF:-}
+    CONTROL_PANEL_WEBHOOK_SECRET_REF: ${CONTROL_PANEL_WEBHOOK_SECRET_REF:-}
+    CONTROL_PANEL_SYNC_MODE: ${CONTROL_PANEL_SYNC_MODE:-pull}
     GULOGULO_MAIL_IMAP_IDLE: ${GULOGULO_MAIL_IMAP_IDLE:-true}
     GULOGULO_MAIL_POP3S_ENABLED: ${GULOGULO_MAIL_POP3S_ENABLED:-false}
     GULOGULO_MAIL_CATCH_ALL: ${GULOGULO_MAIL_CATCH_ALL:-false}
@@ -621,6 +628,9 @@ services:
       context: docker/lp3-rspamd
       dockerfile: Dockerfile
     profiles: ["lp3"]
+    environment:
+      GULOGULO_SCANNER_SIGNATURE_ROOT: /var/lib/gulogulo/scanner-signatures
+      GULOGULO_SCANNER_SIGNATURE_MAX_AGE_SECONDS: ${GULOGULO_SCANNER_SIGNATURE_MAX_AGE_SECONDS:-604800}
     networks:
       lp3-runtime:
         aliases:
@@ -630,6 +640,7 @@ services:
       - "11333"
     volumes:
       - lp3-rspamd-data:/var/lib/rspamd
+      - lp3-scanner-signatures:/var/lib/gulogulo/scanner-signatures:ro
     read_only: true
     tmpfs:
       - /tmp:rw,noexec,nosuid,size=16m
@@ -653,6 +664,9 @@ services:
       context: docker/lp3-clamav
       dockerfile: Dockerfile
     profiles: ["lp3"]
+    environment:
+      GULOGULO_SCANNER_SIGNATURE_ROOT: /var/lib/gulogulo/scanner-signatures
+      GULOGULO_SCANNER_SIGNATURE_MAX_AGE_SECONDS: ${GULOGULO_SCANNER_SIGNATURE_MAX_AGE_SECONDS:-604800}
     networks:
       lp3-runtime:
         aliases:
@@ -662,6 +676,7 @@ services:
       - "3310"
     volumes:
       - lp3-clamav-data:/var/lib/clamav
+      - lp3-scanner-signatures:/var/lib/gulogulo/scanner-signatures:ro
     read_only: true
     tmpfs:
       - /tmp:rw,noexec,nosuid,size=16m
@@ -686,6 +701,11 @@ services:
       dockerfile: Dockerfile
     profiles: ["lp3-check"]
     command: ["/usr/bin/python3", "/usr/local/bin/gulogulo-lp3-proof"]
+    environment:
+      GULOGULO_SCANNER_SIGNATURE_ROOT: /var/lib/gulogulo/scanner-signatures
+      GULOGULO_SCANNER_SIGNATURE_MAX_AGE_SECONDS: ${GULOGULO_SCANNER_SIGNATURE_MAX_AGE_SECONDS:-604800}
+    volumes:
+      - lp3-scanner-signatures:/var/lib/gulogulo/scanner-signatures:ro
     networks:
       - lp3-runtime
     depends_on:
@@ -724,6 +744,11 @@ services:
       dockerfile: Dockerfile
     profiles: ["lp3-check"]
     command: ["node", "scripts/lp3-proof-smoke.mjs"]
+    environment:
+      GULOGULO_SCANNER_SIGNATURE_ROOT: /var/lib/gulogulo/scanner-signatures
+      GULOGULO_SCANNER_SIGNATURE_MAX_AGE_SECONDS: ${GULOGULO_SCANNER_SIGNATURE_MAX_AGE_SECONDS:-604800}
+    volumes:
+      - lp3-scanner-signatures:/var/lib/gulogulo/scanner-signatures:ro
     networks:
       - lp3-runtime
     read_only: true
@@ -1362,6 +1387,9 @@ volumes:
     external: ${GULOGULO_LP3_VOLUMES_EXTERNAL:-false}
   lp3-clamav-data:
     name: ${GULOGULO_VOLUME_PREFIX:-gulogulo}-lp3-clamav-data
+    external: ${GULOGULO_LP3_VOLUMES_EXTERNAL:-false}
+  lp3-scanner-signatures:
+    name: ${GULOGULO_LP3_SCANNER_SIGNATURES_VOLUME:-gulogulo-lp3-scanner-signatures}
     external: ${GULOGULO_LP3_VOLUMES_EXTERNAL:-false}
   lp4-runtime-state:
     name: ${GULOGULO_VOLUME_PREFIX:-gulogulo}-lp4-runtime-state

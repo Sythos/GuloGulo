@@ -178,10 +178,20 @@ identifiers for audit/metrics use; the message body is never copied into a
 verdict.
 
 An adapter must keep the last known-good definitions and expose update health.
-The update path remains the documented sequence: download, verify, cache,
-atomically replace, health-check, and roll back/fall back on failure. `freshclam`
-and Rspamd map/rule updates are deployment concerns, not an excuse to weaken
-the delivery decision.
+Gulo Gulo's scanner readers consume both Rspamd and ClamAV definitions from the
+provider-owned shared `scanner-signatures` volume, mounted read-only in every
+scanner container. Each scanner verifies the active pointer, generation
+manifest, per-file SHA-256 values, aggregate descriptor digest, and freshness
+window before reporting ready. A stale, missing, malformed, or mismatched
+generation is unavailable and therefore cannot be treated as a clean verdict.
+
+The provider-side update path remains: download, verify, stage beside the
+known-good generation, write and validate a manifest, flush, atomically replace
+the active pointer, health-check, and retain the previous generation for
+rollback. `freshclam` and Rspamd map/rule updates are deployment concerns, not
+an excuse to weaken the delivery decision. The writer belongs to the host or a
+provider maintenance job; scanner containers never become writable and never
+run a feed cron job.
 
 ## Queue, retry, and bounce
 
@@ -240,6 +250,9 @@ The M3 configuration fields are secret-free and available both in
 | `GULOGULO_MAILBOX_ROOT` | `/var/lib/gulogulo/mail` | External mail volume mount |
 | `GULOGULO_MAIL_RSPAMD_ENABLED` | `true` | Require Rspamd adapter wiring |
 | `GULOGULO_MAIL_CLAMAV_ENABLED` | `true` | Require ClamAV adapter wiring |
+| `GULOGULO_SCANNER_SIGNATURE_ROOT` | `/var/lib/gulogulo/scanner-signatures` | Read-only verified definition root |
+| `GULOGULO_SCANNER_SIGNATURE_MAX_AGE_SECONDS` | `604800` | Maximum accepted definition age |
+| `GULOGULO_LP3_SCANNER_SIGNATURES_VOLUME` | `gulogulo-scanner-signatures` | Provider-owned shared scanner volume |
 | `GULOGULO_MAIL_SCAN_FAILURE_MODE` | `fail_closed` | Never accept with an unknown scan result |
 | `GULOGULO_MAIL_MAX_MESSAGE_BYTES` | `52428800` | Envelope size limit |
 | `GULOGULO_MAIL_MAX_RECIPIENTS` | `100` | Recipients per message |
@@ -291,8 +304,10 @@ rehearsals remain operational verification work.
 4. Configure Postfix submission authentication against LDAP through the
    approved service adapter; test the open-relay negative case from outside
    the tenant.
-5. Configure Rspamd and ClamAV update jobs with integrity checks, rollback,
-   alerts, and a documented fail-closed policy.
+5. Configure the host-side Rspamd and ClamAV definition writer with integrity
+   checks, atomic active-pointer replacement, rollback, alerts, and a
+   documented fail-closed policy. Mount its provider-owned volume read-only in
+   the scanner services.
 6. Run the M3 contract tests plus real SMTP, LMTP, IMAP IDLE, Sieve, alias,
    quota, spam, malware, queue, and restart tests in a disposable environment.
 7. Inspect logs and queue views to confirm that no body, credential, or secret

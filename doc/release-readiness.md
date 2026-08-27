@@ -28,8 +28,8 @@ The M10 gate covers five evidence domains:
 | Security | tenant/RBAC boundaries, session and CSRF contracts, MFA primitives, HTML sanitization, abuse limits, and secret-free audit events | provider secret rotation, real TLS/LDAP/DB configuration, image signing and SBOM publication |
 | Data | quota allocation, 28-day purge, backup authorization, encrypted archive shape, idempotent lifecycle operations | an actual restore, deletion runbook execution, external-volume snapshots, measured RPO/RTO |
 | Interoperability | SMTP/IMAP/IDLE, Sieve, DAV object semantics, discovery, ICS/vCard, and timezone contracts | vendor client matrix and real protocol endpoints |
-| Operations | health, metrics, logging, alerts, queue visibility, Docker/Kubernetes migration contracts, and multi-architecture build configuration | scanner update channels, Docker host replacement, Kubernetes cutover, rollback, and incident tabletop |
-| Governance | role and delegation policy, default-deny master access, read-only API/MCP, ADRs, documentation inventory, and GitHub Artifact Attestations for trusted push builds | owner approval of the deployment and disaster-recovery runbooks |
+| Operations | health, metrics, logging, alerts, queue visibility, Docker/Kubernetes migration contracts, multi-architecture build configuration, and the shared read-only scanner-signature boundary | host-side scanner feed publication, Docker host replacement, Kubernetes cutover, rollback, and incident tabletop |
+| Governance | role and delegation policy, default-deny master access, optional Plesk/cPanel tenant-tool boundary, read-only API/MCP, ADRs, documentation inventory, and GitHub Artifact Attestations for trusted push builds | owner approval of the deployment and disaster-recovery runbooks plus any provider-specific panel adapter |
 
 The source of truth for the checklist remains Section 30 of `GULOGULO.md`.
 The repository copy is deliberately an evidence boundary, not a second product
@@ -46,7 +46,8 @@ and [`doc/lp8-evidence-operator.md`](lp8-evidence-operator.md). The bundle
 indexes the local proof manifests, fixtures, operator notes, CI provenance,
 and temporary TypeScript bridges. It remains safe to share because it contains
 synthetic references and sanitized links only; registry publication, SBOM,
-signing, and live provider evidence remain outside this checkout.
+signing, live provider evidence, and provider-specific Plesk/cPanel adapters
+remain outside this checkout.
 
 ## Artifact provenance in GitHub Actions
 
