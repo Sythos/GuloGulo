@@ -70,7 +70,9 @@ RUN set -eux; \
       /var/lib/gulogulo/runtime \
       /var/lib/gulogulo/dav \
       /var/lib/gulogulo/mail \
-      /var/lib/gulogulo/backups
+      /var/lib/gulogulo/backups \
+      /var/lib/gulogulo/queue \
+      /var/lib/gulogulo/lp7
 
 WORKDIR /app
 
