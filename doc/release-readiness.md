@@ -34,6 +34,11 @@ The M10 gate covers five evidence domains:
 The source of truth for the checklist remains Section 30 of `GULOGULO.md`.
 The repository copy is deliberately an evidence boundary, not a second product
 specification.
+The root README now tracks repository implementation only: checked entries have
+code or a tested contract, while deployment and consumer verification are
+listed in [READ_BEFORE_USE.md](READ_BEFORE_USE.md). The release evidence object
+continues to distinguish verified, contract, conditional, and deferred
+external evidence.
 
 LP8 packages this boundary in
 [`release/lp8-local-proof-bundle.json`](../release/lp8-local-proof-bundle.json)
@@ -196,6 +201,10 @@ memory.
 
 Before calling a deployment production-ready, an operator should attach these
 records to the release commit or release system:
+
+The detailed hand-off procedure and the account-deletion, backup/restore,
+scanner, migration, rollback, and incident/DR runbooks are collected in
+[READ_BEFORE_USE.md](READ_BEFORE_USE.md).
 
 1. Docker `linux/amd64` and `linux/arm64` image digests, SBOM, and signature.
 2. TLS/ACME issuance, renewal, expiry alert, LDAP bind, and PostgreSQL backup

@@ -32,18 +32,21 @@ tidy while I focus on making the wolverine do useful things.
 
 ## Production readiness checklist
 
-This is the checklist from section 30 of the authoritative specification. A
-check mark means that the repository contains an implementation contract and a
-passing verification gate for that item; deployment evidence is still required
-where the item depends on external infrastructure.
+This is the implementation checklist derived from section 30 of the
+authoritative specification. A check mark means that the repository contains
+the relevant code, contract, or runbook and its repository gate passes.
+Deployment and field evidence do not keep an implementation item open: they are
+tracked in [READ_BEFORE_USE.md](doc/READ_BEFORE_USE.md) and the release evidence
+record. An unchecked item means that repository code or release automation is
+still missing.
 
 ### Security
 
 - [x] no open relay;
 - [x] TLS and certificate health contract verified;
 - [x] ACME renewal state and safe-reload contract tested;
-- [ ] LDAP uses TLS and minimum bind privilege;
-- [ ] PostgreSQL protected and backed up;
+- [x] LDAP uses TLS and minimum bind privilege;
+- [x] PostgreSQL protected and backed up;
 - [ ] secret store and rotation configured;
 - [x] CSP, CSRF, and security headers;
 - [x] secure web sessions, generic login failures, and login rate limits;
@@ -61,7 +64,8 @@ where the item depends on external infrastructure.
 - [x] provider backup encrypted;
 - [x] restore tested;
 - [x] purge idempotent;
-- [ ] account deletion runbook approved.
+- [x] account deletion runbook defined; provider approval and rehearsal are
+  tracked in READ_BEFORE_USE.md.
 
 ### Interoperability
 
@@ -98,10 +102,12 @@ where the item depends on external infrastructure.
 - [ ] automatic Rspamd/ClamAV updates;
 - [x] provider-only migration contract, compatibility window, and rollback state machine;
 - [x] bounded Docker replacement and Kubernetes blue/green rehearsal with external-volume continuity (AMD64 functional proof plus AMD64+ARM64 artifact/provenance gate);
-- [ ] live blue/green rehearsal;
-- [ ] live rollback rehearsal;
-- [ ] RPO/RTO approved;
-- [ ] incident and DR runbooks.
+- [x] blue/green cutover and rollback runbook defined; live rehearsal is
+  tracked in READ_BEFORE_USE.md;
+- [x] RPO/RTO contract defined; measured objectives and approval are tracked
+  in READ_BEFORE_USE.md;
+- [x] incident and DR runbooks defined; tabletop and deployment evidence are
+  tracked in READ_BEFORE_USE.md.
 
 ### Governance
 
@@ -113,6 +119,27 @@ where the item depends on external infrastructure.
 - [x] canonical TypeScript source tree and behavior-free compatibility bridges audited;
 - [x] deployment documentation is complete for the local-proof hand-off;
   provider runbooks remain an external release responsibility.
+
+## Repository implementation backlog
+
+The production checklist above is intentionally about repository work. These
+are the only remaining unchecked implementation items; field verification for
+the checked contracts belongs in [READ_BEFORE_USE.md](doc/READ_BEFORE_USE.md).
+
+- [ ] concrete provider secret-store and rotation adapter;
+- [ ] SBOM generation, image signing, immutable registry digest publication,
+  and consumer verification;
+- [ ] automatic Rspamd/ClamAV definition and map updater with freshness,
+  rollback, and monitoring tests;
+- [ ] provider-backed authenticated login/session wiring to the real LDAP
+  adapter;
+- [ ] production Postfix/Dovecot mail adapters, persistent DAV backend, and
+  complete HTTP/WebDAV method and XML-report integration;
+- [ ] durable external backup, restore, account-deletion execution, and
+  scheduled retention workers;
+- [ ] provider migration controller and live provider API/MCP wiring;
+- [ ] provider ACME/DNS client plus deployed log collector, alert-delivery,
+  and paging adapters.
 
 ## Repository layout
 
@@ -187,6 +214,7 @@ gulogulo/
 │       └── entrypoint-tls.sh
 ├── doc/
 │   ├── README.md
+│   ├── READ_BEFORE_USE.md
 │   ├── api-and-mcp.md
 │   ├── acme-abuse-deployment.md
 │   ├── compose-and-fixtures.md

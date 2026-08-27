@@ -14,6 +14,10 @@ normal workflow.
 
 ## What is documented today
 
+- [Read before use](READ_BEFORE_USE.md) — the production hand-off sheet:
+  repository code that is done, field verification that belongs to providers
+  and testers, runbook definitions, evidence rules, and the remaining
+  implementation backlog.
 - [Configuration](configuration.md) — the versioned configuration contract,
   precedence rules, safe defaults, and secret references.
 - [Runtime and observability](observability.md) — health, logs, request IDs,
