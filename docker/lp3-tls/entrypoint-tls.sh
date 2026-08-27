@@ -17,6 +17,8 @@ if [[ ! -s "${tls_dir}/ca.crt" || ! -s "${tls_dir}/lp3-postfix.crt" || \
 
   openssl req -x509 -newkey rsa:2048 -nodes -days 7 \
     -keyout "${work_dir}/ca.key" -out "${work_dir}/ca.crt" \
+    -addext "basicConstraints=critical,CA:TRUE,pathlen:1" \
+    -addext "keyUsage=critical,keyCertSign,cRLSign" \
     -subj "/CN=Gulo Gulo LP3 synthetic CA"
 
   for service in postfix dovecot; do

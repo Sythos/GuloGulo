@@ -143,6 +143,10 @@ for (const imagePath of ['docker/lp3-tls/Dockerfile', 'docker/lp3-postfix/Docker
   requireText(image, 'ARG TARGETARCH', `${imagePath} multi-architecture argument`);
 }
 
+const tlsEntrypoint = await readFile(resolve(root, 'docker/lp3-tls/entrypoint-tls.sh'), 'utf8');
+requireText(tlsEntrypoint, 'basicConstraints=critical,CA:TRUE', 'LP3 synthetic CA basic constraints');
+requireText(tlsEntrypoint, 'keyUsage=critical,keyCertSign,cRLSign', 'LP3 synthetic CA key usage');
+
 equal(manifest.milestone, 'LP3', 'manifest milestone');
 equal(manifest.proofType, 'local_synthetic_mail', 'manifest proof type');
 equal(manifest.networkPolicy, 'offline_dependencies', 'manifest network policy');
