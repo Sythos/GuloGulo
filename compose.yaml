@@ -151,9 +151,12 @@ services:
       GULOGULO_FIXTURE_MODE: "true"
     # `npm test` invokes the browser build and therefore needs to regenerate
     # the ignored `web/dist` output. This profile is disposable; the default
-    # runtime service above remains read-only.
+    # runtime service above remains read-only. The release workflow is mounted
+    # read-only because it is intentionally excluded from the runtime image by
+    # `.dockerignore`, while the package test still audits its source contract.
     read_only: false
-    volumes: []
+    volumes:
+      - ./.github/workflows/container-release.yml:/app/.github/workflows/container-release.yml:ro
     healthcheck:
       disable: true
 
