@@ -38,7 +38,8 @@ concurrency:
 
 env:
   REGISTRY: ghcr.io
-  IMAGE_NAME: ghcr.io/${{ github.repository }}
+  # GHCR image references must be lowercase even when the GitHub owner/repository use mixed case.
+  IMAGE_NAME: ghcr.io/sythos/gulogulo
 
 jobs:
   field-container:
