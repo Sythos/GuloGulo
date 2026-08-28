@@ -95,6 +95,7 @@ still missing.
 - [x] health and metrics;
 - [x] multi-architecture Docker images for Ubuntu 26.04 LTS on amd64 (x86_64) and arm64;
 - [x] final registry publication is gated to the multiarch amd64+arm64 target;
+- [x] default-deny Docker build context and runtime-layer cleanup keep documentation, tests, fixtures, CI metadata, bridges, and local tooling outside the application image;
 - [x] dual-stack IPv4 and IPv6 network support;
 - [x] persistent external mail volumes and restart continuity;
 - [x] offline synthetic LP2 LDAP and PostgreSQL dependency proof with verified TLS;

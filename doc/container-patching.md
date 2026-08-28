@@ -18,6 +18,35 @@ The Dockerfile validates the BuildKit `TARGETARCH` value against
 official Node.js archive. This catches accidental x86/ARM mismatches instead
 of producing an image that only fails when it starts.
 
+## Runtime context and image boundary
+
+The repository root `.dockerignore` is intentionally default-deny. Docker may
+read the repository as a build context, but only the following inputs are
+allowed through that boundary:
+
+- `package.json` and `package-lock.json` for the reproducible install;
+- the two compiler projects needed to build the server and browser bundle;
+- canonical server TypeScript and PostgreSQL migration SQL;
+- the browser shell (`web/index.html`, `web/styles.css`, `web/manifest.json`,
+  `web/build.ts`, and `web/src/app.ts`);
+- the login artwork at `assets/gulo-gulo-calendar-mail.png`;
+- the root-only `scripts/container-patch.sh` helper.
+
+Documentation, READMEs, tests, fixtures, release evidence, Compose files, CI
+metadata, synthetic Docker contexts, compatibility bridges, and local tooling
+are excluded. They remain available in the checkout for maintainers and for a
+future GitHub Pages site or project wiki, but they are not sent into the
+application image.
+
+The image compiles the TypeScript sources and browser bundle, prunes
+development dependencies, and then removes build-only sources, compiler
+projects, tests, declarations, and helper scripts. The runtime layer retains
+the compiled server, compiled browser assets, static shell, login artwork,
+production `node_modules`, `package.json`, and migration SQL. The external
+configuration, mailbox, DAV, queue, scanner-signature, backup, and patch-state
+volumes remain outside the image and are mounted according to the deployment
+profile.
+
 The base image and Node release are recorded in the Dockerfile and rechecked
 against authoritative upstream sources when they change. A clean security
 rebuild uses a fresh base and avoids stale builder cache:

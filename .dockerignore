@@ -2,31 +2,76 @@
 # SPDX-FileCopyrightText: 2026 Sythos (https://www.sythos.net)
 # Author: Sythos (https://www.sythos.net)
 
-# Version-control and CI metadata are not required in the runtime image.
-.git
-.git/**
-.github
-.github/**
+# The runtime Dockerfile uses COPY . ., so the context is default-deny. Only
+# files explicitly re-included below can reach the application image. This
+# keeps documentation, tests, fixtures, CI metadata, and local tooling out of
+# the runtime layer while retaining the sources required for its build.
+**
 
-# Never send local credentials or environment files to the Docker daemon.
+# Package metadata and compiler projects required during the image build.
+!package.json
+!package-lock.json
+!tsconfig.json
+!tsconfig.server.json
+
+# Canonical server TypeScript and the migration SQL read by the runtime.
+# Re-include the directory first, deny all descendants again, then allow only
+# compiler inputs and runtime migration SQL. Tests and compatibility bridges
+# stay outside the context.
+!src/
+!src/**
+src/**/*
+!src/**/*.ts
+src/**/*.test.ts
+!src/db/migrations/*.sql
+
+# Browser runtime source and static shell. web/dist is generated in-image.
+# Only the build input and files served by the runtime are allowed through.
+!web/
+!web/**
+web/**/*
+!web/index.html
+!web/styles.css
+!web/manifest.json
+!web/build.ts
+!web/src/app.ts
+
+# The `!web/` directory exception also matches a nested directory named web
+# under Docker's wildcard matcher. Re-assert the server source policy after
+# that exception so src/web contains only canonical TypeScript (never bridges
+# or tests).
+src/web
+src/web/**/*
+!src/web/**/*.ts
+src/web/**/*.test.ts
+
+# The login shell serves this artwork from the sibling assets directory.
+!assets/
+!assets/**
+assets/**/*
+!assets/gulo-gulo-calendar-mail.png
+
+# Installed as the explicit, root-only maintenance helper.
+!scripts/
+!scripts/**
+scripts/**
+!scripts/container-patch.sh
+
+# Keep these exclusions visible as policy even though the default-deny rule
+# already excludes them. They must never be re-included by a future edit.
+doc
+README.md
+web/README.md
+assets/README.md
+test
+release
+docker
+compose.yaml
+.github
+.git
 .env
 .env.*
-!.env.example
-
-# Local dependency trees and generated output are rebuilt in the image.
 node_modules
-coverage
 dist
 build
-tmp
-*.log
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
-pnpm-debug.log*
-
-# Editor and operating-system metadata.
-.idea
-.vscode
-.DS_Store
-Thumbs.db
+coverage

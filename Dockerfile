@@ -84,6 +84,12 @@ WORKDIR /app
 # milestone. Keeping this image boundary independent of the source layout
 # lets the Docker-first scaffold run the same npm start contract in every
 # OCI-compatible environment.
+#
+# After compilation, the final layer keeps only execution inputs. TypeScript,
+# compiler projects, tests, compatibility bridges, and build helpers are
+# useful while building but are not runtime dependencies. Migration SQL is
+# deliberately retained because the PostgreSQL migration runner reads it
+# from the external-state boundary at startup.
 COPY --chown=gulogulo:gulogulo . .
 
 RUN set -eux; \
@@ -115,6 +121,11 @@ RUN set -eux; \
       npm prune --omit=dev; \
     fi; \
     npm cache clean --force; \
+    find /app/dist/server -type f \( -name '*.d.ts' -o -name '*.test.js' \) -delete; \
+    find /app/src -type f ! -path '/app/src/db/migrations/*' -delete; \
+    find /app/src -type d -empty -delete; \
+    rm -rf /app/web/src /app/web/test /app/scripts; \
+    rm -f /app/web/build.ts /app/web/build.mjs /app/tsconfig.json /app/tsconfig.server.json /app/package-lock.json; \
     chown -R gulogulo:gulogulo /app
 
 # The service is deliberately unprivileged in the final container.
