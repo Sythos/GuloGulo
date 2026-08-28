@@ -2,7 +2,7 @@
 // SPDX-FileCopyrightText: 2026 Sythos (https://www.sythos.net)
 // Author: Sythos (https://www.sythos.net)
 
-import { timingSafeEqual } from 'node:crypto';
+import { randomUUID, timingSafeEqual } from 'node:crypto';
 import { mkdir, readFile, rename, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 
@@ -120,7 +120,10 @@ async function ensureContinuityState(): Promise<void> {
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
   }
-  const temporaryPath = `${statePath}.${process.pid}.tmp`;
+  // Blue and green containers have separate PID namespaces, so process.pid is
+  // not unique when both runtimes initialize the shared volume concurrently.
+  // A UUID keeps each atomic-write staging file independent.
+  const temporaryPath = `${statePath}.${process.pid}.${randomUUID()}.tmp`;
   await writeFile(temporaryPath, `${JSON.stringify(continuity, null, 2)}\n`, { encoding: 'utf8', mode: 0o600 });
   await rename(temporaryPath, statePath);
 }

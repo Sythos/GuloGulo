@@ -32,6 +32,123 @@ Never turn a VERIFY BEFORE USE item into a fake repository pass. Conversely,
 do not leave an implementation checklist item open merely because the provider
 has not run its deployment rehearsal yet.
 
+## Container installation and first run
+
+This is the practical path for bringing up the repository container without
+mistaking a local proof image for a production deployment. The commands below
+assume Docker Engine or Docker Desktop with Compose v2 and a Linux host (or a
+Linux VM on a development workstation). The supported final image platforms
+are `linux/amd64` (x86_64) and `linux/arm64` (ARM64). Build and test on AMD64
+first for speed; the trusted registry publication gate must still complete the
+ARM64 artifact and provenance checks before it is treated as a final image.
+
+### Choose the image source
+
+- **Source checkout:** use this when changing code or running the complete
+  Compose proof. The checkout builds the image locally from the exact commit.
+- **AMD64 field archive:** the manual `container-release` workflow can produce
+  a downloadable `.docker.tar` plus a SHA-256 file. It is an offline field-test
+  artifact for `linux/amd64`, not a multi-architecture production image.
+- **Immutable registry image:** the trusted `main` workflow can publish a
+  digest-addressed GHCR image only with `publish=true` and
+  `architecture_mode=multiarch`. A Git tag alone does not create a GHCR image
+  or a GitHub Release; those are separate owner-triggered actions.
+
+### Prepare a checkout and external volumes
+
+Start from the release tag or commit that you intend to run. The following
+example uses the `0.1.2` source tag and a machine-safe tenant prefix:
+
+~~~text
+git clone https://github.com/Sythos/GuloGulo.git gulogulo
+cd gulogulo
+git checkout 0.1.2
+~~~
+
+Copy `.env.example` to `.env` and edit only deployment-safe values. At minimum,
+set `GULOGULO_ENV=production`, `APP_ENV=production`,
+`GULOGULO_VERSION=0.1.2`, a unique `GULOGULO_VOLUME_PREFIX`, and
+`GULOGULO_VOLUMES_EXTERNAL=true`. Keep LDAP, PostgreSQL, ACME, control-panel,
+and backup credentials in the provider secret store; `.env` may contain only
+their reference names. Never commit the populated file.
+
+Create the four durable application volumes before the first start. The names
+must match the prefix in `.env`; use a provider-backed volume driver or a
+protected host storage policy when Docker's default volume root is not suitable:
+
+~~~powershell
+$prefix = 'gulogulo-tenant1'
+'runtime-state','mail-data','dav-data','backup-data' |
+  ForEach-Object { docker volume create "$prefix-$_" }
+~~~
+
+These volumes hold runtime state, mailbox data, DAV objects, and backup
+references. They are deliberately external to disposable containers and must
+survive `docker compose down` and image replacement. Do not use
+`docker compose down --volumes` on a deployment that contains user data.
+
+### Validate and start the runtime
+
+Run the configuration check before creating containers, then build or select
+the exact image and start only the default runtime service:
+
+~~~powershell
+docker compose config --quiet
+docker compose build --pull gulogulo
+docker compose up --detach gulogulo
+docker compose ps
+~~~
+
+The default Compose binding is loopback-only (`127.0.0.1:8080`). Keep it that
+way when a Plesk/cPanel-managed reverse proxy is in front of Gulo Gulo; let the
+proxy own public TLS, DNS, and IPv4/IPv6 exposure. Do not mount the Docker
+socket and do not publish the service directly to the Internet until the
+provider has completed the dual-stack, certificate, firewall, and abuse review.
+
+Check readiness and retain the sanitized result:
+
+~~~powershell
+Invoke-WebRequest http://127.0.0.1:8080/health/ready | Select-Object StatusCode, Content
+docker compose logs --no-color --tail 100 gulogulo
+~~~
+
+LDAP and PostgreSQL are disabled by the safe empty-scaffold defaults. A real
+deployment must enable them only after their TLS endpoints, secret references,
+tenant mapping, roles, and network policy have been verified. The default
+runtime is also read-only apart from its external volumes and a bounded `/tmp`.
+
+### Importing the AMD64 field archive
+
+When testing an Actions artifact on an AMD64 host, verify its checksum before
+loading it and keep the imported tag visible in the evidence record:
+
+~~~powershell
+Get-Content .\gulogulo-field-<tag>.docker.tar.sha256
+Get-FileHash .\gulogulo-field-<tag>.docker.tar -Algorithm SHA256
+docker load --input .\gulogulo-field-<tag>.docker.tar
+docker image inspect gulogulo:field-<tag>
+~~~
+
+The archive is intentionally a field-test package. Use the matching checkout
+and Compose definition for a repeatable proof, or use the digest-pinned GHCR
+image after the final multi-architecture publication gate. Do not infer ARM64
+support from an AMD64 archive.
+
+### Stop, upgrade, and roll back safely
+
+Use `docker compose stop` when pausing a deployment; the external volumes stay
+intact. For an upgrade, record the source and target digests, run the
+preflight/readiness checks, start the green container with the same external
+volume references, observe queue/IMAP IDLE/DAV behavior, and keep the blue
+container available until the observation window closes. If a gate regresses,
+cut traffic back to blue without copying or deleting mailbox data. The complete
+Docker and Kubernetes procedure is in the migration runbook below.
+
+The disposable `local`, `test`, `fixture`, `lp3`, and other proof profiles are
+for repository verification only. They use synthetic identities and data and
+must never be pointed at a tenant's production LDAP, PostgreSQL, mailbox, DAV,
+scanner-signature, or backup volumes.
+
 ## Production-readiness map
 
 The following sections cover the complete production-readiness boundary. Every

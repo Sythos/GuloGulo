@@ -154,6 +154,8 @@ requireText(checker, 'user: "10001:10001"', 'LP7 checker unprivileged UID');
 const checkerSource = await readFile(resolve(root, 'scripts/lp7-proof-check.ts'), 'utf8');
 requireText(checkerSource, 'saved.signature === continuitySignature', 'LP7 continuity signature comparison');
 if (checkerSource.includes('JSON.stringify(saved.signature)')) fail('LP7 checker double-serializes the saved continuity signature');
+const webRuntimeSource = await readFile(resolve(root, 'scripts/lp4-web-runtime.ts'), 'utf8');
+requireText(webRuntimeSource, 'randomUUID()', 'LP7 shared-volume continuity staging-file uniqueness');
 for (const marker of ['gulogulo-lp7-blue:', 'gulogulo-lp7-green:']) {
   requireText(checker, marker, `LP7 checker dependency ${marker}`);
 }

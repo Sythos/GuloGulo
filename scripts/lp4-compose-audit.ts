@@ -98,6 +98,8 @@ for (const path of ['scripts/lp4-web-runtime.ts', 'scripts/lp4-proof-check.ts', 
   if (/LP4_LOGIN_(?:EMAIL|PASSWORD)\s*\|\|\s*['"][^'"]+/u.test(source)) fail(`${path} contains a default credential`);
   if (source.includes('docker.sock')) fail(`${path} references the Docker socket`);
 }
+const webRuntime = await readFile(resolve(root, 'scripts/lp4-web-runtime.ts'), 'utf8');
+requireText(webRuntime, 'randomUUID()', 'LP4 continuity staging-file uniqueness');
 
 const webHtml = await readFile(resolve(root, 'web/index.html'), 'utf8');
 for (const marker of ['id="login-shell"', 'gulo-gulo-calendar-mail.png', 'data-view="mail"', 'data-view="calendar"', 'data-view="contacts"']) requireText(webHtml, marker, `web shell marker ${marker}`);
