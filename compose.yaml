@@ -178,8 +178,10 @@ services:
       disable: true
 
   # The fixture profile validates the committed, non-secret fixture manifest
-  # inside the same image. The PowerShell harness runs this one-shot service
-  # before probing the default runtime.
+  # inside the production-cleaned image. The runtime Docker context excludes
+  # fixtures by policy, so project only this one disposable input directory
+  # read-only from the checkout. The PowerShell harness runs this one-shot
+  # service before probing the default runtime.
   gulogulo-fixture:
     <<: *gulogulo-service
     profiles: ["fixture"]
@@ -199,7 +201,8 @@ services:
       APP_ENV: fixture
       GULOGULO_ENV: fixture
       GULOGULO_FIXTURE_MODE: "true"
-    volumes: []
+    volumes:
+      - ./test/fixtures:/app/test/fixtures:ro
     healthcheck:
       disable: true
 

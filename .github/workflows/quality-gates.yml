@@ -209,6 +209,12 @@ jobs:
           test -f src/integrations/ldap-client.test.ts
           test -f src/integrations/postgres-store.test.ts
           test -f src/integrations/postgres.integration.test.ts
+          test -f src/secrets/secret-store.ts
+          test -f src/secrets/versioned-file-secret-store.ts
+          test -f src/secrets/projected-secret-file-store.ts
+          test -f src/secrets/index.ts
+          test -f src/secrets/secret-store.test.ts
+          test -f doc/secret-store-and-rotation.md
           test -f src/db/migrations/0001_m2_foundation.sql
           test -f src/mail/mail-policy.mjs
           test -f src/mail/mail-scanners.mjs
@@ -377,6 +383,7 @@ jobs:
           grep -Fq 'profiles: ["local"]' compose.yaml
           grep -Fq 'profiles: ["test"]' compose.yaml
           grep -Fq 'profiles: ["fixture"]' compose.yaml
+          grep -Fq './test/fixtures:/app/test/fixtures:ro' compose.yaml
           grep -Fq 'profiles: ["lp2"]' compose.yaml
           grep -Fq 'profiles: ["lp2-check"]' compose.yaml
           grep -Fq 'profiles: ["lp3"]' compose.yaml

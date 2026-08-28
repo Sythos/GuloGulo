@@ -20,6 +20,9 @@ normal workflow.
   implementation backlog.
 - [Configuration](configuration.md) — the versioned configuration contract,
   precedence rules, safe defaults, and secret references.
+- [Secret store and rotation](secret-store-and-rotation.md) — allowlisted
+  resolution, versioned file rotation and rollback, metadata-only audit, and
+  read-only Docker/Kubernetes projected-secret adapters.
 - [Runtime and observability](observability.md) — health, logs, request IDs,
   metrics, and the small HTTP surface used by the scaffold.
 - [Compose and fixtures](compose-and-fixtures.md) — local profiles,

@@ -186,12 +186,12 @@ tester.
   forced tenant RLS, transaction tenant context, and fail-closed dependency
   behavior. Verify the real certificate/hostname, database roles, firewall,
   RLS policy, migration permissions, connection limits, and outage behavior.
-- [x] **DONE — secret-reference boundary.** Configuration rejects plaintext
-  secret values and the LDAP, PostgreSQL, ACME, and backup contracts accept
-  references rather than serialized credentials. Verify the selected secret
-  store, access policy, rotation cadence, revocation, restart behavior, and
-  audit trail. The provider-specific resolver and rotation adapter remains an
-  OPEN CODE item below.
+- [x] **DONE — secret store and rotation boundary.** Configuration rejects
+  plaintext secret values and the repository provides an allowlisted,
+  provider-neutral resolver plus managed versioned-file rotation/rollback and
+  read-only Docker/Kubernetes projected-secret adapters. Verify the selected
+  secret store, access policy, rotation cadence, revocation, restart behavior,
+  provider ACLs, and durable audit trail in the field.
 - [x] **DONE — browser security contracts.** Secure cookies, session rotation,
   logout invalidation, CSRF tokens, security headers, HTML sanitization,
   attachment/SSRF restrictions, generic login failures, and abuse limits are
@@ -594,8 +594,6 @@ Keep evidence small and useful:
 These are the remaining repository tasks. They are deliberately not disguised
 as tester work:
 
-- [ ] concrete provider secret-store and rotation adapter behind the existing
-  secret-reference boundary;
 - [ ] provider-backed authenticated login/session wiring that calls the real
   LDAP adapter instead of the fixture authenticator;
 - [ ] production Postfix/Dovecot mail adapters, persistent DAV backend, and

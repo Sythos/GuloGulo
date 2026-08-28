@@ -55,6 +55,12 @@ read-only from the checkout (including the TypeScript projects used by the
 milestone suites). It is never used as a release or production image. The
 default (`INSTALL_DEV=false`) build applies the runtime-only cleanup above.
 
+The one-shot `gulogulo-fixture` profile follows the same rule while retaining
+the production-cleaned image: it mounts only `test/fixtures` at
+`/app/test/fixtures` as read-only input from the checkout. This exposes the
+deterministic, non-secret M1 fixture set to the disposable validator without
+copying fixtures into a release or production image.
+
 The LP1 disposable proof checker follows the same boundary: its `scripts/`
 helpers are mounted read-only from the checkout only for the proof run. They
 are not copied into, or retained by, the production image. This keeps the

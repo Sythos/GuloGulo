@@ -54,7 +54,9 @@ still missing.
 - [x] ACME renewal state and safe-reload contract tested;
 - [x] LDAP uses TLS and minimum bind privilege;
 - [x] PostgreSQL protected and backed up;
-- [ ] secret store and rotation configured;
+- [x] secret store and rotation configured through an allowlisted, versioned
+  rotation/expiry/rollback contract with tested Docker/Kubernetes projected-
+  file adapters;
 - [x] CSP, CSRF, and security headers;
 - [x] secure web sessions, generic login failures, and login rate limits;
 - [x] email HTML sanitization;
@@ -146,7 +148,8 @@ The production checklist above is intentionally about repository work. These
 are the only remaining unchecked implementation items; field verification for
 the checked contracts belongs in [READ_BEFORE_USE.md](doc/READ_BEFORE_USE.md).
 
-- [ ] concrete provider secret-store and rotation adapter;
+- [x] provider-neutral secret-store contract, managed versioned-file rotation,
+  and read-only Docker/Kubernetes projected-file adapters;
 - [x] SBOM generation, field-container packaging, immutable multiarch registry
   digest publication, GitHub Release assets, and consumer verification
   workflow; the owner still controls the version tag and field evidence is
