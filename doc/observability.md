@@ -43,7 +43,7 @@ Logs are one JSON object per line. Stable fields include:
   "level": "info",
   "service": "gulogulo-runtime",
   "environment": "test",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "build": "sha256:example",
   "event": "request_completed",
   "tenant": null,

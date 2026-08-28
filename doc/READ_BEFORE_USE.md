@@ -61,17 +61,19 @@ for quick local experiments.
 ### Prepare a checkout and external volumes
 
 Start from the release tag or commit that you intend to run. The following
-example uses the `0.1.2` source tag and a machine-safe tenant prefix:
+example uses the `0.1.3` source tag and a machine-safe tenant prefix. This
+specific version increment is a fictitious artifact-generation release for
+the container and Release files; it is not production evidence:
 
 ~~~text
 git clone https://github.com/Sythos/GuloGulo.git gulogulo
 cd gulogulo
-git checkout 0.1.2
+git checkout 0.1.3
 ~~~
 
 Copy `.env.example` to `.env` and edit only deployment-safe values. At minimum,
 set `GULOGULO_ENV=production`, `APP_ENV=production`,
-`GULOGULO_VERSION=0.1.2`, a unique `GULOGULO_VOLUME_PREFIX`, and
+`GULOGULO_VERSION=0.1.3`, a unique `GULOGULO_VOLUME_PREFIX`, and
 `GULOGULO_VOLUMES_EXTERNAL=true`. Keep LDAP, PostgreSQL, ACME, control-panel,
 and backup credentials in the provider secret store; `.env` may contain only
 their reference names. Never commit the populated file.

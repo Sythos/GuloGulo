@@ -101,7 +101,7 @@ const API_GET_ROUTES = new Map<string, ApiResourceName>([
 function buildMetadata(config: RuntimeConfig) {
   const contract = config?.contract ?? config ?? {};
   return {
-    version: contract.buildVersion ?? config?.buildVersion ?? '0.1.2',
+    version: contract.buildVersion ?? config?.buildVersion ?? '0.1.3',
     build_digest: contract.buildDigest ?? config?.buildDigest ?? 'development',
   };
 }

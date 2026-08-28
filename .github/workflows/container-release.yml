@@ -306,6 +306,10 @@ jobs:
             echo "Platforms: \`$PLATFORMS\`"
             echo
             echo "SBOM and GitHub Artifact Attestations are bound to this immutable digest."
+            if [[ "$TAG" == "0.1.3" ]]; then
+              echo
+              echo "This 0.1.3 increment is a fictitious artifact-generation release; it is not production evidence."
+            fi
           } > "$notes"
           if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
             gh release upload "$TAG" "$SBOM_PATH" "$EVIDENCE_PATH" \
