@@ -47,9 +47,12 @@ configuration, mailbox, DAV, queue, scanner-signature, backup, and patch-state
 volumes remain outside the image and are mounted according to the deployment
 profile.
 
-The disposable `gulogulo-test` Compose profile sets `INSTALL_DEV=true`. That
-explicit test-only build keeps the source and test inputs so `npm test` can run
-inside the container; it is never used as a release or production image. The
+The disposable `gulogulo-test` Compose profile sets `INSTALL_DEV=true` so its
+development dependencies and generated test output remain available. Because
+the default-deny context excludes repository tests, fixtures, release
+manifests, Compose helpers, and CI metadata, the profile mounts those inputs
+read-only from the checkout (including the TypeScript projects used by the
+milestone suites). It is never used as a release or production image. The
 default (`INSTALL_DEV=false`) build applies the runtime-only cleanup above.
 
 The base image and Node release are recorded in the Dockerfile and rechecked

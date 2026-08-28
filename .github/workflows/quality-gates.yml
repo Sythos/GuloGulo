@@ -699,6 +699,15 @@ jobs:
           grep -Fxq 'README.md' .dockerignore
           grep -Fxq 'src/web/**/*' .dockerignore
           grep -Fxq 'src/web/**/*.test.ts' .dockerignore
+          # The disposable Compose test profile receives repository-only test
+          # inputs through read-only mounts instead of shipping them in the
+          # production build context.
+          grep -Fq './src:/app/src:ro' compose.yaml
+          grep -Fq './web/test:/app/web/test:ro' compose.yaml
+          grep -Fq './scripts:/app/scripts:ro' compose.yaml
+          grep -Fq './release:/app/release:ro' compose.yaml
+          grep -Fq './docker:/app/docker:ro' compose.yaml
+          grep -Fq './tsconfig.lp9.json:/app/tsconfig.lp9.json:ro' compose.yaml
           grep -Fq 'GULOGULO_PATCH_STATUS_FILE' compose.yaml
           grep -Fq 'GULOGULO_MAIL_SCAN_FAILURE_MODE' compose.yaml
           grep -Fq 'GULOGULO_MAILBOX_ROOT' compose.yaml
