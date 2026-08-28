@@ -81,8 +81,8 @@ tester.
   payloads.
 - [x] **DONE — release SBOM, field container, and signed digest workflow.** The
   manual container-release workflow builds an amd64 field-test archive, emits
-  an SPDX JSON SBOM, and (on trusted `main` publish runs) builds the selected
-  amd64 or amd64+arm64 image, binds SBOM and build-provenance attestations to
+  an SPDX JSON SBOM, and (on trusted `main` publish runs) requires and builds
+  the final amd64+arm64 image, binds SBOM and build-provenance attestations to
   the immutable digest, and verifies the result through the GitHub CLI. Verify
   GHCR visibility/retention, vulnerability disposition, clean-consumer
   verification, and field import before treating a release as operational.

@@ -22,10 +22,12 @@ and is intentionally started with `workflow_dispatch`. It has two modes:
    [`anchore/sbom-action@v0.24.0`](https://github.com/anchore/sbom-action).
    The archive is the disposable container package used for the first field
    tests. It never receives registry credentials or a signing permission.
-2. **Registry release (`publish=true`)** is allowed only from `main`. It builds
-   `linux/amd64` by default or `linux/amd64,linux/arm64` when the final
-   multi-architecture gate is selected, then pushes the image to GHCR under a
-   caller-supplied immutable tag. Buildx enables provenance and SBOM metadata.
+2. **Registry release (`publish=true`)** is allowed only from `main` and
+   requires `architecture_mode=multiarch`. It builds the final
+   `linux/amd64,linux/arm64` image and pushes it to GHCR under a caller-supplied
+   immutable tag. An amd64-only registry publication is rejected; amd64 remains
+   the separate field-test archive path. Buildx enables provenance and SBOM
+   metadata.
 
 After the push, Syft (through the pinned SBOM action) scans the exact
 `image@sha256:...` subject. The workflow validates the SPDX document, creates
@@ -60,10 +62,11 @@ the operator preparation and external-dependency checks in
 volumes, LDAP, PostgreSQL, TLS/ACME, DNS, reverse proxy, scanner feeds, and the
 optional Plesk/cPanel tenant boundary before calling the package operational.
 
-Once the AMD64 field/release checks are accepted, run the registry mode with
+Once the AMD64 field checks are accepted, run the registry mode with
 `publish=true` and `architecture_mode=multiarch`. The workflow keeps the
-functional proof AMD64-first and uses ARM64 for the final artifact gate, which
-matches the rest of the project CI policy.
+functional proof AMD64-first and requires ARM64 for the final registry artifact,
+which matches the rest of the project CI policy. A publish request with
+`architecture_mode=amd64` fails before registry login.
 
 ## Permissions and trust boundary
 

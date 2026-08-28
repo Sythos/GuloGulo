@@ -162,6 +162,14 @@ jobs:
           [[ "$tag" =~ ^[a-z0-9][a-z0-9._-]{0,127}$ ]]
           echo "tag=$tag" >> "$GITHUB_OUTPUT"
 
+      - name: Enforce final multiarch release target
+        if: inputs.architecture_mode != 'multiarch'
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo 'Registry publication is reserved for the final linux/amd64 + linux/arm64 target.' >&2
+          exit 1
+
       - name: Log in to the public GitHub Container Registry
         uses: docker/login-action@v3
         with:

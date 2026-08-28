@@ -37,6 +37,8 @@ export function auditWorkflowText(source: string): void {
     'packages: write',
     'id-token: write',
     'attestations: write',
+    "if: inputs.architecture_mode != 'multiarch'",
+    'Registry publication is reserved for the final linux/amd64 + linux/arm64 target.',
     'gh attestation verify',
     '--predicate-type https://spdx.dev/Document/v2.3',
     "github.ref == 'refs/heads/main'",

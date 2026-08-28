@@ -6,7 +6,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { auditSbomDocument, auditWorkflowText } from './sbom-release-audit.ts';
 
-const validWorkflow = 'on: workflow_dispatch: architecture_mode: publish: linux/amd64 linux/arm64 docker/build-push-action@v6 sbom: true anchore/sbom-action@v0.24.0 format: spdx-json actions/attest@v4 sbom-path: actions/attest-build-provenance@v4 subject-digest: push-to-registry: true packages: write id-token: write attestations: write gh attestation verify --predicate-type https://spdx.dev/Document/v2.3 github.ref == \'refs/heads/main\'';
+const validWorkflow = 'on: workflow_dispatch: architecture_mode: publish: linux/amd64 linux/arm64 docker/build-push-action@v6 sbom: true anchore/sbom-action@v0.24.0 format: spdx-json actions/attest@v4 sbom-path: actions/attest-build-provenance@v4 subject-digest: push-to-registry: true packages: write id-token: write attestations: write if: inputs.architecture_mode != \'multiarch\' Registry publication is reserved for the final linux/amd64 + linux/arm64 target. gh attestation verify --predicate-type https://spdx.dev/Document/v2.3 github.ref == \'refs/heads/main\'';
 
 test('workflow audit accepts the release contract', () => {
   assert.doesNotThrow(() => auditWorkflowText(validWorkflow));
