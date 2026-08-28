@@ -5,6 +5,9 @@
 name: Container release (SBOM and attestations)
 
 on:
+  push:
+    tags:
+      - '[0-9]+.[0-9]+.[0-9]+'
   workflow_dispatch:
     inputs:
       architecture_mode:
@@ -40,7 +43,7 @@ env:
 jobs:
   field-container:
     name: Build amd64 field-test container
-    if: inputs.publish != true
+    if: github.event_name == 'workflow_dispatch' && inputs.publish != true
     runs-on: ubuntu-latest
     timeout-minutes: 45
     permissions:
@@ -125,16 +128,16 @@ jobs:
 
   publish-container:
     name: Publish immutable registry image and attestations
-    if: inputs.publish == true && github.ref == 'refs/heads/main'
+    if: (github.event_name == 'workflow_dispatch' && inputs.publish == true && github.ref == 'refs/heads/main') || (github.event_name == 'push' && github.ref_type == 'tag')
     runs-on: ubuntu-latest
     timeout-minutes: 60
     permissions:
-      contents: read
+      contents: write
       packages: write
       id-token: write
       attestations: write
     env:
-      PLATFORMS: ${{ inputs.architecture_mode == 'multiarch' && 'linux/amd64,linux/arm64' || 'linux/amd64' }}
+      PLATFORMS: ${{ (github.event_name == 'push' || inputs.architecture_mode == 'multiarch') && 'linux/amd64,linux/arm64' || 'linux/amd64' }}
     steps:
       - name: Checkout the trusted main revision
         uses: actions/checkout@v6
@@ -143,8 +146,25 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
 
+      - name: Validate automatic version tag
+        if: github.event_name == 'push'
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$GITHUB_REF_TYPE" == "tag" ]]
+          tag="$GITHUB_REF_NAME"
+          [[ "$tag" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || {
+            echo "Automatic container publication requires a numeric semver tag (received $tag)." >&2
+            exit 1
+          }
+          package_version="$(jq -r '.version' package.json)"
+          [[ "$package_version" != "null" && "$tag" == "$package_version" ]] || {
+            echo "Tag $tag must exactly match package.json version $package_version." >&2
+            exit 1
+          }
+
       - name: Set up QEMU for the final multiarch artifact gate
-        if: inputs.architecture_mode == 'multiarch'
+        if: github.event_name == 'push' || inputs.architecture_mode == 'multiarch'
         uses: docker/setup-qemu-action@v3
         with:
           platforms: arm64
@@ -158,12 +178,13 @@ jobs:
         run: |
           set -euo pipefail
           tag='${{ inputs.release_tag }}'
+          if [[ "$GITHUB_REF_TYPE" == "tag" ]]; then tag="$GITHUB_REF_NAME"; fi
           if [[ -z "$tag" ]]; then tag="release-${GITHUB_SHA:0:12}"; fi
           [[ "$tag" =~ ^[a-z0-9][a-z0-9._-]{0,127}$ ]]
           echo "tag=$tag" >> "$GITHUB_OUTPUT"
 
       - name: Enforce final multiarch release target
-        if: inputs.architecture_mode != 'multiarch'
+        if: github.event_name == 'workflow_dispatch' && inputs.architecture_mode != 'multiarch'
         shell: bash
         run: |
           set -euo pipefail
@@ -262,3 +283,37 @@ jobs:
           path: ${{ runner.temp }}/gulogulo-${{ steps.meta.outputs.tag }}-release-evidence.json
           if-no-files-found: error
           retention-days: 90
+
+      - name: Create or update the GitHub Release for the version tag
+        if: github.event_name == 'push' && github.ref_type == 'tag'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.meta.outputs.tag }}
+          IMAGE: ${{ env.IMAGE_NAME }}
+          DIGEST: ${{ steps.push.outputs.digest }}
+          PLATFORMS: ${{ env.PLATFORMS }}
+          SBOM_PATH: ${{ runner.temp }}/gulogulo-${{ steps.meta.outputs.tag }}.spdx.json
+          EVIDENCE_PATH: ${{ runner.temp }}/gulogulo-${{ steps.meta.outputs.tag }}-release-evidence.json
+        run: |
+          set -euo pipefail
+          notes="$RUNNER_TEMP/gulogulo-$TAG-release-notes.md"
+          {
+            echo "## Container image"
+            echo
+            echo "\`$IMAGE@$DIGEST\`"
+            echo
+            echo "Platforms: \`$PLATFORMS\`"
+            echo
+            echo "SBOM and GitHub Artifact Attestations are bound to this immutable digest."
+          } > "$notes"
+          if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release upload "$TAG" "$SBOM_PATH" "$EVIDENCE_PATH" \
+              --repo "$GITHUB_REPOSITORY" --clobber
+          else
+            gh release create "$TAG" "$SBOM_PATH" "$EVIDENCE_PATH" \
+              --repo "$GITHUB_REPOSITORY" \
+              --title "Gulo Gulo $TAG" \
+              --notes-file "$notes" \
+              --verify-tag
+          fi

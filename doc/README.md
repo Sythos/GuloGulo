@@ -100,8 +100,9 @@ normal workflow.
   build and test commands, compiled production startup, and the temporary
   compatibility-bridge rule.
 - [SBOM and signed-image release workflow](sbom-release-plan.md) — the manual
-  amd64 field-container package, multiarch GHCR release lane, digest-bound
-  SBOM/provenance attestations, permissions, and consumer verification.
+  amd64 field-container package, automatic numeric-tag multiarch GHCR and
+  GitHub Release lane, digest-bound SBOM/provenance attestations, permissions,
+  and consumer verification.
 
 The project is still intentionally small. The documents describe real behavior
 only: DAV, administration, lifecycle, backup, observability, ACME, abuse, and

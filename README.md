@@ -61,8 +61,9 @@ still missing.
 - [x] rate and abuse controls contract tested;
 - [x] audit has no secrets;
 - [x] images have an SBOM workflow, digest-bound attestations, and a
-  consumer-verification gate; release publication remains an explicit owner
-  action documented in [READ_BEFORE_USE.md](doc/READ_BEFORE_USE.md).
+  consumer-verification gate; an owner-pushed numeric version tag publishes
+  the final image and matching GitHub Release automatically, as documented in
+  [READ_BEFORE_USE.md](doc/READ_BEFORE_USE.md).
 
 ### Data
 
@@ -102,10 +103,12 @@ still missing.
 - [x] fast amd64-first CI with an explicit multiarch amd64+arm64 final gate;
 - [x] tenant-bound DAV ETags and sync tokens;
 - [x] OCI build-provenance attestations generated and verified;
-- [x] manual amd64 field-container packaging plus digest-bound SBOM release
-  workflow with an explicit multiarch publish gate;
+- [x] manual amd64 field-container packaging plus automatic numeric-tag
+  multiarch GHCR publication, digest-bound SBOM/attestations, and GitHub
+  Release evidence;
 - [x] reproducible local release evidence and consumer-verifiable provenance metadata;
-- [x] provenance permissions are granted only by push or manual callers, while pull-request validation remains read-only;
+- [x] provenance and release permissions are granted only by version-tag pushes
+  or trusted manual callers, while pull-request validation remains read-only;
 - [x] log rotation;
 - [x] alerts;
 - [x] Postfix queue visibility;
@@ -143,9 +146,10 @@ are the only remaining unchecked implementation items; field verification for
 the checked contracts belongs in [READ_BEFORE_USE.md](doc/READ_BEFORE_USE.md).
 
 - [ ] concrete provider secret-store and rotation adapter;
-- [x] SBOM generation, field-container packaging, immutable registry digest
-  publication, and consumer verification workflow; owner-triggered release
-  evidence remains in [READ_BEFORE_USE.md](doc/READ_BEFORE_USE.md);
+- [x] SBOM generation, field-container packaging, immutable multiarch registry
+  digest publication, GitHub Release assets, and consumer verification
+  workflow; the owner still controls the version tag and field evidence is
+  documented in [READ_BEFORE_USE.md](doc/READ_BEFORE_USE.md);
 - [ ] provider-specific Plesk/cPanel API adapter and idempotent reconciliation;
 - [ ] provider-backed authenticated login/session wiring to the real LDAP
   adapter;

@@ -19,7 +19,13 @@ function requireText(source: string, marker: string): void {
 }
 
 export function auditWorkflowText(source: string): void {
+  if (!/^\s*push:\s*\r?\n\s+tags:\s*$/mu.test(source)) fail('release workflow must use a tag-only automatic trigger');
+  if (/^\s*pull_request:\s*$/mu.test(source)) fail('release workflow must not run automatically on pull request');
+
   for (const marker of [
+    'push:',
+    'tags:',
+    "'[0-9]+.[0-9]+.[0-9]+'",
     'workflow_dispatch:',
     'architecture_mode:',
     'publish:',
@@ -37,14 +43,21 @@ export function auditWorkflowText(source: string): void {
     'packages: write',
     'id-token: write',
     'attestations: write',
-    "if: inputs.architecture_mode != 'multiarch'",
+    'contents: write',
+    "inputs.architecture_mode != 'multiarch'",
     'Registry publication is reserved for the final linux/amd64 + linux/arm64 target.',
     'gh attestation verify',
     '--predicate-type https://spdx.dev/Document/v2.3',
+    "github.event_name == 'push'",
+    "github.ref_type == 'tag'",
+    "jq -r '.version' package.json",
+    'must exactly match package.json version',
+    'gh release create',
+    'gh release upload',
+    '--verify-tag',
     "github.ref == 'refs/heads/main'",
   ]) requireText(source, marker);
 
-  if (/^(?:push|pull_request):/mu.test(source)) fail('release workflow must not run automatically on push or pull request');
   if (/--sbom=false/mu.test(source)) fail('release workflow disables SBOM generation');
   if (/secrets\.(?!GITHUB_TOKEN\b)[A-Z0-9_]+/u.test(source)) fail('release workflow references an unapproved secret');
 }

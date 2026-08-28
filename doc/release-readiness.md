@@ -47,8 +47,9 @@ indexes the local proof manifests, fixtures, operator notes, CI provenance,
 and temporary TypeScript bridges. It remains safe to share because it contains
 synthetic references and sanitized links only; live provider evidence and
 provider-specific Plesk/cPanel adapters remain outside this checkout. The
-repository now contains the manual SBOM/container release lane; its field and
-registry verification still belongs to the operator.
+repository now contains the manual field lane plus an automatic numeric-tag
+SBOM/container release lane; its field, registry, and clean-consumer
+verification still belongs to the operator.
 
 ## Artifact provenance in GitHub Actions
 
@@ -69,15 +70,19 @@ connected checkout with:
 gh attestation verify PATH/TO/gulogulo-<image>-ubuntu-26.04.oci.tar --repo Sythos/GuloGulo
 ```
 
-The manual `container-release.yml` workflow generates an SPDX SBOM with
+The `container-release.yml` workflow generates an SPDX SBOM with
 `anchore/sbom-action@v0.24.0`, binds it to the exact GHCR digest with
 `actions/attest@v4`, and keeps the separate build-provenance wrapper
-`actions/attest-build-provenance@v4`. For a registry release, publish the same
-digest and verify its registry subject with the OCI form documented by GitHub
-(`gh attestation verify oci://REGISTRY/IMAGE@sha256:DIGEST --repo
-Sythos/GuloGulo --predicate-type https://spdx.dev/Document/v2.3`). Artifact
-attestations do not replace image vulnerability scanning, SBOM review,
-signatures, or the external deployment rehearsal.
+`actions/attest-build-provenance@v4`. A numeric semver tag whose value matches
+`package.json.version` starts the final `linux/amd64,linux/arm64` build directly;
+after verification the workflow creates or updates the matching GitHub Release
+with the SBOM and digest-bound evidence. The trusted manual `main` publish path
+remains available for rehearsals. Verify a registry subject with the OCI form
+documented by GitHub (`gh attestation verify
+oci://REGISTRY/IMAGE@sha256:DIGEST --repo Sythos/GuloGulo
+--predicate-type https://spdx.dev/Document/v2.3`). Artifact attestations do not
+replace image vulnerability scanning, SBOM review, signatures, or the external
+deployment rehearsal.
 
 ## Running the gate
 

@@ -9,6 +9,10 @@
 # build time.
 FROM ubuntu:26.04
 
+LABEL org.opencontainers.image.source="https://github.com/Sythos/GuloGulo" \
+      org.opencontainers.image.title="Gulo Gulo" \
+      org.opencontainers.image.description="OCI-native, mail-first, tenant-isolated groupware runtime"
+
 ARG NODE_VERSION=26.7.0
 ARG TARGETARCH
 ARG INSTALL_DEV=false

@@ -9,25 +9,32 @@ Author: Sythos (https://www.sythos.net)
 This document describes the release lane that is now part of the repository.
 The local Compose proofs remain deliberately small and offline; the release
 lane is the place where a field-test container or a registry image gets an
-SBOM, an immutable digest, and GitHub Artifact Attestations.
+SBOM, an immutable digest, GitHub Artifact Attestations, and (for a version tag)
+a GitHub Release with downloadable evidence.
 
 ## What is implemented
 
 The workflow lives at
 [`.github/workflows/container-release.yml`](../.github/workflows/container-release.yml)
-and is intentionally started with `workflow_dispatch`. It has two modes:
+and supports a manual field mode, a manual trusted publish mode, and an
+automatic version-tag release mode:
 
 1. **Field container (`publish=false`)** builds one `linux/amd64` image, emits
    a Docker archive and SHA-256 checksum, and writes an SPDX JSON SBOM with
    [`anchore/sbom-action@v0.24.0`](https://github.com/anchore/sbom-action).
    The archive is the disposable container package used for the first field
    tests. It never receives registry credentials or a signing permission.
-2. **Registry release (`publish=true`)** is allowed only from `main` and
-   requires `architecture_mode=multiarch`. It builds the final
+2. **Manual registry release (`publish=true`)** is allowed only from `main`
+   and requires `architecture_mode=multiarch`. It builds the final
    `linux/amd64,linux/arm64` image and pushes it to GHCR under a caller-supplied
    immutable tag. An amd64-only registry publication is rejected; amd64 remains
-   the separate field-test archive path. Buildx enables provenance and SBOM
-   metadata.
+   the separate field-test archive path.
+3. **Automatic version release** runs when a numeric semver tag such as
+   `0.1.2` is pushed. The tag must exactly match `package.json.version`; the
+   job goes directly to the final `linux/amd64,linux/arm64` target, publishes
+   the image to GHCR, and creates or updates the matching GitHub Release with
+   the SPDX SBOM and digest-bound release evidence. Buildx enables provenance
+   and SBOM metadata in both registry paths.
 
 After the push, Syft (through the pinned SBOM action) scans the exact
 `image@sha256:...` subject. The workflow validates the SPDX document, creates
@@ -37,13 +44,16 @@ creates the separate build-provenance attestation with
 and verifies the SBOM attestation through the GitHub CLI consumer path. The
 release evidence artifact records repository, commit, image, tag, digest,
 platforms, format, and verification status without including credentials or
-mail data.
+mail data. The GitHub Release assets are generated only after the exact pushed
+digest has passed the consumer verification gate.
 
 The static contract is checked by
 [`scripts/sbom-release-audit.ts`](../scripts/sbom-release-audit.ts), and its
 unit tests run as `npm run test:sbom` and as part of `npm test`. The audit
-rejects automatic push/PR release triggers, unapproved secrets, disabled SBOM
-generation, missing digest binding, and invalid or path-leaking SPDX output.
+requires a tag-only automatic trigger, an exact package-version check, the
+multiarch and attestation gates, and the GitHub Release commands. It rejects
+pull-request triggers, unapproved secrets, disabled SBOM generation, missing
+digest binding, and invalid or path-leaking SPDX output.
 
 ## Recommended invocation
 
@@ -62,26 +72,39 @@ the operator preparation and external-dependency checks in
 volumes, LDAP, PostgreSQL, TLS/ACME, DNS, reverse proxy, scanner feeds, and the
 optional Plesk/cPanel tenant boundary before calling the package operational.
 
-Once the AMD64 field checks are accepted, run the registry mode with
-`publish=true` and `architecture_mode=multiarch`. The workflow keeps the
-functional proof AMD64-first and requires ARM64 for the final registry artifact,
-which matches the rest of the project CI policy. A publish request with
-`architecture_mode=amd64` fails before registry login.
+For a final release, update `package.json.version`, commit the change to
+`main`, create an annotated numeric tag with the same value, and push both the
+commit and tag. The tag path starts the multiarch build directly; it does not
+repeat a separate AMD64 publication. For example:
+
+```text
+git tag -a 0.1.3 -m "Gulo Gulo 0.1.3"
+git push origin main 0.1.3
+```
+
+The manual registry mode remains available for a trusted rehearsal:
+`publish=true` with `architecture_mode=multiarch`. A manual publish request
+with `architecture_mode=amd64` fails before registry login.
 
 ## Permissions and trust boundary
 
 The workflow has only `contents: read` by default. The registry job receives
-`packages: write`, `id-token: write`, and `attestations: write` only in the
-manual publish job, and that job is skipped unless the ref is exactly
-`refs/heads/main`. It uses the built-in `GITHUB_TOKEN`; no personal token,
-registry password, LDAP secret, database password, private key, or mailbox data
-is stored in the repository.
+`contents: write`, `packages: write`, `id-token: write`, and
+`attestations: write` because it must publish the GHCR subject and create or
+update the GitHub Release. Manual publication remains restricted to
+`refs/heads/main`; automatic publication is restricted to a pushed numeric
+semver tag whose value equals `package.json.version`. It uses the built-in
+`GITHUB_TOKEN`; no personal token, registry password, LDAP secret, database
+password, private key, or mailbox data is stored in the repository.
 
 The field job cannot publish or attest. The registry job pushes only the image
 digest returned by Buildx and binds both predicates to that digest. A mutable
-tag is a convenience lookup, never the release identity. The optional GitHub
+tag is a convenience lookup, never the release identity; the release evidence
+and attestation subject remain the immutable digest. The optional GitHub
 environment protection for production releases should be enabled by the
-repository owner before using `publish=true` outside a test window.
+repository owner before using the manual publish path. Creating and pushing a
+version tag remains an explicit owner action even though the release build is
+automatic once that tag exists.
 
 ## Why local proofs still disable BuildKit SBOM metadata
 

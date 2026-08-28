@@ -38,9 +38,9 @@ This is the practical path for bringing up the repository container without
 mistaking a local proof image for a production deployment. The commands below
 assume Docker Engine or Docker Desktop with Compose v2 and a Linux host (or a
 Linux VM on a development workstation). The supported final image platforms
-are `linux/amd64` (x86_64) and `linux/arm64` (ARM64). Build and test on AMD64
-first for speed; the trusted registry publication gate must still complete the
-ARM64 artifact and provenance checks before it is treated as a final image.
+are `linux/amd64` (x86_64) and `linux/arm64` (ARM64). The final release path
+builds both platforms directly; the optional field archive remains AMD64-only
+for quick local experiments.
 
 ### Choose the image source
 
@@ -49,10 +49,14 @@ ARM64 artifact and provenance checks before it is treated as a final image.
 - **AMD64 field archive:** the manual `container-release` workflow can produce
   a downloadable `.docker.tar` plus a SHA-256 file. It is an offline field-test
   artifact for `linux/amd64`, not a multi-architecture production image.
-- **Immutable registry image:** the trusted `main` workflow can publish a
-  digest-addressed GHCR image only with `publish=true` and
-  `architecture_mode=multiarch`. A Git tag alone does not create a GHCR image
-  or a GitHub Release; those are separate owner-triggered actions.
+- **Immutable registry image and Release:** pushing a numeric semver tag (for
+  example `0.1.3`) whose value exactly matches `package.json.version` starts
+  the trusted multi-architecture workflow. It publishes
+  `linux/amd64,linux/arm64` to GHCR, generates the SBOM and Artifact
+  Attestations, and creates or updates the matching GitHub Release with the
+  SBOM and digest-bound evidence. The owner still explicitly chooses and
+  pushes the version tag. A manual `publish=true` run remains available for a
+  trusted rehearsal on `main`.
 
 ### Prepare a checkout and external volumes
 
@@ -198,10 +202,11 @@ tester.
   payloads.
 - [x] **DONE — release SBOM, field container, and signed digest workflow.** The
   manual container-release workflow builds an amd64 field-test archive, emits
-  an SPDX JSON SBOM, and (on trusted `main` publish runs) requires and builds
-  the final amd64+arm64 image, binds SBOM and build-provenance attestations to
-  the immutable digest, and verifies the result through the GitHub CLI. Verify
-  GHCR visibility/retention, vulnerability disposition, clean-consumer
+  an SPDX JSON SBOM, and the automatic numeric-version-tag path builds the
+  final amd64+arm64 image directly, binds SBOM and build-provenance
+  attestations to the immutable digest, verifies the result through the
+  GitHub CLI, and creates or updates the matching GitHub Release. Verify GHCR
+  visibility/retention, vulnerability disposition, clean-consumer
   verification, and field import before treating a release as operational.
 
 ### Data, retention, backup, and deletion
@@ -281,13 +286,15 @@ tester.
   PostgreSQL data, and backup references are kept outside disposable
   containers. Verify volume creation, ownership, encryption, snapshots,
   replacement, restore, and protection against accidental deletion.
-- [x] **DONE — Ubuntu 26.04 multi-architecture image policy.** AMD64 is the
-  functional proof path and ARM64 receives the final artifact/provenance gate.
-  Verify the actual runtime on both architectures, base-image digest,
-  package compatibility, resource limits, and registry pull behavior.
-- [x] **DONE — build provenance attestations.** Trusted push/manual workflows
-  generate and verify OCI build-provenance attestations. Verify the final
-  registry subject, consumer-side verification, retention, and release tag.
+- [x] **DONE — Ubuntu 26.04 multi-architecture image policy.** The final
+  version-tag release path builds `linux/amd64` and `linux/arm64` directly;
+  the optional field archive remains AMD64-only. Verify the actual runtime on
+  both architectures, base-image digest, package compatibility, resource
+  limits, and registry pull behavior.
+- [x] **DONE — build provenance attestations.** Trusted version-tag/manual
+  workflows generate and verify OCI build-provenance attestations. Verify the
+  final registry subject, consumer-side verification, retention, and release
+  tag.
 - [x] **DONE — container patch status and build-time patching.** Images run
   Ubuntu update steps and the maintenance helper exposes sanitized status.
   Verify the operator check/apply path, root boundary, maintenance window,
@@ -457,18 +464,20 @@ the scanner containers writable or add a Docker-socket escape hatch.
    build-time apt-get update plus apt-get upgrade policy.
 2. Record the base-image digest, target architecture, package changes,
    vulnerability scan, SBOM, and release subject digest.
-3. Run the AMD64 functional gates first, then the ARM64 artifact/provenance
-   gate.
+3. Run the repository gates and build the final `linux/amd64,linux/arm64`
+   artifact directly for the version tag.
 4. Publish only immutable, signed registry subjects after the required release
-   checks pass.
+   checks pass; the workflow then creates or updates the matching GitHub
+   Release and uploads the SBOM and digest-bound evidence.
 5. Verify GitHub Artifact Attestation from a clean consumer context.
 6. Keep the previous image available for rollback and retain the evidence.
 
 Artifact provenance, SBOM generation, the amd64 field-container package, and
 digest-bound release attestations are implemented in
-`.github/workflows/container-release.yml`. The release workflow is manual and
-main-only for publishing; registry policy, consumer verification, and field
-deployment evidence remain VERIFY BEFORE USE work.
+`.github/workflows/container-release.yml`. Version-tag pushes automatically
+publish the multi-architecture GHCR image and GitHub Release; a trusted
+manual main-only publish path remains available. Registry policy, consumer
+verification, and field deployment evidence remain VERIFY BEFORE USE work.
 
 ### Docker replacement and Kubernetes blue/green runbook
 
