@@ -55,6 +55,11 @@ read-only from the checkout (including the TypeScript projects used by the
 milestone suites). It is never used as a release or production image. The
 default (`INSTALL_DEV=false`) build applies the runtime-only cleanup above.
 
+The LP1 disposable proof checker follows the same boundary: its `scripts/`
+helpers are mounted read-only from the checkout only for the proof run. They
+are not copied into, or retained by, the production image. This keeps the
+verification path honest without widening the runtime image.
+
 The base image and Node release are recorded in the Dockerfile and rechecked
 against authoritative upstream sources when they change. A clean security
 rebuild uses a fresh base and avoids stale builder cache:

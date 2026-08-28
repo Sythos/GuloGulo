@@ -18,6 +18,13 @@ const topologySource = `${compose}\n${dnsEntrypoint}`;
 const manifest = JSON.parse(await readFile(manifestPath, 'utf8'));
 const topology = createLocalProofTopology(manifest);
 
+const checkerStart = compose.indexOf('\n  gulogulo-proof-check:');
+const checkerEnd = compose.indexOf('\n  # LP2 is', checkerStart);
+if (checkerStart < 0 || checkerEnd < 0) {
+  throw new Error('LP1 proof-check service boundary is missing.');
+}
+const checkerService = compose.slice(checkerStart, checkerEnd);
+
 const requiredMarkers = [
   'gulogulo-proof:',
   'local-ca:',
@@ -48,6 +55,10 @@ for (const marker of requiredMarkers) {
 
 if (/docker\.sock|network_mode:\s*host|privileged:\s*true/.test(compose)) {
   throw new Error('LP1 Compose topology contains a forbidden Docker socket, host network, or privileged marker.');
+}
+
+if (!checkerService.includes('./scripts:/app/scripts:ro')) {
+  throw new Error('LP1 proof-check must mount checkout-owned helpers read-only; production image contents remain runtime-only.');
 }
 
 console.log(JSON.stringify({

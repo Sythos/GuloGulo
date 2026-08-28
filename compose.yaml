@@ -338,6 +338,9 @@ services:
     volumes:
       - lp1-ca-data:/run/gulogulo-ca:ro
       - lp1-proof-state:/var/lib/gulogulo/lp1
+      # LP1 proof helpers are checkout-owned test inputs, not runtime image
+      # contents. Mount them read-only for this disposable checker only.
+      - ./scripts:/app/scripts:ro
     networks:
       - proof-runtime
     read_only: true
@@ -481,6 +484,9 @@ services:
     volumes:
       - lp2-tls-data:/run/gulogulo-lp2-tls:ro
       - lp2-proof-state:/var/lib/gulogulo/lp2:rw
+      # The LP2 checker is a disposable checkout-driven proof client. Keep its
+      # helper outside the runtime image and expose it read-only at execution.
+      - ./scripts:/app/scripts:ro
     networks:
       - lp2-runtime
     depends_on:
@@ -771,6 +777,9 @@ services:
     volumes:
       - lp3-scanner-signatures:/var/lib/gulogulo/scanner-signatures:ro
       - lp3-tls-data:/run/gulogulo-lp3-tls:ro
+      # The typed LP3 proof helper is checkout-owned and mounted read-only only
+      # for this disposable client; it is not part of the release image.
+      - ./scripts:/app/scripts:ro
     networks:
       - lp3-runtime
     read_only: true
@@ -815,6 +824,9 @@ services:
       LP4_USER_ID: ${LP4_USER_ID:-alice}
       LP4_DAV_STATE_DIR: /var/lib/gulogulo/dav
     volumes:
+      # LP4 proof code is a checkout-owned disposable client, not runtime
+      # image content. Mount it read-only for the isolated proof only.
+      - ./scripts:/app/scripts:ro
       - lp4-runtime-state:/var/lib/gulogulo/runtime
       - lp4-dav-data:/var/lib/gulogulo/dav
     networks:
@@ -871,6 +883,10 @@ services:
     depends_on:
       gulogulo-lp4-web:
         condition: service_healthy
+    volumes:
+      # LP4 proof code is checkout-owned and mounted read-only only for this
+      # disposable checker; it is not retained in the runtime image.
+      - ./scripts:/app/scripts:ro
     read_only: true
     tmpfs:
       - /tmp:rw,noexec,nosuid,size=32m
@@ -913,6 +929,8 @@ services:
       - lp5-runtime-state:/var/lib/gulogulo/runtime
       - lp5-dav-data:/var/lib/gulogulo/dav
       - lp5-patch-state:/var/lib/gulogulo/patch:ro
+      # LP5 reuses the disposable LP4 runtime helper from the checkout.
+      - ./scripts:/app/scripts:ro
     networks:
       lp5-runtime:
         aliases:
@@ -979,6 +997,10 @@ services:
     depends_on:
       gulogulo-lp5-web:
         condition: service_healthy
+    volumes:
+      # LP5 proof code is checkout-owned and mounted read-only only for this
+      # disposable checker; it is not retained in the runtime image.
+      - ./scripts:/app/scripts:ro
     read_only: true
     tmpfs:
       - /tmp:rw,noexec,nosuid,size=32m
@@ -1011,6 +1033,8 @@ services:
     command: ["/usr/local/sbin/gulogulo-container-patch", "status"]
     user: "0:0"
     volumes:
+      # LP5 proof code remains outside the runtime image and is read-only.
+      - ./scripts:/app/scripts:ro
       - lp5-patch-state:/var/lib/gulogulo/patch
     networks:
       - lp5-runtime
@@ -1055,6 +1079,7 @@ services:
       LP6_SOURCE_DIR: /var/lib/gulogulo/lp6-source
     volumes:
       - lp6-source-data:/var/lib/gulogulo/lp6-source
+      - ./scripts:/app/scripts:ro
     networks:
       - lp6-runtime
     read_only: true
@@ -1089,6 +1114,7 @@ services:
     volumes:
       - lp6-source-data:/var/lib/gulogulo/lp6-source:ro
       - lp6-backup-data:/var/lib/gulogulo/lp6-backup
+      - ./scripts:/app/scripts:ro
     networks:
       - lp6-runtime
     read_only: true
@@ -1122,6 +1148,7 @@ services:
     volumes:
       - lp6-backup-data:/var/lib/gulogulo/lp6-backup:ro
       - lp6-restore-data:/var/lib/gulogulo/lp6-restore
+      - ./scripts:/app/scripts:ro
     networks:
       - lp6-runtime
     read_only: true
@@ -1172,6 +1199,7 @@ services:
       - lp7-dav-data:/var/lib/gulogulo/dav
       - lp7-queue-data:/var/lib/gulogulo/queue
       - lp7-backup-data:/var/lib/gulogulo/backups
+      - ./scripts:/app/scripts:ro
     networks:
       lp7-runtime:
         aliases:
@@ -1240,6 +1268,7 @@ services:
       - lp7-dav-data:/var/lib/gulogulo/dav
       - lp7-queue-data:/var/lib/gulogulo/queue
       - lp7-backup-data:/var/lib/gulogulo/backups
+      - ./scripts:/app/scripts:ro
     networks:
       lp7-runtime:
         aliases:
@@ -1313,6 +1342,7 @@ services:
       - lp7-queue-data:/var/lib/gulogulo/queue
       - lp7-backup-data:/var/lib/gulogulo/backups
       - lp7-proof-state:/var/lib/gulogulo/lp7
+      - ./scripts:/app/scripts:ro
     networks:
       - lp7-runtime
     depends_on:
