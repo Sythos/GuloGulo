@@ -50,7 +50,7 @@ for quick local experiments.
   a downloadable `.docker.tar` plus a SHA-256 file. It is an offline field-test
   artifact for `linux/amd64`, not a multi-architecture production image.
 - **Immutable registry image and Release:** pushing a numeric semver tag (for
-  example `0.1.3`) whose value exactly matches `package.json.version` starts
+  example `0.1.4`) whose value exactly matches `package.json.version` starts
   the trusted multi-architecture workflow. It publishes
   `linux/amd64,linux/arm64` to GHCR, generates the SBOM and Artifact
   Attestations, and creates or updates the matching GitHub Release with the
@@ -58,22 +58,35 @@ for quick local experiments.
   pushes the version tag. A manual `publish=true` run remains available for a
   trusted rehearsal on `main`.
 
+To consume the published runtime directly, pull the immutable version tag and
+check the digest recorded in the matching GitHub Release evidence before
+pinning it in a deployment:
+
+~~~powershell
+docker pull ghcr.io/sythos/gulogulo:0.1.4
+docker image inspect ghcr.io/sythos/gulogulo:0.1.4
+~~~
+
+This image is the Gulo Gulo application runtime. The protocol services
+(Postfix, Dovecot, Rspamd, and ClamAV) remain separate Compose services and
+must use their documented external volumes.
+
 ### Prepare a checkout and external volumes
 
 Start from the release tag or commit that you intend to run. The following
-example uses the `0.1.3` source tag and a machine-safe tenant prefix. This
-specific version increment is a fictitious artifact-generation release for
-the container and Release files; it is not production evidence:
+example uses the `0.1.4` source tag and a machine-safe tenant prefix. This
+specific version increment is an artifact-generation release for the
+container and Release files; it is not production evidence:
 
 ~~~text
 git clone https://github.com/Sythos/GuloGulo.git gulogulo
 cd gulogulo
-git checkout 0.1.3
+git checkout 0.1.4
 ~~~
 
 Copy `.env.example` to `.env` and edit only deployment-safe values. At minimum,
 set `GULOGULO_ENV=production`, `APP_ENV=production`,
-`GULOGULO_VERSION=0.1.3`, a unique `GULOGULO_VOLUME_PREFIX`, and
+`GULOGULO_VERSION=0.1.4`, a unique `GULOGULO_VOLUME_PREFIX`, and
 `GULOGULO_VOLUMES_EXTERNAL=true`. Keep LDAP, PostgreSQL, ACME, control-panel,
 and backup credentials in the provider secret store; `.env` may contain only
 their reference names. Never commit the populated file.

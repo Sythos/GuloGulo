@@ -122,7 +122,7 @@ import {
 const evidence = createReleaseEvidence({
   evidenceVersion: '1.0',
   product: 'Gulo Gulo',
-  version: '0.1.3',
+  version: '0.1.4',
   commitSha: '0123456789abcdef0123456789abcdef01234567',
   generatedAt: '2026-08-23T00:00:00Z',
   releaseDecision: 'conditional',

@@ -157,7 +157,7 @@ test('health responses preserve aliases and request correlation identifiers', as
     assert.equal(response.headers['x-request-id'], 'request-123');
     assert.equal(response.headers['x-correlation-id'], 'correlation-456');
     assert.equal(response.json.status, 'ok');
-    assert.equal(response.json.version, '0.1.3');
+    assert.equal(response.json.version, '0.1.4');
     assert.equal(response.json.build_digest, 'development');
     assert.equal(response.json.checks.process, 'ok');
     assert.equal(response.json.request_id, 'request-123');

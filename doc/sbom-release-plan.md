@@ -30,7 +30,7 @@ automatic version-tag release mode:
    immutable tag. An amd64-only registry publication is rejected; amd64 remains
    the separate field-test archive path.
 3. **Automatic version release** runs when a numeric semver tag such as
-   `0.1.3` is pushed. The tag must exactly match `package.json.version`; the
+   `0.1.4` is pushed. The tag must exactly match `package.json.version`; the
    job goes directly to the final `linux/amd64,linux/arm64` target, publishes
    the image to GHCR, and creates or updates the matching GitHub Release with
    the SPDX SBOM and digest-bound release evidence. Buildx enables provenance
@@ -78,8 +78,8 @@ commit and tag. The tag path starts the multiarch build directly; it does not
 repeat a separate AMD64 publication. For example:
 
 ```text
-git tag -a 0.1.3 -m "Gulo Gulo 0.1.3"
-git push origin main 0.1.3
+git tag -a 0.1.4 -m "Gulo Gulo 0.1.4"
+git push origin main 0.1.4
 ```
 
 The manual registry mode remains available for a trusted rehearsal:
