@@ -780,6 +780,9 @@ services:
       # The typed LP3 proof helper is checkout-owned and mounted read-only only
       # for this disposable client; it is not part of the release image.
       - ./scripts:/app/scripts:ro
+      # The proof reads only the committed LP3 manifest; keep release evidence
+      # outside the image and project it read-only for this disposable client.
+      - ./release:/app/release:ro
     networks:
       - lp3-runtime
     read_only: true
