@@ -121,11 +121,13 @@ RUN set -eux; \
       npm prune --omit=dev; \
     fi; \
     npm cache clean --force; \
-    find /app/dist/server -type f \( -name '*.d.ts' -o -name '*.test.js' \) -delete; \
-    find /app/src -type f ! -path '/app/src/db/migrations/*' -delete; \
-    find /app/src -type d -empty -delete; \
-    rm -rf /app/web/src /app/web/test /app/scripts; \
-    rm -f /app/web/build.ts /app/web/build.mjs /app/tsconfig.json /app/tsconfig.server.json /app/package-lock.json; \
+    if [ "${INSTALL_DEV}" != "true" ]; then \
+      find /app/dist/server -type f \( -name '*.d.ts' -o -name '*.test.js' \) -delete; \
+      find /app/src -type f ! -path '/app/src/db/migrations/*' -delete; \
+      find /app/src -type d -empty -delete; \
+      rm -rf /app/web/src /app/web/test /app/scripts; \
+      rm -f /app/web/build.ts /app/web/build.mjs /app/tsconfig.json /app/tsconfig.server.json /app/package-lock.json; \
+    fi; \
     chown -R gulogulo:gulogulo /app
 
 # The service is deliberately unprivileged in the final container.
