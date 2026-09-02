@@ -102,13 +102,13 @@ jobs:
           test -f scripts/lp9-release-audit.test.ts
           test -f scripts/lp3-proof-smoke.ts
           test -f scripts/m10-release-audit.ts
-          test -f src/release/index.ts
-          test -f src/release/local-proof-scope.ts
-          test -f src/release/local-proof-scope.test.ts
-          test -f src/release/local-proof-topology.ts
-          test -f src/release/local-proof-topology.test.ts
-          test -f src/release/release-evidence.ts
-          test -f src/release/release-evidence.test.ts
+          test -f src/core/release/index.ts
+          test -f src/core/release/local-proof-scope.ts
+          test -f src/core/release/local-proof-scope.test.ts
+          test -f src/core/release/local-proof-topology.ts
+          test -f src/core/release/local-proof-topology.test.ts
+          test -f src/core/release/release-evidence.ts
+          test -f src/core/release/release-evidence.test.ts
           test -f scripts/m10-release-audit.mjs
           test -f scripts/lp3-proof-smoke.mjs
           test -f scripts/lp4-proof-check.ts
@@ -120,21 +120,18 @@ jobs:
           test -f tsconfig.lp6.json
           test -f scripts/lp7-proof-check.ts
           test -f tsconfig.lp7.json
-          test -f src/backup/backup-contract.ts
-          test -f src/backup/backup-contract.test.ts
-          test -f src/backup/index.ts
-          test -f src/backup/backup-contract.mjs
-          test -f src/lifecycle/retention.ts
-          test -f src/lifecycle/retention.test.ts
-          test -f src/lifecycle/retention.mjs
-          test -f src/lifecycle/account-lifecycle.ts
-          test -f src/lifecycle/account-lifecycle.test.ts
-          test -f src/lifecycle/index.ts
-          test -f src/lifecycle/account-lifecycle.mjs
-          test -f src/capacity/capacity-contract.ts
-          test -f src/capacity/capacity-contract.test.ts
-          test -f src/ops/patch/status.ts
-          test -f src/ops/patch/status.test.ts
+          test -f src/core/backup/backup-contract.ts
+          test -f src/core/backup/backup-contract.test.ts
+          test -f src/core/backup/index.ts
+          test -f src/core/lifecycle/retention.ts
+          test -f src/core/lifecycle/retention.test.ts
+          test -f src/core/lifecycle/account-lifecycle.ts
+          test -f src/core/lifecycle/account-lifecycle.test.ts
+          test -f src/core/lifecycle/index.ts
+          test -f src/core/capacity/capacity-contract.ts
+          test -f src/core/capacity/capacity-contract.test.ts
+          test -f src/core/ops/patch/status.ts
+          test -f src/core/ops/patch/status.test.ts
           test -f tsconfig.json
           test -f tsconfig.server.json
           test -f tsconfig.lp4.json
@@ -146,14 +143,7 @@ jobs:
           test -f web/src/app.ts
           test -f web/test/web-shell.test.mjs
           test -f web/test/web-shell.test.ts
-          test -f src/web/security/security.test.mjs
-          test -f src/web/content/email-content.test.mjs
-          test -f src/web/content/attachment-policy.test.mjs
-          test -f src/web/content/timezone.test.mjs
-          test -f src/web/realtime/event-normalizer.test.mjs
-          test -f src/web/backup/backup-request.test.mjs
           test -f src/integrations/tenant-context.ts
-          test -f src/integrations/tenant-context.mjs
           test -f src/integrations/types.ts
           test -f src/integrations/control-panel.ts
           test -f src/integrations/control-panel.test.ts
@@ -164,44 +154,31 @@ jobs:
           test -f src/integrations/ldap-client.test.ts
           test -f src/integrations/postgres-store.test.ts
           test -f src/integrations/postgres.integration.test.ts
-          test -f src/secrets/secret-store.ts
-          test -f src/secrets/versioned-file-secret-store.ts
-          test -f src/secrets/projected-secret-file-store.ts
-          test -f src/secrets/index.ts
-          test -f src/secrets/secret-store.test.ts
+          test -f src/core/secrets/secret-store.ts
+          test -f src/core/secrets/versioned-file-secret-store.ts
+          test -f src/core/secrets/projected-secret-file-store.ts
+          test -f src/core/secrets/index.ts
+          test -f src/core/secrets/secret-store.test.ts
           test -f doc/secret-store-and-rotation.md
-          test -f src/db/migrations/0001_m2_foundation.sql
-          test -f src/mail/mail-policy.mjs
-          test -f src/mail/mail-scanners.mjs
-          test -f src/mail/mail-queue.mjs
-          test -f src/mail/imap-idle.mjs
-          test -f src/mail/mail-core.mjs
-          test -f src/mail/mail-core.test.mjs
-          test -f src/mail/mail-policy.ts
-          test -f src/mail/mail-scanners.ts
-          test -f src/mail/mail-queue.ts
-          test -f src/mail/imap-idle.ts
-          test -f src/mail/mail-core.ts
-          test -f src/mail/mail-core.test.ts
-          test -f src/mail/scanner-signatures.ts
-          test -f src/mail/scanner-signatures.test.ts
+          test -f src/core/db/migrations/0001_m2_foundation.sql
+          test -f src/core/mail/mail-policy.ts
+          test -f src/core/mail/mail-scanners.ts
+          test -f src/core/mail/mail-queue.ts
+          test -f src/core/mail/imap-idle.ts
+          test -f src/core/mail/mail-core.ts
+          test -f src/core/mail/mail-core.test.ts
+          test -f src/core/mail/scanner-signatures.ts
+          test -f src/core/mail/scanner-signatures.test.ts
           test -f .github/workflows/commit-tests.yml
           test -f .github/workflows/pr-validation.yml
           test -f .github/workflows/quality-gates.yml
-          test -f src/dav/caldav/caldav-contract.mjs
-          test -f src/dav/caldav/caldav-contract.test.mjs
-          test -f src/dav/carddav/carddav-store.mjs
-          test -f src/dav/carddav/carddav-store.test.mjs
-          test -f src/dav/carddav/index.mjs
-          test -f src/dav/discovery/index.mjs
-          test -f src/dav/discovery/index.test.mjs
-          test -f src/dav/caldav/caldav-contract.ts
-          test -f src/dav/caldav/caldav-contract.test.ts
-          test -f src/dav/carddav/carddav-store.ts
-          test -f src/dav/carddav/carddav-store.test.ts
-          test -f src/dav/carddav/index.ts
-          test -f src/dav/discovery/index.ts
-          test -f src/dav/discovery/index.test.ts
+          test -f src/core/dav/caldav/caldav-contract.ts
+          test -f src/core/dav/caldav/caldav-contract.test.ts
+          test -f src/core/dav/carddav/carddav-store.ts
+          test -f src/core/dav/carddav/carddav-store.test.ts
+          test -f src/core/dav/carddav/index.ts
+          test -f src/core/dav/discovery/index.ts
+          test -f src/core/dav/discovery/index.test.ts
           test -f src/web/security/csrf.ts
           test -f src/web/security/index.ts
           test -f src/web/security/session-manager.ts
@@ -216,76 +193,50 @@ jobs:
           test -f src/web/realtime/event-normalizer.test.ts
           test -f src/web/backup/backup-request.ts
           test -f src/web/backup/backup-request.test.ts
-          test -f src/admin/rbac.ts
-          test -f src/admin/rbac.test.ts
-          test -f src/admin/delegation.ts
-          test -f src/admin/delegation.test.ts
-          test -f src/admin/quota.ts
-          test -f src/admin/quota.test.ts
-          test -f src/admin/admin-tools.ts
-          test -f src/admin/admin-tools.test.ts
-          test -f src/auth/password-policy.ts
-          test -f src/auth/password-hashing.ts
-          test -f src/auth/totp.ts
-          test -f src/auth/webauthn.ts
-          test -f src/auth/recovery-codes.ts
-          test -f src/auth/auth.test.ts
+          test -f src/core/admin/rbac.ts
+          test -f src/core/admin/rbac.test.ts
+          test -f src/core/admin/delegation.ts
+          test -f src/core/admin/delegation.test.ts
+          test -f src/core/admin/quota.ts
+          test -f src/core/admin/quota.test.ts
+          test -f src/core/admin/admin-tools.ts
+          test -f src/core/admin/admin-tools.test.ts
+          test -f src/core/auth/password-policy.ts
+          test -f src/core/auth/password-hashing.ts
+          test -f src/core/auth/totp.ts
+          test -f src/core/auth/webauthn.ts
+          test -f src/core/auth/recovery-codes.ts
+          test -f src/core/auth/auth.test.ts
           test -f src/runtime/index.ts
           test -f src/runtime/server.ts
           test -f src/runtime/config.ts
           test -f src/runtime/logger.ts
           test -f src/runtime/metrics.ts
-          test -f src/foundation/config.test.ts
+          test -f src/core/foundation/config.test.ts
           test -f test/fixtures/scanner-signatures/rspamd/active.json
           test -f test/fixtures/scanner-signatures/rspamd/versions/fixture-rspamd-1/manifest.json
           test -f test/fixtures/scanner-signatures/clamav/active.json
           test -f test/fixtures/scanner-signatures/clamav/versions/fixture-clamav-1/manifest.json
           test -f test/fixtures/scanner-signatures/README.md
           test -f doc/rbac-admin-mfa.md
-          test -f src/lifecycle/retention.mjs
-          test -f src/lifecycle/retention.test.mjs
-          test -f src/lifecycle/account-lifecycle.mjs
-          test -f src/lifecycle/account-lifecycle.test.mjs
-          test -f src/backup/backup-contract.mjs
-          test -f src/backup/backup-contract.test.mjs
-          test -f src/observability/log-policy.mjs
-          test -f src/observability/structured-event.mjs
-          test -f src/observability/alert-policy.mjs
-          test -f src/observability/observability.test.mjs
           test -f doc/lifecycle-backup-dr.md
           test -f doc/local-proof-scope.md
-          test -f src/ops/acme/index.mjs
-          test -f src/ops/acme/index.test.mjs
-          test -f src/ops/abuse/index.mjs
-          test -f src/ops/abuse/index.test.mjs
-          test -f src/ops/abuse/index.ts
-          test -f src/ops/abuse/index.test.ts
-          test -f src/ops/acme/index.ts
-          test -f src/ops/acme/index.test.ts
-          test -f src/observability/index.ts
-          test -f src/observability/observability.test.ts
+          test -f src/core/ops/abuse/index.ts
+          test -f src/core/ops/abuse/index.test.ts
+          test -f src/core/ops/acme/index.ts
+          test -f src/core/ops/acme/index.test.ts
+          test -f src/core/observability/index.ts
+          test -f src/core/observability/observability.test.ts
           test -f doc/acme-abuse-deployment.md
-          test -f src/upgrade/compatibility.mjs
-          test -f src/upgrade/control-plane.mjs
-          test -f src/upgrade/rollout.mjs
-          test -f src/upgrade/index.mjs
-          test -f src/upgrade/upgrade-contract.test.mjs
-          test -f src/upgrade/compatibility.ts
-          test -f src/upgrade/control-plane.ts
-          test -f src/upgrade/rollout.ts
-          test -f src/upgrade/index.ts
-          test -f src/upgrade/upgrade-contract.test.ts
-          test -f src/upgrade/rehearsal.ts
-          test -f src/upgrade/rehearsal.test.ts
-          test -f src/release/index.mjs
-          test -f src/release/release-evidence.mjs
-          test -f src/release/release-evidence.test.mjs
-          test -f src/release/local-proof-scope.mjs
-          test -f src/release/local-proof-scope.test.mjs
+          test -f src/core/upgrade/compatibility.ts
+          test -f src/core/upgrade/control-plane.ts
+          test -f src/core/upgrade/rollout.ts
+          test -f src/core/upgrade/index.ts
+          test -f src/core/upgrade/upgrade-contract.test.ts
+          test -f src/core/upgrade/rehearsal.ts
+          test -f src/core/upgrade/rehearsal.test.ts
           test -f release/local-proof-scope.json
           test -f release/local-proof-topology.json
-          test -f src/release/local-proof-topology.mjs
-          test -f src/release/local-proof-topology.test.mjs
           test -f doc/upgrade-and-migration.md
 
       - name: Validate MIT and SPDX metadata
@@ -315,24 +266,24 @@ jobs:
             scripts/m10-release-audit.ts \
             web/build.ts \
             web/test/web-shell.test.ts \
-            src/release/index.ts \
-            src/release/local-proof-scope.ts \
-            src/release/local-proof-scope.test.ts \
-            src/release/local-proof-topology.ts \
-            src/release/local-proof-topology.test.ts \
-            src/release/release-evidence.ts \
-            src/release/release-evidence.test.ts \
-            src/upgrade/compatibility.ts \
-            src/upgrade/control-plane.ts \
-            src/upgrade/rollout.ts \
-            src/upgrade/index.ts \
-            src/upgrade/upgrade-contract.test.ts \
-            src/upgrade/rehearsal.ts \
-            src/upgrade/rehearsal.test.ts \
+            src/core/release/index.ts \
+            src/core/release/local-proof-scope.ts \
+            src/core/release/local-proof-scope.test.ts \
+            src/core/release/local-proof-topology.ts \
+            src/core/release/local-proof-topology.test.ts \
+            src/core/release/release-evidence.ts \
+            src/core/release/release-evidence.test.ts \
+            src/core/upgrade/compatibility.ts \
+            src/core/upgrade/control-plane.ts \
+            src/core/upgrade/rollout.ts \
+            src/core/upgrade/index.ts \
+            src/core/upgrade/upgrade-contract.test.ts \
+            src/core/upgrade/rehearsal.ts \
+            src/core/upgrade/rehearsal.test.ts \
             src/integrations/control-panel.ts \
             src/integrations/control-panel.test.ts \
-            src/mail/scanner-signatures.ts \
-            src/mail/scanner-signatures.test.ts \
+            src/core/mail/scanner-signatures.ts \
+            src/core/mail/scanner-signatures.test.ts \
             scripts/m10-release-audit.mjs \
             .gitignore \
             .github/workflows/commit-tests.yml \
@@ -384,78 +335,69 @@ jobs:
           grep -Fq 'Author: Sythos (https://www.sythos.net)' assets/README.md
           node -e "const m=require('./web/manifest.json'); if (m.license !== 'MIT' || m.author !== 'Sythos (https://www.sythos.net)' || m.spdxLicenseIdentifier !== 'MIT') process.exit(1)"
 
-          grep -Fq 'FORCE ROW LEVEL SECURITY' src/db/migrations/0001_m2_foundation.sql
+          grep -Fq 'FORCE ROW LEVEL SECURITY' src/core/db/migrations/0001_m2_foundation.sql
           grep -Fq "set_config('gulogulo.tenant_id'" src/integrations/postgres-store.ts
           grep -Fq 'rejectUnauthorized: true' src/integrations/ldap-client.ts
-          grep -Fq 'OPEN_RELAY_DISABLED' src/mail/mail-policy.ts
-          grep -Fq 'FORWARDING_DISABLED' src/mail/mail-policy.ts
-          grep -Fq "state === 'bounced'" src/mail/mail-queue.ts
-          grep -Fq 'eventId' src/mail/imap-idle.ts
+          grep -Fq 'OPEN_RELAY_DISABLED' src/core/mail/mail-policy.ts
+          grep -Fq 'FORWARDING_DISABLED' src/core/mail/mail-policy.ts
+          grep -Fq "state === 'bounced'" src/core/mail/mail-queue.ts
+          grep -Fq 'eventId' src/core/mail/imap-idle.ts
           grep -Fq 'fail-closed' doc/mail-core.md
-          grep -Fq 'CONTENT_SCOPE_REQUIRED' src/dav/caldav/caldav-contract.ts
-          grep -Fq 'SYNC_SCOPE_DENIED' src/dav/caldav/caldav-contract.ts
-          grep -Fq 'SCOPE_ROLE_DENIED' src/dav/carddav/carddav-store.ts
-          grep -Fq 'WELL_KNOWN_PATHS' src/dav/discovery/index.ts
-          grep -Fq 'PLAINTEXT_DISCOVERY_FORBIDDEN' src/dav/discovery/index.ts
+          grep -Fq 'CONTENT_SCOPE_REQUIRED' src/core/dav/caldav/caldav-contract.ts
+          grep -Fq 'SYNC_SCOPE_DENIED' src/core/dav/caldav/caldav-contract.ts
+          grep -Fq 'SCOPE_ROLE_DENIED' src/core/dav/carddav/carddav-store.ts
+          grep -Fq 'WELL_KNOWN_PATHS' src/core/dav/discovery/index.ts
+          grep -Fq 'PLAINTEXT_DISCOVERY_FORBIDDEN' src/core/dav/discovery/index.ts
           grep -Fq 'id="login-shell"' web/index.html
           grep -Fq '/api/session/login' src/runtime/server.ts
           grep -Fq '/assets/gulo-gulo-calendar-mail.png' src/runtime/server.ts
-          grep -Fq 'CONTENT_ACCESS_DENIED' src/admin/rbac.ts
-          grep -Fq 'QUOTA_EXCEEDED' src/admin/quota.ts
-          grep -Fq 'MASTER_LOG_ACCESS_DISABLED' src/admin/rbac.ts
-          grep -Fq 'MAX_PASSWORD_EXPIRY_DAYS = 9999' src/auth/password-policy.ts
-          grep -Fq 'REPLAYED_CODE' src/auth/totp.ts
-          grep -Fq 'challenge' src/auth/webauthn.ts
-          grep -Fq 'One-time recovery' src/auth/recovery-codes.ts
-          # LP6 canonicals live in TypeScript; the MJS files are compatibility
-          # bridges and must only re-export the typed implementation.
-          grep -Fq 'DEFAULT_TRASH_RETENTION_DAYS = 28' src/lifecycle/retention.ts
-          grep -Fq "BACKUP_ENCRYPTION_ALGORITHM = 'aes-256-gcm'" src/backup/backup-contract.ts
-          grep -Fq 'PURGE_REJECTED' src/lifecycle/retention.ts
-          grep -Fq "export * from './retention.ts'" src/lifecycle/retention.mjs
-          grep -Fq "export * from './backup-contract.ts'" src/backup/backup-contract.mjs
-          grep -Fq 'createLogRotationPolicy' src/observability/log-policy.ts
-          grep -Fq 'createStructuredEvent' src/observability/structured-event.ts
-          grep -Fq 'createAlertPolicy' src/observability/alert-policy.ts
-          grep -Fq 'LETSENCRYPT' src/ops/acme/index.ts
-          grep -Fq 'HTTP_01' src/ops/acme/index.ts
-          grep -Fq 'DNS_01' src/ops/acme/index.ts
-          grep -Fq 'createSafeReloadPlan' src/ops/acme/index.ts
-          grep -Fq 'DEFAULT_RATE_LIMITS' src/ops/abuse/index.ts
-          grep -Fq 'createAbuseAuditEvent' src/ops/abuse/index.ts
-          grep -Fq 'validateComposeProductionReadiness' src/ops/abuse/index.ts
-          grep -Fq 'HOST_NAMESPACE_FORBIDDEN' src/ops/abuse/index.ts
-          grep -Fq 'sanitizePatchStatus' src/ops/patch/status.ts
+          grep -Fq 'CONTENT_ACCESS_DENIED' src/core/admin/rbac.ts
+          grep -Fq 'QUOTA_EXCEEDED' src/core/admin/quota.ts
+          grep -Fq 'MASTER_LOG_ACCESS_DISABLED' src/core/admin/rbac.ts
+          grep -Fq 'MAX_PASSWORD_EXPIRY_DAYS = 9999' src/core/auth/password-policy.ts
+          grep -Fq 'REPLAYED_CODE' src/core/auth/totp.ts
+          grep -Fq 'challenge' src/core/auth/webauthn.ts
+          grep -Fq 'One-time recovery' src/core/auth/recovery-codes.ts
+          grep -Fq 'DEFAULT_TRASH_RETENTION_DAYS = 28' src/core/lifecycle/retention.ts
+          grep -Fq "BACKUP_ENCRYPTION_ALGORITHM = 'aes-256-gcm'" src/core/backup/backup-contract.ts
+          grep -Fq 'PURGE_REJECTED' src/core/lifecycle/retention.ts
+          grep -Fq 'createLogRotationPolicy' src/core/observability/log-policy.ts
+          grep -Fq 'createStructuredEvent' src/core/observability/structured-event.ts
+          grep -Fq 'createAlertPolicy' src/core/observability/alert-policy.ts
+          grep -Fq 'LETSENCRYPT' src/core/ops/acme/index.ts
+          grep -Fq 'HTTP_01' src/core/ops/acme/index.ts
+          grep -Fq 'DNS_01' src/core/ops/acme/index.ts
+          grep -Fq 'createSafeReloadPlan' src/core/ops/acme/index.ts
+          grep -Fq 'DEFAULT_RATE_LIMITS' src/core/ops/abuse/index.ts
+          grep -Fq 'createAbuseAuditEvent' src/core/ops/abuse/index.ts
+          grep -Fq 'validateComposeProductionReadiness' src/core/ops/abuse/index.ts
+          grep -Fq 'HOST_NAMESPACE_FORBIDDEN' src/core/ops/abuse/index.ts
+          grep -Fq 'sanitizePatchStatus' src/core/ops/patch/status.ts
           grep -Fq 'gulogulo_abuse_limited_total' src/runtime/server.ts
           grep -Fq 'multiarchFunctionalProof' release/lp7-local-upgrade.json
           grep -Fq 'artifact_and_provenance_only' release/lp7-local-upgrade.json
-          grep -Fq "BACKUP_ENCRYPTION_ALGORITHM = 'aes-256-gcm'" src/backup/backup-contract.ts
-          grep -Fq "export * from './backup-contract.ts'" src/backup/backup-contract.mjs
-          grep -Fq 'DEFAULT_TRASH_RETENTION_DAYS = 28' src/lifecycle/retention.ts
-          grep -Fq "export * from './retention.ts'" src/lifecycle/retention.mjs
-          grep -Fq 'MIGRATION_PHASES' src/upgrade/compatibility.ts
-          grep -Fq 'createSchemaMigrationPlan' src/upgrade/compatibility.ts
-          grep -Fq "export * from './compatibility.ts'" src/upgrade/compatibility.mjs
-          grep -Fq 'createUpgradeController' src/upgrade/control-plane.ts
-          grep -Fq 'TENANT_CONTROL_PLANE_FORBIDDEN' src/upgrade/control-plane.ts
-          grep -Fq 'PREFLIGHT_FAILED' src/upgrade/control-plane.ts
-          grep -Fq "export * from './control-plane.ts'" src/upgrade/control-plane.mjs
-          grep -Fq 'createDockerReplacementPlan' src/upgrade/rollout.ts
-          grep -Fq 'createKubernetesBlueGreenPlan' src/upgrade/rollout.ts
-          grep -Fq 'ACTION_NOT_ALLOWLISTED' src/upgrade/rollout.ts
-          grep -Fq "export * from './rollout.ts'" src/upgrade/rollout.mjs
-          grep -Fq 'createDockerReplacementRehearsal' src/upgrade/rehearsal.ts
-          grep -Fq 'createKubernetesBlueGreenRehearsal' src/upgrade/rehearsal.ts
-          grep -Fq 'runDockerReplacementRehearsal' src/upgrade/rehearsal.ts
-          grep -Fq 'runKubernetesBlueGreenRehearsal' src/upgrade/rehearsal.ts
+          grep -Fq "BACKUP_ENCRYPTION_ALGORITHM = 'aes-256-gcm'" src/core/backup/backup-contract.ts
+          grep -Fq 'DEFAULT_TRASH_RETENTION_DAYS = 28' src/core/lifecycle/retention.ts
+          grep -Fq 'MIGRATION_PHASES' src/core/upgrade/compatibility.ts
+          grep -Fq 'createSchemaMigrationPlan' src/core/upgrade/compatibility.ts
+          grep -Fq 'createUpgradeController' src/core/upgrade/control-plane.ts
+          grep -Fq 'TENANT_CONTROL_PLANE_FORBIDDEN' src/core/upgrade/control-plane.ts
+          grep -Fq 'PREFLIGHT_FAILED' src/core/upgrade/control-plane.ts
+          grep -Fq 'createDockerReplacementPlan' src/core/upgrade/rollout.ts
+          grep -Fq 'createKubernetesBlueGreenPlan' src/core/upgrade/rollout.ts
+          grep -Fq 'ACTION_NOT_ALLOWLISTED' src/core/upgrade/rollout.ts
+          grep -Fq 'createDockerReplacementRehearsal' src/core/upgrade/rehearsal.ts
+          grep -Fq 'createKubernetesBlueGreenRehearsal' src/core/upgrade/rehearsal.ts
+          grep -Fq 'runDockerReplacementRehearsal' src/core/upgrade/rehearsal.ts
+          grep -Fq 'runKubernetesBlueGreenRehearsal' src/core/upgrade/rehearsal.ts
           grep -Fq 'ready_for_lp9' release/lp8-local-proof-bundle.json
           grep -Fq 'syntheticDataOnly' release/lp8-local-proof-bundle.json
           grep -Fq 'artifactProvenanceOnly' release/lp8-local-proof-bundle.json
           grep -Fq 'temporaryShims' release/lp8-local-proof-bundle.json
           grep -Fq 'LP9' release/lp8-local-proof-bundle.json
-          grep -Fq 'REQUIRED_SECTION30_ITEMS' src/release/release-evidence.ts
-          grep -Fq 'M10_REVIEWS_INCOMPLETE' src/release/release-evidence.ts
-          grep -Fq 'productionReady' src/release/release-evidence.ts
+          grep -Fq 'REQUIRED_SECTION30_ITEMS' src/core/release/release-evidence.ts
+          grep -Fq 'M10_REVIEWS_INCOMPLETE' src/core/release/release-evidence.ts
+          grep -Fq 'productionReady' src/core/release/release-evidence.ts
           grep -Fq 'TypeScript' release/lp9-local-proof.json
           grep -Eq 'ready_for_owner_review|"status": "complete"' release/lp9-local-proof.json
           grep -Fq 'behaviorFreeMjsBridges' release/lp9-local-proof.json
@@ -466,7 +408,7 @@ jobs:
           grep -Fq 'SPDX-License-Identifier: MIT' config/schema.v1.json
           grep -Fq 'Sythos (https://www.sythos.net)' config/schema.v1.json
           grep -Fq 'atomic_active_pointer_replace' release/lp3-local-mail.json
-          grep -Fq 'computeScannerSignatureContentDigest' src/mail/scanner-signatures.ts
+          grep -Fq 'computeScannerSignatureContentDigest' src/core/mail/scanner-signatures.ts
           grep -Fq 'createControlPanelConfig' src/integrations/control-panel.ts
           grep -Fq 'Plesk' doc/control-panel-integration.md
           grep -Fq 'cPanel' doc/control-panel-integration.md
@@ -530,15 +472,15 @@ jobs:
           fi
 
       - name: Run LP3 typed mail contract gates
-        if: hashFiles('src/mail/mail-core.test.ts') != ''
+        if: hashFiles('src/core/mail/mail-core.test.ts') != ''
         shell: bash
         run: |
           set -euo pipefail
           npm run typecheck:server
-          node --experimental-strip-types src/mail/mail-scanners.test.ts
-          node --experimental-strip-types src/mail/imap-idle.test.ts
-          node --experimental-strip-types src/mail/mail-core.test.ts
-          node --experimental-strip-types src/mail/scanner-signatures.test.ts
+          node --experimental-strip-types src/core/mail/mail-scanners.test.ts
+          node --experimental-strip-types src/core/mail/imap-idle.test.ts
+          node --experimental-strip-types src/core/mail/mail-core.test.ts
+          node --experimental-strip-types src/core/mail/scanner-signatures.test.ts
 
       - name: Run migrated-audit gates (amd64)
         if: hashFiles('tsconfig.lp8.json') != '' && hashFiles('scripts/m10-release-audit.ts') != ''
@@ -547,9 +489,9 @@ jobs:
           set -euo pipefail
           npm run typecheck:server
           npx tsc --project tsconfig.lp8.json
-          node --experimental-strip-types src/release/local-proof-scope.test.ts
-          node --experimental-strip-types src/release/local-proof-topology.test.ts
-          node --experimental-strip-types src/release/release-evidence.test.ts
+          node --experimental-strip-types src/core/release/local-proof-scope.test.ts
+          node --experimental-strip-types src/core/release/local-proof-topology.test.ts
+          node --experimental-strip-types src/core/release/release-evidence.test.ts
           node --experimental-strip-types scripts/m10-release-audit.ts
 
       - name: Run LP9 source-language and local-release gates (amd64)
