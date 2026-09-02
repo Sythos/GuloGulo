@@ -176,7 +176,6 @@ dependencies and build output are intentionally omitted.
 gulogulo/
 ├── .github/
 │   └── workflows/
-│       ├── container-release.yml
 │       ├── commit-tests.yml
 │       ├── pr-validation.yml
 │       └── quality-gates.yml
@@ -185,60 +184,6 @@ gulogulo/
 │   └── gulo-gulo-calendar-mail.png
 ├── config/
 │   └── schema.v1.json
-├── docker/
-│   ├── lp1-network/
-│   │   ├── Dockerfile
-│   │   ├── entrypoint-ca.sh
-│   │   └── entrypoint-dns.sh
-│   ├── lp2-tls/
-│   │   ├── .dockerignore
-│   │   ├── Dockerfile
-│   │   └── entrypoint-tls.sh
-│   ├── lp2-ldap/
-│   │   ├── .dockerignore
-│   │   ├── Dockerfile
-│   │   ├── bootstrap.ldif
-│   │   ├── entrypoint-ldap.sh
-│   │   └── healthcheck-ldap.sh
-│   ├── lp2-postgres/
-│   │   ├── .dockerignore
-│   │   ├── Dockerfile
-│   │   ├── entrypoint-postgres.sh
-│   │   └── healthcheck-postgres.sh
-│   ├── lp3-clamav/
-│   │   ├── .dockerignore
-│   │   ├── Dockerfile
-│   │   ├── entrypoint-clamav.py
-│   │   └── healthcheck-clamav.sh
-│   ├── lp3-dovecot/
-│   │   ├── .dockerignore
-│   │   ├── Dockerfile
-│   │   ├── default.sieve
-│   │   ├── dovecot.conf
-│   │   ├── entrypoint-dovecot.sh
-│   │   ├── healthcheck-dovecot.sh
-│   │   └── users
-│   ├── lp3-postfix/
-│   │   ├── .dockerignore
-│   │   ├── Dockerfile
-│   │   ├── entrypoint-postfix.sh
-│   │   ├── healthcheck-postfix.sh
-│   │   ├── lp3-aliases.regexp
-│   │   ├── lp3-mailboxes.regexp
-│   │   └── main.cf
-│   ├── lp3-proof/
-│   │   ├── .dockerignore
-│   │   ├── Dockerfile
-│   │   └── proof.py
-│   ├── lp3-rspamd/
-│   │   ├── .dockerignore
-│   │   ├── Dockerfile
-│   │   ├── entrypoint-rspamd.py
-│   │   └── healthcheck-rspamd.sh
-│   └── lp3-tls/
-│       ├── .dockerignore
-│       ├── Dockerfile
-│       └── entrypoint-tls.sh
 ├── doc/
 │   ├── README.md
 │   ├── READ_BEFORE_USE.md
@@ -252,14 +197,6 @@ gulogulo/
 │   ├── identity-and-postgres.md
 │   ├── lifecycle-backup-dr.md
 │   ├── local-proof-scope.md
-│   ├── local-proof-topology.md
-│   ├── lp2-local-services.md
-│   ├── lp3-local-mail.md
-│   ├── lp4-local-web.md
-│   ├── lp5-local-operations-capacity.md
-│   ├── lp6-local-backup-dr.md
-│   ├── lp7-local-upgrade.md
-│   ├── lp8-evidence-operator.md
 │   ├── mail-core.md
 │   ├── rbac-admin-mfa.md
 │   ├── release-readiness.md
@@ -273,31 +210,17 @@ gulogulo/
 ├── scripts/
 │   ├── m0-smoke.ps1
 │   ├── m1-fixture-smoke.ps1
-│   ├── lp1-proof-check.ts (+ .mjs compatibility bridge)
-│   ├── lp1-proof-smoke.ts (+ .mjs compatibility bridge)
-│   ├── lp2-compose-smoke.ts (+ .mjs compatibility bridge)
-│   ├── lp2-proof-smoke.ts (+ .mjs compatibility bridge)
-│   ├── lp3-compose-smoke.ts (+ .mjs compatibility bridge)
 │   ├── lp3-proof-smoke.ts (+ .mjs compatibility bridge)
-│   ├── lp8-bundle-smoke.ts
-│   ├── lp8-evidence-audit.test.ts
-│   ├── lp8-evidence-audit.ts
-│   ├── lp4-compose-smoke.ts
 │   ├── lp4-proof-check.ts
-│   ├── lp4-web-runtime.ts
-│   ├── lp5-compose-smoke.ts
 │   ├── lp5-proof-check.ts
 │   ├── lp6-source-fixture.ts
 │   ├── lp6-backup-worker.ts
 │   ├── lp6-restore-worker.ts
-│   ├── lp6-compose-smoke.ts
-│   ├── lp7-compose-smoke.ts
 │   ├── lp7-proof-check.ts
 │   ├── m10-release-audit.ts (+ .mjs compatibility bridge)
 │   ├── sbom-release-audit.ts
 │   ├── sbom-release-audit.test.ts
-│   ├── container-patch.sh
-│   └── runtime, fixture, and patch utilities
+│   └── runtime and fixture utilities
 ├── release/
 │   ├── local-proof-scope.json
 │   ├── local-proof-topology.json
@@ -399,12 +322,9 @@ gulogulo/
 │   ├── src/
 │   └── test/
 │       └── web-shell.test.ts
-├── .dockerignore
 ├── .env.example
-├── Dockerfile
 ├── LICENSE
 ├── README.md
-├── compose.yaml
 ├── package-lock.json
 ├── package.json
 ├── tsconfig.json
