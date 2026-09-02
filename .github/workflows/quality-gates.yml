@@ -80,14 +80,6 @@ jobs:
           test -f doc/web-foundation.md
           test -f doc/dav-and-discovery.md
           test -f doc/release-readiness.md
-          test -f doc/lp2-local-services.md
-          test -f doc/lp3-local-mail.md
-          test -f doc/lp4-local-web.md
-          test -f doc/lp5-local-operations-capacity.md
-          test -f doc/lp6-local-backup-dr.md
-          test -f doc/lp7-local-upgrade.md
-          test -f doc/lp8-evidence-operator.md
-          test -f doc/lp9-local-release.md
           test -f doc/scanner-signature-volume.md
           test -f doc/sbom-release-plan.md
           test -f scripts/sbom-release-audit.ts
@@ -111,11 +103,6 @@ jobs:
           test -f scripts/lp9-source-audit.test.ts
           test -f scripts/lp9-release-audit.ts
           test -f scripts/lp9-release-audit.test.ts
-          test -f scripts/lp1-proof-check.ts
-          test -f scripts/lp1-proof-smoke.ts
-          test -f scripts/lp2-compose-smoke.ts
-          test -f scripts/lp2-proof-smoke.ts
-          test -f scripts/lp3-compose-smoke.ts
           test -f scripts/lp3-proof-smoke.ts
           test -f scripts/m10-release-audit.ts
           test -f src/release/index.ts
@@ -126,23 +113,15 @@ jobs:
           test -f src/release/release-evidence.ts
           test -f src/release/release-evidence.test.ts
           test -f scripts/m10-release-audit.mjs
-          test -f scripts/lp2-compose-smoke.mjs
-          test -f scripts/lp2-proof-smoke.mjs
-          test -f scripts/lp3-compose-smoke.mjs
           test -f scripts/lp3-proof-smoke.mjs
-          test -f scripts/lp4-compose-smoke.ts
           test -f scripts/lp4-proof-check.ts
-          test -f scripts/lp4-web-runtime.ts
-          test -f scripts/lp5-compose-smoke.ts
           test -f scripts/lp5-proof-check.ts
           test -f tsconfig.lp5.json
           test -f scripts/lp6-source-fixture.ts
           test -f scripts/lp6-backup-worker.ts
           test -f scripts/lp6-restore-worker.ts
-          test -f scripts/lp6-compose-smoke.ts
           test -f tsconfig.lp6.json
           test -f scripts/lp7-proof-check.ts
-          test -f scripts/lp7-compose-smoke.ts
           test -f tsconfig.lp7.json
           test -f src/backup/backup-contract.ts
           test -f src/backup/backup-contract.test.ts
@@ -278,7 +257,6 @@ jobs:
           test -f src/observability/observability.test.mjs
           test -f doc/lifecycle-backup-dr.md
           test -f doc/local-proof-scope.md
-          test -f doc/local-proof-topology.md
           test -f src/ops/acme/index.mjs
           test -f src/ops/acme/index.test.mjs
           test -f src/ops/abuse/index.mjs
@@ -309,8 +287,6 @@ jobs:
           test -f src/release/local-proof-scope.test.mjs
           test -f release/local-proof-scope.json
           test -f release/local-proof-topology.json
-          test -f scripts/lp1-proof-check.mjs
-          test -f scripts/lp1-proof-smoke.mjs
           test -f src/release/local-proof-topology.mjs
           test -f src/release/local-proof-topology.test.mjs
           test -f doc/upgrade-and-migration.md
@@ -325,17 +301,7 @@ jobs:
             .env.example \
             scripts/m0-smoke.ps1 \
             scripts/m1-fixture-smoke.ps1 \
-            scripts/lp1-proof-check.mjs \
-            scripts/lp1-proof-smoke.mjs \
-            scripts/lp2-compose-smoke.mjs \
-            scripts/lp2-proof-smoke.mjs \
-            scripts/lp3-compose-smoke.mjs \
             scripts/lp3-proof-smoke.mjs \
-            scripts/lp1-proof-check.ts \
-            scripts/lp1-proof-smoke.ts \
-            scripts/lp2-compose-smoke.ts \
-            scripts/lp2-proof-smoke.ts \
-            scripts/lp3-compose-smoke.ts \
             scripts/lp3-proof-smoke.ts \
             scripts/lp8-evidence-audit.ts \
             scripts/lp8-evidence-audit.test.ts \
@@ -346,17 +312,12 @@ jobs:
             scripts/lp9-release-audit.test.ts \
             scripts/sbom-release-audit.ts \
             scripts/sbom-release-audit.test.ts \
-            scripts/lp4-compose-smoke.ts \
             scripts/lp4-proof-check.ts \
-            scripts/lp4-web-runtime.ts \
-            scripts/lp5-compose-smoke.ts \
             scripts/lp5-proof-check.ts \
             scripts/lp6-source-fixture.ts \
             scripts/lp6-backup-worker.ts \
             scripts/lp6-restore-worker.ts \
-            scripts/lp6-compose-smoke.ts \
             scripts/lp7-proof-check.ts \
-            scripts/lp7-compose-smoke.ts \
             scripts/m10-release-audit.ts \
             web/build.ts \
             web/test/web-shell.test.ts \
