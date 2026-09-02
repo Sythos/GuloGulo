@@ -64,7 +64,6 @@ builds the image with a refreshed Ubuntu base, runs the fixture validator,
 waits for a healthy runtime, probes liveness/readiness/metrics, and tears down
 the isolated project.
 
-The ordinary Compose smoke path runs on the host architecture. Multi-architecture
-image coverage is a separate Buildx gate: CI builds and validates the same
-Ubuntu 26.04 image for both `linux/amd64` (x86_64) and `linux/arm64` (ARM64)
-before the profile and fixture checks run.
+The ordinary Compose smoke path runs on the host architecture. CI builds and
+validates the same Ubuntu 26.04 image on `linux/amd64` (x86_64), the CI test
+platform, before the profile and fixture checks run.

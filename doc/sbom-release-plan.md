@@ -24,14 +24,13 @@ automatic version-tag release mode:
    [`anchore/sbom-action@v0.24.0`](https://github.com/anchore/sbom-action).
    The archive is the disposable container package used for the first field
    tests. It never receives registry credentials or a signing permission.
-2. **Manual registry release (`publish=true`)** is allowed only from `main`
-   and requires `architecture_mode=multiarch`. It builds the final
-   `linux/amd64,linux/arm64` image and pushes it to GHCR under a caller-supplied
-   immutable tag. An amd64-only registry publication is rejected; amd64 remains
-   the separate field-test archive path.
+2. **Manual registry release (`publish=true`)** is allowed only from `main`.
+   It builds the final `linux/amd64` image and pushes it to GHCR under a
+   caller-supplied immutable tag; amd64 remains the separate field-test
+   archive path.
 3. **Automatic version release** runs when a numeric semver tag such as
    `0.1.4` is pushed. The tag must exactly match `package.json.version`; the
-   job goes directly to the final `linux/amd64,linux/arm64` target, publishes
+   job goes directly to the final `linux/amd64` target, publishes
    the image to GHCR, and creates or updates the matching GitHub Release with
    the SPDX SBOM and digest-bound release evidence. Buildx enables provenance
    and SBOM metadata in both registry paths.
@@ -51,7 +50,7 @@ The static contract is checked by
 [`scripts/sbom-release-audit.ts`](../scripts/sbom-release-audit.ts), and its
 unit tests run as `npm run test:sbom` and as part of `npm test`. The audit
 requires a tag-only automatic trigger, an exact package-version check, the
-multiarch and attestation gates, and the GitHub Release commands. It rejects
+build and attestation gates, and the GitHub Release commands. It rejects
 pull-request triggers, unapproved secrets, disabled SBOM generation, missing
 digest binding, and invalid or path-leaking SPDX output.
 
@@ -74,8 +73,8 @@ optional Plesk/cPanel tenant boundary before calling the package operational.
 
 For a final release, update `package.json.version`, commit the change to
 `main`, create an annotated numeric tag with the same value, and push both the
-commit and tag. The tag path starts the multiarch build directly; it does not
-repeat a separate AMD64 publication. For example:
+commit and tag. The tag path starts the `linux/amd64` build directly; it does
+not repeat a separate field-archive publication. For example:
 
 ```text
 git tag -a 0.1.4 -m "Gulo Gulo 0.1.4"
@@ -83,8 +82,7 @@ git push origin main 0.1.4
 ```
 
 The manual registry mode remains available for a trusted rehearsal:
-`publish=true` with `architecture_mode=multiarch`. A manual publish request
-with `architecture_mode=amd64` fails before registry login.
+`publish=true`.
 
 ## Permissions and trust boundary
 

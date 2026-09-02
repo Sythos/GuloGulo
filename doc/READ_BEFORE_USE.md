@@ -39,10 +39,10 @@ has not run its deployment rehearsal yet.
 This is the practical path for bringing up the repository container without
 mistaking a local proof image for a production deployment. The commands below
 assume Docker Engine or Docker Desktop with Compose v2 and a Linux host (or a
-Linux VM on a development workstation). The supported final image platforms
-are `linux/amd64` (x86_64) and `linux/arm64` (ARM64). The final release path
-builds both platforms directly; the optional field archive remains AMD64-only
-for quick local experiments.
+Linux VM on a development workstation). The supported final image platform
+is `linux/amd64` (x86_64). The final release path builds this platform
+directly; the optional field archive remains AMD64-only for quick local
+experiments.
 
 ### Choose the image source
 
@@ -50,15 +50,14 @@ for quick local experiments.
   Compose proof. The checkout builds the image locally from the exact commit.
 - **AMD64 field archive:** the manual `container-release` workflow can produce
   a downloadable `.docker.tar` plus a SHA-256 file. It is an offline field-test
-  artifact for `linux/amd64`, not a multi-architecture production image.
+  artifact for `linux/amd64`.
 - **Immutable registry image and Release:** pushing a numeric semver tag (for
   example `0.1.4`) whose value exactly matches `package.json.version` starts
-  the trusted multi-architecture workflow. It publishes
-  `linux/amd64,linux/arm64` to GHCR, generates the SBOM and Artifact
-  Attestations, and creates or updates the matching GitHub Release with the
-  SBOM and digest-bound evidence. The owner still explicitly chooses and
-  pushes the version tag. A manual `publish=true` run remains available for a
-  trusted rehearsal on `main`.
+  the trusted release workflow. It publishes `linux/amd64` to GHCR, generates
+  the SBOM and Artifact Attestations, and creates or updates the matching
+  GitHub Release with the SBOM and digest-bound evidence. The owner still
+  explicitly chooses and pushes the version tag. A manual `publish=true` run
+  remains available for a trusted rehearsal on `main`.
 
 To consume the published runtime directly, pull the immutable version tag and
 check the digest recorded in the matching GitHub Release evidence before
@@ -152,8 +151,7 @@ docker image inspect gulogulo:field-<tag>
 
 The archive is intentionally a field-test package. Use the matching checkout
 and Compose definition for a repeatable proof, or use the digest-pinned GHCR
-image after the final multi-architecture publication gate. Do not infer ARM64
-support from an AMD64 archive.
+image after the final publication gate.
 
 ### Stop, upgrade, and roll back safely
 
@@ -220,9 +218,9 @@ tester.
 - [x] **DONE — release SBOM, field container, and signed digest workflow.** The
   manual container-release workflow builds an amd64 field-test archive, emits
   an SPDX JSON SBOM, and the automatic numeric-version-tag path builds the
-  final amd64+arm64 image directly, binds SBOM and build-provenance
-  attestations to the immutable digest, verifies the result through the
-  GitHub CLI, and creates or updates the matching GitHub Release. Verify GHCR
+  final amd64 image directly, binds SBOM and build-provenance attestations to
+  the immutable digest, verifies the result through the GitHub CLI, and
+  creates or updates the matching GitHub Release. Verify GHCR
   visibility/retention, vulnerability disposition, clean-consumer
   verification, and field import before treating a release as operational.
 
@@ -303,11 +301,10 @@ tester.
   PostgreSQL data, and backup references are kept outside disposable
   containers. Verify volume creation, ownership, encryption, snapshots,
   replacement, restore, and protection against accidental deletion.
-- [x] **DONE — Ubuntu 26.04 multi-architecture image policy.** The final
-  version-tag release path builds `linux/amd64` and `linux/arm64` directly;
-  the optional field archive remains AMD64-only. Verify the actual runtime on
-  both architectures, base-image digest, package compatibility, resource
-  limits, and registry pull behavior.
+- [x] **DONE — Ubuntu 26.04 image policy.** The final version-tag release path
+  builds `linux/amd64` directly; the optional field archive remains
+  AMD64-only. Verify the actual runtime, base-image digest, package
+  compatibility, resource limits, and registry pull behavior.
 - [x] **DONE — build provenance attestations.** Trusted version-tag/manual
   workflows generate and verify OCI build-provenance attestations. Verify the
   final registry subject, consumer-side verification, retention, and release
@@ -481,7 +478,7 @@ the scanner containers writable or add a Docker-socket escape hatch.
    build-time apt-get update plus apt-get upgrade policy.
 2. Record the base-image digest, target architecture, package changes,
    vulnerability scan, SBOM, and release subject digest.
-3. Run the repository gates and build the final `linux/amd64,linux/arm64`
+3. Run the repository gates and build the final `linux/amd64`
    artifact directly for the version tag.
 4. Publish only immutable, signed registry subjects after the required release
    checks pass; the workflow then creates or updates the matching GitHub
@@ -492,7 +489,7 @@ the scanner containers writable or add a Docker-socket escape hatch.
 Artifact provenance, SBOM generation, the amd64 field-container package, and
 digest-bound release attestations are implemented in
 `.github/workflows/container-release.yml`. Version-tag pushes automatically
-publish the multi-architecture GHCR image and GitHub Release; a trusted
+publish the GHCR image and GitHub Release; a trusted
 manual main-only publish path remains available. Registry policy, consumer
 verification, and field deployment evidence remain VERIFY BEFORE USE work.
 

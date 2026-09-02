@@ -244,10 +244,10 @@ routing, backup destination, secret rotation, alert delivery, and rollback.
 
 ## 7. Docker and Kubernetes notes
 
-The application image remains an Ubuntu 26.04 LTS multi-architecture image for
-`linux/amd64` and `linux/arm64`. Build-time APT patching is handled by the
-existing image maintenance contract; a running production container is not
-mutated through an exposed Docker socket.
+The application image remains an Ubuntu 26.04 LTS image for `linux/amd64`.
+Build-time APT patching is handled by the existing image maintenance contract;
+a running production container is not mutated through an exposed Docker
+socket.
 
 For Docker-to-Docker replacement, keep the external volume names and secret
 references stable, preflight the new image, observe it before cutover, and keep

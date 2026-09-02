@@ -260,9 +260,9 @@ node --experimental-strip-types web/test/web-shell.test.ts
 
 `npm test` includes all of the above contract tests. The GitHub quality gate
 also checks the explicit entry points, MIT/SPDX headers, tenant-scope denial
-markers, and the Ubuntu 26.04 LTS amd64/arm64 Docker build. Docker is not
-required for the focused Node checks, but the Compose and multi-architecture
-gates remain authoritative for the image.
+markers, and the Ubuntu 26.04 LTS amd64 Docker build. Docker is not required
+for the focused Node checks, but the Compose gate remains authoritative for
+the image.
 
 ## What is deliberately still ahead
 

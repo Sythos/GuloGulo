@@ -76,8 +76,7 @@ normal workflow.
   check, and Docker proof harness.
 - [LP2 local LDAP and PostgreSQL proof](lp2-local-services.md) — the
   offline dual-stack dependency lab, verified LDAPS and PostgreSQL TLS,
-  deterministic fixtures, disposable volumes, and the multi-architecture
-  Compose rehearsal.
+  deterministic fixtures, disposable volumes, and the Compose rehearsal.
 - [LP3 local mail proof](lp3-local-mail.md) — the offline Postfix, Dovecot,
   Rspamd, and ClamAV boundary with IMAP IDLE, LMTP, Sieve, queue/retry/bounce,
   explicit aliases, and persistent restart-safe volumes.
@@ -87,8 +86,8 @@ normal workflow.
   runtime credentials, and restart continuity checks.
 - [LP5 local operations and capacity proof](lp5-local-operations-capacity.md) —
   fail-closed patch status, typed abuse and observability controls, bounded
-  web/DAV/mail/IMAP-IDLE measurements, resource limits, and the AMD64-first /
-  ARM64-final workflow.
+  web/DAV/mail/IMAP-IDLE measurements, resource limits, and the AMD64 CI
+  workflow.
 - [LP6 local backup and disaster-recovery proof](lp6-local-backup-dr.md) —
   deterministic encrypted backup metadata, isolated restore, 28-day retention,
   holds, idempotent purge, and the provider evidence boundary.
@@ -103,9 +102,9 @@ normal workflow.
   build and test commands, compiled production startup, and the temporary
   compatibility-bridge rule.
 - [SBOM and signed-image release workflow](sbom-release-plan.md) — the manual
-  amd64 field-container package, automatic numeric-tag multiarch GHCR and
-  GitHub Release lane, digest-bound SBOM/provenance attestations, permissions,
-  and consumer verification.
+  amd64 field-container package, automatic numeric-tag GHCR and GitHub
+  Release lane, digest-bound SBOM/provenance attestations, permissions, and
+  consumer verification.
 
 The project is still intentionally small. The documents describe real behavior
 only: DAV, administration, lifecycle, backup, observability, ACME, abuse, and

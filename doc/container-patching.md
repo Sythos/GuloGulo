@@ -8,8 +8,8 @@ SPDX-FileCopyrightText: 2026 Sythos (https://www.sythos.net)
 Author: Sythos (https://www.sythos.net)
 -->
 
-Gulo Gulo-owned images target Ubuntu 26.04 LTS (Resolute Raccoon) on both
-`linux/amd64` (x86_64) and `linux/arm64` (ARM64). The current runtime image
+Gulo Gulo-owned images target Ubuntu 26.04 LTS (Resolute Raccoon) on
+`linux/amd64` (x86_64), the current CI test platform. The current runtime image
 installs the current stable Node.js release on top of Ubuntu and runs
 `apt-get update` followed by `apt-get upgrade` during the image build. That
 makes the build repeatable enough to audit while keeping the running container
@@ -76,11 +76,11 @@ rebuild uses a fresh base and avoids stale builder cache:
 docker build --pull --no-cache --build-arg NODE_VERSION=26.7.0 -t gulogulo:local .
 ```
 
-To exercise both supported OCI targets with Buildx (the same shape used by
+To exercise the supported OCI target with Buildx (the same shape used by
 GitHub Actions):
 
 ```powershell
-docker buildx build --pull --platform linux/amd64,linux/arm64 `
+docker buildx build --pull --platform linux/amd64 `
   --build-arg NODE_VERSION=26.7.0 --provenance=false --sbom=false .
 ```
 

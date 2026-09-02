@@ -92,33 +92,28 @@ still missing.
 ### Operations
 
 - [x] health and metrics;
-- [x] multi-architecture Docker images for Ubuntu 26.04 LTS on amd64 (x86_64) and arm64;
-- [x] final registry publication is gated to the multiarch amd64+arm64 target;
 - [x] default-deny Docker build context and runtime-layer cleanup keep documentation, tests, fixtures, CI metadata, and local tooling outside the application image;
 - [x] dual-stack IPv4 and IPv6 network support;
 - [x] persistent external mail volumes and restart continuity;
 - [x] offline synthetic LP2 LDAP and PostgreSQL dependency proof with verified TLS;
 - [x] offline synthetic mail proof with Postfix, Dovecot, Rspamd, and ClamAV;
 - [x] offline synthetic web/session/DAV/discovery proof with restart continuity;
-- [x] fast amd64-first CI with an explicit multiarch amd64+arm64 final gate;
+- [x] fast CI on Ubuntu 26.04 LTS (AMD64);
 - [x] tenant-bound DAV ETags and sync tokens;
 - [x] OCI build-provenance attestations generated and verified;
-- [x] manual amd64 field-container packaging plus automatic numeric-tag
-  multiarch GHCR publication, digest-bound SBOM/attestations, and GitHub
-  Release evidence;
 - [x] reproducible local release evidence and consumer-verifiable provenance metadata;
 - [x] provenance and release permissions are granted only by version-tag pushes
   or trusted manual callers, while pull-request validation remains read-only;
 - [x] log rotation;
 - [x] alerts;
 - [x] Postfix queue visibility;
-- [x] bounded operations and capacity proof (AMD64 Compose first, ARM64 final artifact gate);
+- [x] bounded operations and capacity proof (AMD64 Compose proof);
 - [x] fail-closed disposable patch helper and sanitized read-only patch status;
 - [x] externally managed Rspamd/ClamAV definition updates through a shared
   read-only signature volume with freshness, atomic activation, and rollback
   metadata; provider updater execution is tracked in READ_BEFORE_USE.md;
 - [x] provider-only migration contract, compatibility window, and rollback state machine;
-- [x] bounded Docker replacement and Kubernetes blue/green rehearsal with external-volume continuity (AMD64 functional proof plus AMD64+ARM64 artifact/provenance gate);
+- [x] bounded Docker replacement and Kubernetes blue/green rehearsal with external-volume continuity (AMD64 functional proof);
 - [x] blue/green cutover and rollback runbook defined; live rehearsal is
   tracked in READ_BEFORE_USE.md;
 - [x] RPO/RTO contract defined; measured objectives and approval are tracked
@@ -147,8 +142,7 @@ the checked contracts belongs in [READ_BEFORE_USE.md](doc/READ_BEFORE_USE.md).
 
 - [x] provider-neutral secret-store contract, managed versioned-file rotation,
   and read-only Docker/Kubernetes projected-file adapters;
-- [x] SBOM generation, field-container packaging, immutable multiarch registry
-  digest publication, GitHub Release assets, and consumer verification
+- [x] SBOM generation, GitHub Release assets, and consumer verification
   workflow; the owner still controls the version tag and field evidence is
   documented in [READ_BEFORE_USE.md](doc/READ_BEFORE_USE.md);
 - [ ] provider-specific Plesk/cPanel API adapter and idempotent reconciliation;

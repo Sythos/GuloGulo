@@ -90,10 +90,10 @@ contracts remain visible. The final provider deployment may split them again.
 
 ## Architecture targets
 
-Images and Compose/Kubernetes manifests target both `linux/amd64` (x86_64) and
-`linux/arm64`. A developer may run only the host architecture locally; CI still
-validates both image targets. The LP0 manifest is the source of truth for this
-platform pair and the local-only release identity.
+Images and Compose/Kubernetes manifests target `linux/amd64` (x86_64). A
+developer may run the host architecture locally; CI validates the same image
+target on Ubuntu 26.04 LTS (AMD64). The LP0 manifest is the source of truth
+for this platform and the local-only release identity.
 
 ## Acceptance criteria
 

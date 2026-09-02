@@ -234,4 +234,4 @@ npm test
 
 If the local Windows sandbox reports `spawn EPERM` while Node tries to create a
 worker, run the individual test files directly. GitHub Actions remains the
-authoritative Linux and multi-architecture verification environment.
+authoritative Linux (Ubuntu 26.04 LTS, AMD64) verification environment.
