@@ -25,12 +25,7 @@ The guiding animal is the wolverine (*Gulo gulo*). Human-facing text uses
 **Gulo Gulo**; file names, paths, package names, and other machine-facing
 identifiers use **gulogulo** without spaces.
 
-The complete license text is available in [LICENSE](LICENSE). A quick note from
-me, Sythos: I had the Gulo Gulo artwork made with AI because I am honestly
-hopeless on the artistic side. And, since I have not written a single line of
-code comments in roughly a third of a century, the documentation for this
-project is entrusted to Enya, my virtual AI agent. She keeps the paperwork
-tidy while I focus on making the wolverine do useful things.
+The complete license text is available in [LICENSE](LICENSE).
 
 If a tenant already runs its domain from Plesk or cPanel, Gulo Gulo can sit
 behind that panel as an optional upstream tool. The panel may own the hosting
@@ -99,7 +94,7 @@ still missing.
 - [x] health and metrics;
 - [x] multi-architecture Docker images for Ubuntu 26.04 LTS on amd64 (x86_64) and arm64;
 - [x] final registry publication is gated to the multiarch amd64+arm64 target;
-- [x] default-deny Docker build context and runtime-layer cleanup keep documentation, tests, fixtures, CI metadata, bridges, and local tooling outside the application image;
+- [x] default-deny Docker build context and runtime-layer cleanup keep documentation, tests, fixtures, CI metadata, and local tooling outside the application image;
 - [x] dual-stack IPv4 and IPv6 network support;
 - [x] persistent external mail volumes and restart continuity;
 - [x] offline synthetic LP2 LDAP and PostgreSQL dependency proof with verified TLS;
@@ -138,7 +133,7 @@ still missing.
 - [x] API/MCP are read-only;
 - [x] future features are not enabled;
 - [x] ADRs are current;
-- [x] canonical TypeScript source tree and behavior-free compatibility bridges audited;
+- [x] canonical TypeScript source tree audited, with a single build boundary and zero compatibility bridges;
 - [x] optional upstream Plesk/cPanel tenant-tool contract with safe binding and
   read-only capabilities;
 - [x] deployment documentation is complete for the local-proof hand-off;
@@ -233,78 +228,61 @@ gulogulo/
 │   ├── lp8-local-proof-bundle.json
 │   └── v1-release-evidence.template.json
 ├── src/
-│   ├── admin/ (TypeScript RBAC, delegation, quota, and admin tools)
-│   ├── auth/ (TypeScript password, TOTP, WebAuthn, and recovery contracts)
-│   ├── backup/
-│   │   ├── backup-contract.mjs
-│   │   ├── backup-contract.test.mjs
-│   │   ├── backup-contract.ts
-│   │   ├── backup-contract.test.ts
-│   │   ├── index.mjs
-│   │   └── index.ts
-│   ├── db/migrations/
-│   ├── foundation/
+│   ├── core/
+│   │   ├── admin/ (TypeScript RBAC, delegation, quota, and admin tools)
+│   │   ├── auth/ (TypeScript password, TOTP, WebAuthn, and recovery contracts)
+│   │   ├── backup/
+│   │   │   ├── backup-contract.ts
+│   │   │   ├── backup-contract.test.ts
+│   │   │   └── index.ts
+│   │   ├── capacity/ (typed bounded local-proof measurement contracts)
+│   │   ├── dav/
+│   │   │   ├── caldav/ (strict TypeScript CalDAV contract and tests)
+│   │   │   ├── carddav/ (strict TypeScript CardDAV contract and tests)
+│   │   │   └── discovery/ (strict TypeScript discovery and tests)
+│   │   ├── db/migrations/
+│   │   ├── foundation/
+│   │   ├── lifecycle/
+│   │   │   ├── account-lifecycle.ts
+│   │   │   ├── account-lifecycle.test.ts
+│   │   │   ├── index.ts
+│   │   │   ├── retention.ts
+│   │   │   └── retention.test.ts
+│   │   ├── mail/
+│   │   │   ├── imap-idle.ts
+│   │   │   ├── imap-idle.test.ts
+│   │   │   ├── mail-core.ts
+│   │   │   ├── mail-core.test.ts
+│   │   │   ├── mail-policy.ts
+│   │   │   ├── mail-queue.ts
+│   │   │   ├── mail-scanners.ts
+│   │   │   ├── mail-scanners.test.ts
+│   │   │   ├── scanner-signatures.ts
+│   │   │   └── scanner-signatures.test.ts
+│   │   ├── observability/
+│   │   ├── ops/
+│   │   │   ├── abuse/ (typed rate and abuse controls)
+│   │   │   ├── acme/ (typed ACME and certificate health contracts)
+│   │   │   └── patch/ (typed sanitized patch-status contract)
+│   │   ├── release/
+│   │   │   ├── index.ts
+│   │   │   ├── local-proof-scope.ts
+│   │   │   ├── local-proof-scope.test.ts
+│   │   │   ├── local-proof-topology.ts
+│   │   │   ├── local-proof-topology.test.ts
+│   │   │   ├── release-evidence.ts
+│   │   │   └── release-evidence.test.ts
+│   │   ├── secrets/ (typed provider-neutral secret-store, rotation, and versioned-file adapters)
+│   │   └── upgrade/
+│   │       ├── compatibility.ts
+│   │       ├── control-plane.ts
+│   │       ├── index.ts
+│   │       ├── rehearsal.ts
+│   │       ├── rehearsal.test.ts
+│   │       ├── rollout.ts
+│   │       └── upgrade-contract.test.ts
 │   ├── integrations/ (TypeScript LDAP, PostgreSQL, tenant, migration, and optional Plesk/cPanel adapters)
-│   ├── lifecycle/
-│   │   ├── account-lifecycle.mjs
-│   │   ├── account-lifecycle.test.mjs
-│   │   ├── account-lifecycle.ts
-│   │   ├── account-lifecycle.test.ts
-│   │   ├── index.mjs
-│   │   ├── index.ts
-│   │   ├── retention.mjs
-│   │   ├── retention.test.mjs
-│   │   ├── retention.ts
-│   │   └── retention.test.ts
-│   ├── mail/
-│   │   ├── imap-idle.mjs
-│   │   ├── imap-idle.test.ts
-│   │   ├── imap-idle.ts
-│   │   ├── mail-core.mjs
-│   │   ├── mail-core.test.mjs
-│   │   ├── mail-core.test.ts
-│   │   ├── mail-core.ts
-│   │   ├── mail-policy.mjs
-│   │   ├── mail-policy.ts
-│   │   ├── mail-queue.mjs
-│   │   ├── mail-queue.ts
-│   │   ├── mail-scanners.mjs
-│   │   ├── mail-scanners.test.ts
-│   │   ├── mail-scanners.ts
-│   │   ├── scanner-signatures.test.ts
-│   │   └── scanner-signatures.ts
-│   ├── observability/
-│   ├── capacity/ (typed bounded local-proof measurement contracts)
-│   ├── release/
-│   │   ├── index.ts (+ .mjs compatibility bridge)
-│   │   ├── local-proof-scope.ts (+ .mjs compatibility bridge)
-│   │   ├── local-proof-scope.test.ts (+ .mjs compatibility bridge)
-│   │   ├── local-proof-topology.ts (+ .mjs compatibility bridge)
-│   │   ├── local-proof-topology.test.ts (+ .mjs compatibility bridge)
-│   │   ├── release-evidence.ts (+ .mjs compatibility bridge)
-│   │   └── release-evidence.test.ts (+ .mjs compatibility bridge)
-│   ├── ops/
-│   │   ├── abuse/ (typed rate and abuse controls)
-│   │   ├── acme/ (typed ACME and certificate health contracts)
-│   │   └── patch/ (typed sanitized patch-status contract)
-│   ├── upgrade/
-│   │   ├── compatibility.mjs
-│   │   ├── compatibility.ts
-│   │   ├── control-plane.mjs
-│   │   ├── control-plane.ts
-│   │   ├── index.mjs
-│   │   ├── index.ts
-│   │   ├── rollout.mjs
-│   │   ├── rollout.ts
-│   │   ├── rehearsal.test.ts
-│   │   ├── rehearsal.ts
-│   │   ├── upgrade-contract.test.mjs
-│   │   └── upgrade-contract.test.ts
 │   ├── runtime/ (TypeScript HTTP runtime and observability)
-│   ├── dav/
-│   │   ├── caldav/ (strict TypeScript CalDAV contract and tests)
-│   │   ├── carddav/ (strict TypeScript CardDAV contract and tests)
-│   │   └── discovery/ (strict TypeScript discovery and tests)
 │   └── web/
 │       ├── backup/ (typed user backup boundary)
 │       ├── content/ (typed sanitization, attachment, and timezone policies)
