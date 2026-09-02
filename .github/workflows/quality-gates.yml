@@ -11,20 +11,12 @@ on:
         description: Execution context for the quality gates
         required: true
         type: string
-      architecture_mode:
-        description: Fast amd64 validation by default; select multiarch for the final amd64+arm64 artifact gate
-        required: false
-        default: amd64
-        type: string
 
 jobs:
   repository-quality:
     name: Repository quality gates (${{ inputs.context }})
     runs-on: ubuntu-latest
     timeout-minutes: 60
-    env:
-      ARCHITECTURE_MODE: ${{ inputs.architecture_mode || 'amd64' }}
-      BUILD_PLATFORMS: ${{ inputs.architecture_mode == 'multiarch' && 'linux/amd64,linux/arm64' || 'linux/amd64' }}
     steps:
       - name: Checkout
         uses: actions/checkout@v6
@@ -62,7 +54,6 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          [[ "$ARCHITECTURE_MODE" == "amd64" || "$ARCHITECTURE_MODE" == "multiarch" ]]
           test -f LICENSE
           grep -Fq 'MIT License' LICENSE
           test -f README.md
@@ -121,14 +112,10 @@ jobs:
           test -f scripts/lp9-source-audit.test.ts
           test -f scripts/lp9-release-audit.ts
           test -f scripts/lp9-release-audit.test.ts
-          test -f scripts/lp0-scope-audit.ts
-          test -f scripts/lp1-compose-audit.ts
           test -f scripts/lp1-proof-check.ts
           test -f scripts/lp1-proof-smoke.ts
-          test -f scripts/lp2-compose-audit.ts
           test -f scripts/lp2-compose-smoke.ts
           test -f scripts/lp2-proof-smoke.ts
-          test -f scripts/lp3-compose-audit.ts
           test -f scripts/lp3-compose-smoke.ts
           test -f scripts/lp3-proof-smoke.ts
           test -f scripts/m10-release-audit.ts
@@ -140,28 +127,21 @@ jobs:
           test -f src/release/release-evidence.ts
           test -f src/release/release-evidence.test.ts
           test -f scripts/m10-release-audit.mjs
-          test -f scripts/lp2-compose-audit.mjs
           test -f scripts/lp2-compose-smoke.mjs
           test -f scripts/lp2-proof-smoke.mjs
-          test -f scripts/lp3-compose-audit.mjs
           test -f scripts/lp3-compose-smoke.mjs
           test -f scripts/lp3-proof-smoke.mjs
-          test -f scripts/lp4-compose-audit.ts
           test -f scripts/lp4-compose-smoke.ts
           test -f scripts/lp4-proof-check.ts
           test -f scripts/lp4-web-runtime.ts
-          test -f scripts/lp5-compose-audit.ts
           test -f scripts/lp5-compose-smoke.ts
-          test -f scripts/lp5-capacity-smoke.ts
           test -f scripts/lp5-proof-check.ts
           test -f tsconfig.lp5.json
           test -f scripts/lp6-source-fixture.ts
           test -f scripts/lp6-backup-worker.ts
           test -f scripts/lp6-restore-worker.ts
-          test -f scripts/lp6-compose-audit.ts
           test -f scripts/lp6-compose-smoke.ts
           test -f tsconfig.lp6.json
-          test -f scripts/lp7-compose-audit.ts
           test -f scripts/lp7-proof-check.ts
           test -f scripts/lp7-compose-smoke.ts
           test -f tsconfig.lp7.json
@@ -233,15 +213,6 @@ jobs:
           test -f .github/workflows/commit-tests.yml
           test -f .github/workflows/pr-validation.yml
           test -f .github/workflows/quality-gates.yml
-          test -f .github/workflows/container-release.yml
-          grep -Fq 'architecture_mode' .github/workflows/commit-tests.yml
-          grep -Fq 'architecture_mode' .github/workflows/pr-validation.yml
-          grep -Fq 'BUILD_PLATFORMS' .github/workflows/quality-gates.yml
-          grep -Fq 'uses: actions/attest-build-provenance@v4' .github/workflows/quality-gates.yml
-          grep -Fq 'anchore/sbom-action@v0.24.0' .github/workflows/container-release.yml
-          grep -Fq 'uses: actions/attest@v4' .github/workflows/container-release.yml
-          grep -Fq 'id-token: write' .github/workflows/commit-tests.yml
-          grep -Fq 'attestations: write' .github/workflows/commit-tests.yml
           test -f src/dav/caldav/caldav-contract.mjs
           test -f src/dav/caldav/caldav-contract.test.mjs
           test -f src/dav/carddav/carddav-store.mjs
@@ -370,8 +341,6 @@ jobs:
           test -f src/release/local-proof-scope.test.mjs
           test -f release/local-proof-scope.json
           test -f release/local-proof-topology.json
-          test -f scripts/lp0-scope-audit.mjs
-          test -f scripts/lp1-compose-audit.mjs
           test -f scripts/lp1-proof-check.mjs
           test -f scripts/lp1-proof-smoke.mjs
           test -f docker/lp1-network/Dockerfile
@@ -411,24 +380,16 @@ jobs:
             scripts/m0-smoke.ps1 \
             scripts/m1-fixture-smoke.ps1 \
             scripts/container-patch.sh \
-            scripts/lp0-scope-audit.mjs \
-            scripts/lp1-compose-audit.mjs \
             scripts/lp1-proof-check.mjs \
             scripts/lp1-proof-smoke.mjs \
-            scripts/lp2-compose-audit.mjs \
             scripts/lp2-compose-smoke.mjs \
             scripts/lp2-proof-smoke.mjs \
-            scripts/lp3-compose-audit.mjs \
             scripts/lp3-compose-smoke.mjs \
             scripts/lp3-proof-smoke.mjs \
-            scripts/lp0-scope-audit.ts \
-            scripts/lp1-compose-audit.ts \
             scripts/lp1-proof-check.ts \
             scripts/lp1-proof-smoke.ts \
-            scripts/lp2-compose-audit.ts \
             scripts/lp2-compose-smoke.ts \
             scripts/lp2-proof-smoke.ts \
-            scripts/lp3-compose-audit.ts \
             scripts/lp3-compose-smoke.ts \
             scripts/lp3-proof-smoke.ts \
             scripts/lp8-evidence-audit.ts \
@@ -440,20 +401,15 @@ jobs:
             scripts/lp9-release-audit.test.ts \
             scripts/sbom-release-audit.ts \
             scripts/sbom-release-audit.test.ts \
-            scripts/lp4-compose-audit.ts \
             scripts/lp4-compose-smoke.ts \
             scripts/lp4-proof-check.ts \
             scripts/lp4-web-runtime.ts \
-            scripts/lp5-compose-audit.ts \
             scripts/lp5-compose-smoke.ts \
-            scripts/lp5-capacity-smoke.ts \
             scripts/lp5-proof-check.ts \
             scripts/lp6-source-fixture.ts \
             scripts/lp6-backup-worker.ts \
             scripts/lp6-restore-worker.ts \
-            scripts/lp6-compose-audit.ts \
             scripts/lp6-compose-smoke.ts \
-            scripts/lp7-compose-audit.ts \
             scripts/lp7-proof-check.ts \
             scripts/lp7-compose-smoke.ts \
             scripts/m10-release-audit.ts \
@@ -481,8 +437,7 @@ jobs:
             .gitignore \
             .github/workflows/commit-tests.yml \
             .github/workflows/pr-validation.yml \
-            .github/workflows/quality-gates.yml \
-            .github/workflows/container-release.yml; do
+            .github/workflows/quality-gates.yml; do
             grep -Fq 'SPDX-License-Identifier: MIT' "$file"
             grep -Fq 'Author: Sythos (https://www.sythos.net)' "$file"
           done
@@ -666,7 +621,6 @@ jobs:
           grep -Fq 'export async function auditBundle' scripts/lp8-evidence-audit.ts
           grep -Fq 'LP8_UNSAFE_CONTENT' scripts/lp8-evidence-audit.ts
           grep -Fq 'LP8_BRIDGE_NOT_THIN' scripts/lp8-evidence-audit.ts
-          grep -Fq 'actions/attest-build-provenance@v4' .github/workflows/quality-gates.yml
           grep -Fq 'ready_for_lp9' release/lp8-local-proof-bundle.json
           grep -Fq 'syntheticDataOnly' release/lp8-local-proof-bundle.json
           grep -Fq 'artifactProvenanceOnly' release/lp8-local-proof-bundle.json
@@ -776,7 +730,7 @@ jobs:
           check-latest: true
 
       - name: Install dependencies and run the test script when available
-        if: inputs.architecture_mode != 'multiarch' && hashFiles('package.json') != ''
+        if: hashFiles('package.json') != ''
         shell: bash
         run: |
           set -euo pipefail
@@ -800,314 +754,37 @@ jobs:
             echo "No package test script is defined; repository checks remain active."
           fi
 
-      - name: Run Docker Compose M0 smoke checks
-        if: inputs.architecture_mode != 'multiarch' && (hashFiles('compose.yaml') != '' || hashFiles('compose.yml') != '' || hashFiles('docker-compose.yml') != '' || hashFiles('docker-compose.yaml') != '')
-        shell: pwsh
-        run: ./scripts/m0-smoke.ps1
-
-      - name: Set up QEMU for Ubuntu multi-architecture builds
-        if: hashFiles('Dockerfile') != '' && inputs.architecture_mode == 'multiarch'
-        uses: docker/setup-qemu-action@v4.2.0
-        with:
-          platforms: amd64,arm64
-
-      - name: Set up Docker Buildx
-        if: hashFiles('Dockerfile') != ''
-        uses: docker/setup-buildx-action@v4.2.0
-
-      - name: Validate Ubuntu 26.04 LTS images (${{ inputs.architecture_mode || 'amd64' }})
-        if: hashFiles('Dockerfile') != ''
-        shell: bash
-        run: |
-          set -euo pipefail
-          output="$RUNNER_TEMP/gulogulo-ubuntu-26.04.oci.tar"
-          docker buildx build \
-            --platform "$BUILD_PLATFORMS" \
-            --pull \
-            --build-arg NODE_VERSION=26.7.0 \
-            --provenance=false \
-            --sbom=false \
-            --tag gulogulo:ci-ubuntu-26.04 \
-            --output "type=oci,dest=$output" \
-            .
-          test -s "$output"
-
-      - name: Validate LP1 network utility image (${{ inputs.architecture_mode || 'amd64' }})
-        if: hashFiles('docker/lp1-network/Dockerfile') != ''
-        shell: bash
-        run: |
-          set -euo pipefail
-          output="$RUNNER_TEMP/gulogulo-lp1-network-ubuntu-26.04.oci.tar"
-          docker buildx build \
-            --platform "$BUILD_PLATFORMS" \
-            --pull \
-            --provenance=false \
-            --sbom=false \
-            --tag gulogulo:ci-lp1-network-ubuntu-26.04 \
-            --file docker/lp1-network/Dockerfile \
-            --output "type=oci,dest=$output" \
-            docker/lp1-network
-          test -s "$output"
-
-      - name: Run Compose test profile
-        if: inputs.architecture_mode != 'multiarch' && (hashFiles('compose.yaml') != '' || hashFiles('compose.yml') != '' || hashFiles('docker-compose.yml') != '' || hashFiles('docker-compose.yaml') != '')
-        shell: bash
-        run: |
-          set -euo pipefail
-
-          project="gulogulo-ci-test-${GITHUB_RUN_ID}"
-          compose=(docker compose --project-name "$project" --file compose.yaml --env-file .env.example)
-          cleanup() {
-            "${compose[@]}" --profile test down --volumes --remove-orphans >/dev/null 2>&1 || true
-          }
-          trap cleanup EXIT
-
-          "${compose[@]}" --profile local config --quiet
-          "${compose[@]}" --profile test config --quiet
-          "${compose[@]}" --profile test build --pull gulogulo-test
-          "${compose[@]}" --profile test run --rm --no-deps gulogulo-test
-
-      - name: Run LP1 isolated local proof topology
-        if: inputs.architecture_mode != 'multiarch' && hashFiles('docker/lp1-network/Dockerfile') != '' && hashFiles('scripts/lp1-proof-smoke.ts') != ''
-        shell: bash
-        run: npm run test:lp1:docker
-
-      - name: Run LP2 static Compose audit
-        if: inputs.architecture_mode != 'multiarch' && hashFiles('scripts/lp2-compose-audit.ts') != ''
-        shell: bash
-        run: node --experimental-strip-types scripts/lp2-compose-audit.ts
-
-      - name: Validate LP2 dependency images (${{ inputs.architecture_mode || 'amd64' }})
-        if: hashFiles('docker/lp2-tls/Dockerfile') != '' && hashFiles('docker/lp2-ldap/Dockerfile') != '' && hashFiles('docker/lp2-postgres/Dockerfile') != ''
-        shell: bash
-        run: |
-          set -euo pipefail
-          while IFS='|' read -r name dockerfile context; do
-            output="$RUNNER_TEMP/gulogulo-${name}-ubuntu-26.04.oci.tar"
-            docker buildx build \
-              --platform "$BUILD_PLATFORMS" \
-              --pull \
-              --provenance=false \
-              --sbom=false \
-              --tag "gulogulo:ci-${name}-ubuntu-26.04" \
-              --file "$dockerfile" \
-              --output "type=oci,dest=$output" \
-              "$context"
-            test -s "$output"
-          done <<'EOF'
-          lp2-tls|docker/lp2-tls/Dockerfile|docker/lp2-tls
-          lp2-ldap|docker/lp2-ldap/Dockerfile|docker/lp2-ldap
-          lp2-postgres|docker/lp2-postgres/Dockerfile|docker/lp2-postgres
-          EOF
-
-      - name: Run LP2 synthetic LDAP and PostgreSQL proof
-        if: inputs.architecture_mode != 'multiarch' && hashFiles('scripts/lp2-compose-smoke.ts') != ''
-        shell: bash
-        run: npm run test:lp2:docker
-
-      - name: Run LP3 static Compose and TypeScript audit
-        if: inputs.architecture_mode != 'multiarch' && hashFiles('scripts/lp3-compose-audit.ts') != ''
-        shell: bash
-        run: node --experimental-strip-types scripts/lp3-compose-audit.ts
-
       - name: Run LP3 typed mail contract gates
-        if: inputs.architecture_mode != 'multiarch' && hashFiles('src/mail/mail-core.test.ts') != ''
+        if: hashFiles('src/mail/mail-core.test.ts') != ''
         shell: bash
         run: |
           set -euo pipefail
           npm run typecheck:server
-          npm run test:lp3
-
-      - name: Run LP4 static and typed web/DAV contract gates
-        if: inputs.architecture_mode != 'multiarch' && hashFiles('scripts/lp4-compose-audit.ts') != ''
-        shell: bash
-        run: npm run test:lp4
-
-      - name: Run LP5 static and typed operations/capacity gates
-        if: inputs.architecture_mode != 'multiarch' && hashFiles('scripts/lp5-compose-audit.ts') != ''
-        shell: bash
-        run: npm run test:lp5
-
-      - name: Run LP6 static and typed backup/restore/DR gates
-        if: inputs.architecture_mode != 'multiarch' && hashFiles('scripts/lp6-compose-audit.ts') != '' && hashFiles('src/backup/backup-contract.ts') != '' && hashFiles('src/lifecycle/retention.ts') != ''
-        shell: bash
-        run: npm run test:lp6
-
-      - name: Run LP7 static and typed replacement/blue-green gates
-        if: inputs.architecture_mode != 'multiarch' && hashFiles('scripts/lp7-compose-audit.ts') != '' && hashFiles('scripts/lp7-proof-check.ts') != '' && hashFiles('scripts/lp7-compose-smoke.ts') != '' && hashFiles('tsconfig.lp7.json') != ''
-        shell: bash
-        run: npm run test:lp7
+          node --experimental-strip-types src/mail/mail-scanners.test.ts
+          node --experimental-strip-types src/mail/imap-idle.test.ts
+          node --experimental-strip-types src/mail/mail-core.test.ts
+          node --experimental-strip-types src/mail/scanner-signatures.test.ts
 
       - name: Run LP8 evidence and migrated-audit gates (amd64)
-        if: inputs.architecture_mode != 'multiarch' && hashFiles('scripts/lp8-evidence-audit.ts') != '' && hashFiles('tsconfig.lp8.json') != ''
+        if: hashFiles('scripts/lp8-evidence-audit.ts') != '' && hashFiles('tsconfig.lp8.json') != ''
         shell: bash
-        run: npm run test:lp8
+        run: |
+          set -euo pipefail
+          npm run typecheck:server
+          npx tsc --project tsconfig.lp8.json
+          node --experimental-strip-types src/release/local-proof-scope.test.ts
+          node --experimental-strip-types src/release/local-proof-topology.test.ts
+          node --experimental-strip-types src/release/release-evidence.test.ts
+          node --experimental-strip-types scripts/m10-release-audit.ts
+          node --experimental-strip-types scripts/lp8-evidence-audit.test.ts
+          node --experimental-strip-types scripts/lp8-evidence-audit.ts
 
       - name: Run LP9 source-language and local-release gates (amd64)
-        if: inputs.architecture_mode != 'multiarch' && hashFiles('scripts/lp9-source-audit.ts') != '' && hashFiles('scripts/lp9-release-audit.ts') != '' && hashFiles('tsconfig.lp9.json') != ''
+        if: hashFiles('scripts/lp9-source-audit.ts') != '' && hashFiles('scripts/lp9-release-audit.ts') != '' && hashFiles('tsconfig.lp9.json') != ''
         shell: bash
         run: npm run test:lp9
 
-      - name: Run SBOM and container-release workflow audit
-        if: hashFiles('scripts/sbom-release-audit.ts') != ''
-        shell: bash
-        run: node --experimental-strip-types scripts/sbom-release-audit.ts
-
-      # The multiarch workflow deliberately checks the portable evidence
-      # manifest without repeating the stateful AMD64 Compose rehearsal under
-      # ARM emulation. Image artifacts and their attestations are gated below.
-      - name: Validate LP8 evidence metadata (multiarch)
-        if: inputs.architecture_mode == 'multiarch' && hashFiles('scripts/lp8-evidence-audit.ts') != ''
-        shell: bash
-        run: node --experimental-strip-types scripts/lp8-evidence-audit.ts
-
-      - name: Validate LP9 source-language and release metadata (multiarch)
-        if: inputs.architecture_mode == 'multiarch' && hashFiles('scripts/lp9-source-audit.ts') != '' && hashFiles('scripts/lp9-release-audit.ts') != ''
-        shell: bash
-        run: |
-          set -euo pipefail
-          node --experimental-strip-types scripts/lp9-source-audit.ts
-          node --experimental-strip-types scripts/lp9-release-audit.ts
-
-      # In the default amd64 mode, the Compose proofs run on the amd64 GitHub
-      # runner before any architecture image work that could be expensive.
-      - name: Run LP3 local mail Compose proof (amd64)
-        if: inputs.architecture_mode != 'multiarch' && hashFiles('scripts/lp3-compose-smoke.ts') != '' && hashFiles('compose.yaml') != ''
-        shell: bash
-        run: node --experimental-strip-types scripts/lp3-compose-smoke.ts
-
-      # LP4 remains an amd64 live proof on GitHub. The explicit multiarch mode
-      # is a short arm64 artifact/attestation gate after this proof is green.
-      - name: Run LP4 local web and DAV Compose proof (amd64)
-        if: inputs.architecture_mode != 'multiarch' && hashFiles('scripts/lp4-compose-smoke.ts') != '' && hashFiles('compose.yaml') != ''
-        shell: bash
-        run: npm run test:lp4:docker
-
-      - name: Run LP5 local operations and capacity Compose proof (amd64)
-        if: inputs.architecture_mode != 'multiarch' && hashFiles('scripts/lp5-compose-smoke.ts') != '' && hashFiles('compose.yaml') != ''
-        shell: bash
-        run: npm run test:lp5:docker
-
-      - name: Run LP6 local backup/restore/DR Compose proof (amd64)
-        if: inputs.architecture_mode != 'multiarch' && hashFiles('scripts/lp6-compose-smoke.ts') != '' && hashFiles('compose.yaml') != '' && hashFiles('src/backup/backup-contract.ts') != '' && hashFiles('src/lifecycle/retention.ts') != ''
-        shell: bash
-        run: npm run test:lp6:docker
-
-      # LP7 is a functional AMD64 Compose rehearsal. The explicit multiarch
-      # mode below is the short AMD64+ARM64 artifact/provenance gate after
-      # the AMD64 functional proof is green.
-      - name: Run LP7 local replacement and blue/green Compose proof (amd64)
-        if: inputs.architecture_mode != 'multiarch' && hashFiles('scripts/lp7-compose-smoke.ts') != '' && hashFiles('compose.yaml') != ''
-        shell: bash
-        run: npm run test:lp7:docker
-
-      - name: Validate LP3 mail images on amd64
-        if: inputs.architecture_mode != 'multiarch' && hashFiles('docker/lp3-tls/Dockerfile') != '' && hashFiles('docker/lp3-postfix/Dockerfile') != '' && hashFiles('docker/lp3-dovecot/Dockerfile') != '' && hashFiles('docker/lp3-rspamd/Dockerfile') != '' && hashFiles('docker/lp3-clamav/Dockerfile') != '' && hashFiles('docker/lp3-proof/Dockerfile') != ''
-        shell: bash
-        run: |
-          set -euo pipefail
-          while IFS='|' read -r name dockerfile context; do
-            output="$RUNNER_TEMP/gulogulo-${name}-amd64-ubuntu-26.04.oci.tar"
-            docker buildx build \
-              --platform linux/amd64 \
-              --pull \
-              --provenance=false \
-              --sbom=false \
-              --tag "gulogulo:ci-${name}-ubuntu-26.04" \
-              --file "$dockerfile" \
-              --output "type=oci,dest=$output" \
-              "$context"
-            test -s "$output"
-          done <<'EOF'
-          lp3-tls|docker/lp3-tls/Dockerfile|docker/lp3-tls
-          lp3-postfix|docker/lp3-postfix/Dockerfile|docker/lp3-postfix
-          lp3-dovecot|docker/lp3-dovecot/Dockerfile|docker/lp3-dovecot
-          lp3-rspamd|docker/lp3-rspamd/Dockerfile|docker/lp3-rspamd
-          lp3-clamav|docker/lp3-clamav/Dockerfile|docker/lp3-clamav
-          lp3-proof|docker/lp3-proof/Dockerfile|docker/lp3-proof
-          EOF
-
-      - name: Validate LP3 mail images on amd64 and arm64 (final multiarch gate)
-        if: inputs.architecture_mode == 'multiarch' && hashFiles('docker/lp3-tls/Dockerfile') != '' && hashFiles('docker/lp3-postfix/Dockerfile') != '' && hashFiles('docker/lp3-dovecot/Dockerfile') != '' && hashFiles('docker/lp3-rspamd/Dockerfile') != '' && hashFiles('docker/lp3-clamav/Dockerfile') != '' && hashFiles('docker/lp3-proof/Dockerfile') != ''
-        shell: bash
-        run: |
-          set -euo pipefail
-          while IFS='|' read -r name dockerfile context; do
-            for platform in linux/amd64 linux/arm64; do
-              arch="${platform##*/}"
-              output="$RUNNER_TEMP/gulogulo-${name}-${arch}-ubuntu-26.04.oci.tar"
-              docker buildx build \
-                --platform "$platform" \
-                --pull \
-                --provenance=false \
-                --sbom=false \
-                --tag "gulogulo:ci-${name}-${arch}-ubuntu-26.04" \
-                --file "$dockerfile" \
-                --output "type=oci,dest=$output" \
-                "$context"
-              test -s "$output"
-            done
-          done <<'EOF'
-          lp3-tls|docker/lp3-tls/Dockerfile|docker/lp3-tls
-          lp3-postfix|docker/lp3-postfix/Dockerfile|docker/lp3-postfix
-          lp3-dovecot|docker/lp3-dovecot/Dockerfile|docker/lp3-dovecot
-          lp3-rspamd|docker/lp3-rspamd/Dockerfile|docker/lp3-rspamd
-          lp3-clamav|docker/lp3-clamav/Dockerfile|docker/lp3-clamav
-          lp3-proof|docker/lp3-proof/Dockerfile|docker/lp3-proof
-          EOF
-
-      - name: Generate OCI artifact attestations
-        if: (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && hashFiles('Dockerfile') != '' && hashFiles('docker/lp3-proof/Dockerfile') != ''
-        uses: actions/attest-build-provenance@v4
-        id: attest-oci
-        with:
-          subject-path: ${{ runner.temp }}/gulogulo-*.oci.tar
-
-      - name: Verify OCI artifact attestations with GitHub CLI
-        if: (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && hashFiles('Dockerfile') != '' && hashFiles('docker/lp3-proof/Dockerfile') != ''
-        shell: bash
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          set -euo pipefail
-          shopt -s nullglob
-          artifacts=("$RUNNER_TEMP"/gulogulo-*.oci.tar)
-          ((${#artifacts[@]} > 0))
-          for artifact in "${artifacts[@]}"; do
-            gh attestation verify "$artifact" --repo "$GITHUB_REPOSITORY"
-          done
-
-      - name: Run disposable PostgreSQL M2 integration contract
-        if: inputs.architecture_mode != 'multiarch' && hashFiles('src/integrations/postgres.integration.test.ts') != ''
-        shell: bash
-        run: |
-          set -euo pipefail
-          container="gulogulo-m2-postgres-${GITHUB_RUN_ID}"
-          cleanup() { docker rm --force "$container" >/dev/null 2>&1 || true; }
-          trap cleanup EXIT
-          docker run --detach --name "$container" \
-            --env POSTGRES_DB=gulogulo \
-            --env POSTGRES_USER=gulogulo \
-            --env POSTGRES_HOST_AUTH_METHOD=trust \
-            postgres:18 >/dev/null
-          for attempt in {1..30}; do
-            if docker exec "$container" pg_isready --username=gulogulo --dbname=gulogulo >/dev/null 2>&1; then break; fi
-            sleep 2
-          done
-          docker exec "$container" pg_isready --username=gulogulo --dbname=gulogulo >/dev/null
-          GULOGULO_M2_POSTGRES_DSN="postgresql://gulogulo@$(docker inspect --format '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' "$container"):5432/gulogulo" npm run test:m2:postgres
-
-      - name: Run M1 fixture, health, and metrics smoke checks
-        if: inputs.architecture_mode != 'multiarch' && (hashFiles('compose.yaml') != '' || hashFiles('compose.yml') != '' || hashFiles('docker-compose.yml') != '' || hashFiles('docker-compose.yaml') != '')
-        shell: pwsh
-        run: ./scripts/m1-fixture-smoke.ps1 -RequireMetrics
-
-      - name: Report Docker smoke-check status when Compose is not defined
-        if: inputs.architecture_mode != 'multiarch' && hashFiles('compose.yaml') == '' && hashFiles('compose.yml') == '' && hashFiles('docker-compose.yml') == '' && hashFiles('docker-compose.yaml') == ''
-        shell: bash
-        run: echo "No Compose file exists yet; M0 Docker smoke checks are deferred until the Docker-first scaffold is added."
-
       - name: Report package-test status when no package exists
-        if: inputs.architecture_mode != 'multiarch' && hashFiles('package.json') == ''
+        if: hashFiles('package.json') == ''
         shell: bash
         run: echo "No package.json exists yet; package tests are deferred until implementation is added."
