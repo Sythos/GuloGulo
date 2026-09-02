@@ -51,14 +51,30 @@ export interface PostgresSettings {
   retryAttempts: number;
 }
 
+/**
+ * The subset of the loaded configuration consumed by the cPanel identity
+ * adapter (`src/platform/cpanel/`): where to reach the local cPanel UAPI
+ * endpoint and which account/token identify Gulo Gulo to it. Additive to the
+ * existing `IntegrationConfig` contract — no existing field changes shape.
+ */
+export interface CpanelApiSettings {
+  enabled: boolean;
+  baseUrl: string;
+  username: string;
+  apiTokenSecretRef: string | null;
+  timeoutMs: number;
+}
+
 /** A deliberately narrow configuration envelope so adapters do not depend on runtime internals. */
 export interface IntegrationConfig {
   readonly contract?: {
     readonly ldap?: Partial<LdapSettings>;
     readonly postgres?: Partial<PostgresSettings>;
+    readonly cpanel?: Partial<CpanelApiSettings>;
   };
   readonly ldap?: Partial<LdapSettings>;
   readonly postgres?: Partial<PostgresSettings>;
+  readonly cpanel?: Partial<CpanelApiSettings>;
 }
 
 /** A secret resolver never receives or exposes a plaintext secret reference in logs. */
