@@ -14,13 +14,16 @@ Author: Sythos (https://www.sythos.net)
 [![PR validation](https://github.com/Sythos/GuloGulo/actions/workflows/pr-validation.yml/badge.svg)](https://github.com/Sythos/GuloGulo/actions/workflows/pr-validation.yml)
 [![HTML5](https://img.shields.io/badge/HTML5-E34F26?logo=html5&logoColor=white)](https://developer.mozilla.org/en-US/docs/Web/HTML)
 [![TypeScript](https://img.shields.io/badge/TypeScript-3178C6?logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
-[![Docker](https://img.shields.io/badge/Docker-2496ED?logo=docker&logoColor=white)](https://www.docker.com/)
+[![Node.js](https://img.shields.io/badge/Node.js-339933?logo=node.js&logoColor=white)](https://nodejs.org/)
+[![Package standalone archive](https://github.com/Sythos/GuloGulo/actions/workflows/package-standalone.yml/badge.svg)](https://github.com/Sythos/GuloGulo/actions/workflows/package-standalone.yml)
 
 <p align="center">
   <img src="assets/gulo-gulo-calendar-mail.png" alt="Wolverine tearing through a calendar and paper correspondence" width="720">
 </p>
 
-Gulo Gulo is an OCI-native, mail-first, tenant-isolated groupware platform.
+Gulo Gulo is a mail-first, tenant-isolated groupware platform, distributed as
+cPanel, Plesk, and standalone packages built from the same TypeScript core
+(see [ADR-002](../ADR-002-gulogulo-packaging-and-distribution-targets.md)).
 The guiding animal is the wolverine (*Gulo gulo*). Human-facing text uses
 **Gulo Gulo**; file names, paths, package names, and other machine-facing
 identifiers use **gulogulo** without spaces.
