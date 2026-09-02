@@ -1,0 +1,130 @@
+# SPDX-License-Identifier: MIT
+# SPDX-FileCopyrightText: 2026 Sythos (https://www.sythos.net)
+# Author: Sythos (https://www.sythos.net)
+
+name: Package standalone archive
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: package-standalone-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-and-install:
+    name: Build the standalone archive and install it end to end
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: latest
+          check-latest: true
+
+      - name: Install dependencies
+        shell: bash
+        run: npm ci --no-audit --no-fund
+
+      - name: Build web and server bundles
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm run build:web
+          npm run build:server
+
+      - name: Build the standalone package
+        shell: bash
+        env:
+          GULOGULO_SKIP_BUILD: "1"
+        run: node --experimental-strip-types packaging/standalone/build-standalone-package.ts
+
+      - name: Extract the tarball into a clean install directory
+        shell: bash
+        run: |
+          set -euo pipefail
+          TARBALL="$(ls packaging/dist/gulogulo-*-standalone.tar.gz)"
+          INSTALL_DIR="$RUNNER_TEMP/gulogulo-install"
+          mkdir -p "$INSTALL_DIR"
+          tar -xzf "$TARBALL" -C "$INSTALL_DIR" --strip-components=1
+          echo "INSTALL_DIR=$INSTALL_DIR" >> "$GITHUB_ENV"
+
+          test -f "$INSTALL_DIR/dist/server/src/runtime/index.js"
+          test -f "$INSTALL_DIR/web/index.html"
+          test -f "$INSTALL_DIR/web/dist/app.js"
+          test -f "$INSTALL_DIR/assets/gulo-gulo-calendar-mail.png"
+          test -f "$INSTALL_DIR/src/core/db/migrations/0001_m2_foundation.sql"
+          test -f "$INSTALL_DIR/.env.example"
+          test -f "$INSTALL_DIR/VERSION"
+          test -f "$INSTALL_DIR/install.sh"
+          test -f "$INSTALL_DIR/upgrade.sh"
+          test -f "$INSTALL_DIR/uninstall.sh"
+          test -f "$INSTALL_DIR/run-migrations.mjs"
+          test -f "$INSTALL_DIR/gulogulo.service.example"
+
+      - name: Run the installer non-interactively
+        shell: bash
+        env:
+          GULOGULO_NON_INTERACTIVE: "1"
+        run: |
+          set -euo pipefail
+          chmod +x "$INSTALL_DIR"/install.sh "$INSTALL_DIR"/upgrade.sh "$INSTALL_DIR"/uninstall.sh "$INSTALL_DIR"/run-migrations.mjs
+          "$INSTALL_DIR/install.sh" --non-interactive
+
+      - name: Start the installed service and verify readiness
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "$INSTALL_DIR"
+          node --env-file=.env dist/server/src/runtime/index.js > server.log 2>&1 &
+          echo "SERVER_PID=$!" >> "$GITHUB_ENV"
+
+          READY=0
+          for _ in $(seq 1 30); do
+            if curl -fsS http://127.0.0.1:8080/health/ready >/dev/null 2>&1; then
+              READY=1
+              break
+            fi
+            sleep 1
+          done
+
+          if [ "$READY" -ne 1 ]; then
+            echo "Server did not become ready in time." >&2
+            cat server.log >&2 || true
+            exit 1
+          fi
+
+          echo "Server is ready; checking the web shell responds too."
+          curl -fsS http://127.0.0.1:8080/ >/dev/null
+
+      - name: Stop the installed service
+        if: always()
+        shell: bash
+        run: |
+          if [ -n "${SERVER_PID:-}" ]; then
+            kill "$SERVER_PID" 2>/dev/null || true
+            wait "$SERVER_PID" 2>/dev/null || true
+          fi
+
+      - name: Show server log on failure
+        if: failure()
+        shell: bash
+        run: cat "$INSTALL_DIR/server.log" 2>/dev/null || true
+
+      - name: Upload the standalone package artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: gulogulo-standalone-package
+          path: packaging/dist/gulogulo-*-standalone.tar.gz
+          if-no-files-found: error
