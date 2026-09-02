@@ -19,13 +19,13 @@ is a production mailbox or identity store.
 The M6 modules live in two folders:
 
 ```text
-src/admin/
+src/core/admin/
 ├── rbac.ts            role and permission matrix
 ├── delegation.ts      one active colleague delegation per user
 ├── quota.ts           gross tenant quota ledger and reservations
 └── admin-tools.ts     queue and audit metadata tools
 
-src/auth/
+src/core/auth/
 ├── password-policy.ts
 ├── password-hashing.ts
 ├── totp.ts
@@ -40,7 +40,7 @@ tokens, private keys, or factor secrets in an audit or administration result.
 
 ## Roles and tenant boundaries
 
-`src/admin/rbac.ts` defines four roles:
+`src/core/admin/rbac.ts` defines four roles:
 
 | Role | Intended scope | Content access |
 | --- | --- | --- |
@@ -58,7 +58,7 @@ jobs, backup service, and realtime event broker; an API route must not treat a
 successful LDAP lookup as authorization.
 
 ```js
-import { authorize } from './src/admin/rbac.ts';
+import { authorize } from './src/core/admin/rbac.ts';
 
 authorize(
   { role: 'tenant_master', tenantId: 'example.test', actorId: 'master' },

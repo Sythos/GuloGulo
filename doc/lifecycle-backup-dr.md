@@ -16,14 +16,14 @@ connected.
 ## The M7 map
 
 ```text
-src/lifecycle/
+src/core/lifecycle/
 ├── retention.ts               28-day trash purge and restore-safe locks
 └── account-lifecycle.ts       deletion, recovery window, and purge states
 
-src/backup/
+src/core/backup/
 └── backup-contract.ts         user/provider scope, encrypted manifests, restore
 
-src/observability/
+src/core/observability/
 ├── log-policy.ts               bounded Docker/journald/sidecar rotation
 ├── structured-event.ts         redacted audit and operational envelopes
 └── alert-policy.ts             deterministic health and capacity alerts

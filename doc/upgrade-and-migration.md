@@ -10,7 +10,7 @@ Author: Sythos (https://www.sythos.net)
 
 This is the operator manual for replacing a Gulo Gulo container with a newer
 image and for preparing the Kubernetes zero-downtime path. M9 established the
-dependency-light, deterministic contract boundary in `src/upgrade/`; LP7 carries
+dependency-light, deterministic contract boundary in `src/core/upgrade/`; LP7 carries
 that contract into a bounded synthetic Docker replacement and Kubernetes
 blue/green rehearsal. Together they validate the provider-only operation model,
 the expand/backfill/switch/contract schema window, shared external state, queue
@@ -73,19 +73,18 @@ the original operation state instead of starting a second rollout.
 
 The implementation is split into three small modules:
 
-- `src/upgrade/compatibility.ts` owns version/digest validation, the
+- `src/core/upgrade/compatibility.ts` owns version/digest validation, the
   expand/backfill/switch/contract sequence, forward-compatible checkpoints,
   and the rollback-safe schema window;
-- `src/upgrade/rollout.ts` owns external-state references, queue hand-off,
+- `src/core/upgrade/rollout.ts` owns external-state references, queue hand-off,
   connection drain/reconnect behavior, Docker replacement plans, Kubernetes
   blue/green readiness, and the action allowlist;
-- `src/upgrade/control-plane.ts` owns provider/operator authorization,
+- `src/core/upgrade/control-plane.ts` owns provider/operator authorization,
   idempotency, the operation state machine, sanitized status, and audit events.
 
-The `.mjs` files in this directory are behavior-free compatibility bridges for
-legacy callers. The canonical public barrel is `src/upgrade/index.ts`; the
-legacy `src/upgrade/index.mjs` re-exports it. Run the focused contract suite
-with:
+The canonical public barrel is `src/core/upgrade/index.ts`. There are no
+`.mjs` compatibility bridges left in this directory; callers import the
+TypeScript module directly. Run the focused contract suite with:
 
 ```text
 npm run test:m9
@@ -123,7 +122,7 @@ The M9 contract tests cover:
 - Kubernetes readiness, zero `maxUnavailable`, PDB, and rollback readiness;
 - preflight, prepare, cutover, rollback, and observation/restore finalization.
 
-LP7 adds the strict TypeScript rehearsal in `src/upgrade/rehearsal.ts` and its
+LP7 adds the strict TypeScript rehearsal in `src/core/upgrade/rehearsal.ts` and its
 five direct tests. The rehearsal models Docker replacement and Kubernetes
 blue/green state transitions without invoking a host runtime: external
 PostgreSQL/LDAP references and named volumes remain shared, readiness gates the

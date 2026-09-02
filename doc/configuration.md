@@ -142,7 +142,7 @@ the Node test runner from spawning child workers:
 
 ```powershell
 npm run build:server
-node dist/server/src/foundation/config.test.js
+node dist/server/src/core/foundation/config.test.js
 ```
 
 For a normal package run, use `npm test`. The CI image executes the same script

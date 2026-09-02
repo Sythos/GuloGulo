@@ -29,7 +29,7 @@ explicit `Allow: GET, HEAD` header. Responses include request and correlation
 IDs, so an operator can join an HTTP response to the JSON log stream.
 
 The patch endpoint returns the typed, metadata-only DTO from
-`src/ops/patch/status.ts`. It never returns APT output, shell text, credentials,
+`src/core/ops/patch/status.ts`. It never returns APT output, shell text, credentials,
 or arbitrary error strings. Missing or malformed state is deliberately reported
 as `unknown`, and the route cannot start `apt-get` or mutate the patch volume.
 Runtime requests also pass through bounded channel rate limits; a rejected

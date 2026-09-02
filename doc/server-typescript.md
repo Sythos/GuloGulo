@@ -41,10 +41,10 @@ The image therefore does not need the TypeScript compiler at runtime.
 resolution, `strict: true`, declaration output, and relative import rewriting.
 The LP2 source areas currently covered by the server build are:
 
-- `src/runtime/` and `src/foundation/`;
+- `src/runtime/` and `src/core/foundation/`;
 - `src/integrations/` for tenant context, LDAP, PostgreSQL, and migrations;
-- `src/auth/` for password, TOTP, WebAuthn, and recovery contracts;
-- `src/admin/` for RBAC, delegation, quota, and metadata-only admin tools.
+- `src/core/auth/` for password, TOTP, WebAuthn, and recovery contracts;
+- `src/core/admin/` for RBAC, delegation, quota, and metadata-only admin tools.
 
 The compiled runtime tests execute from `dist/server`. The LP2 contract tests
 also run directly from TypeScript with Node 26's
@@ -59,18 +59,14 @@ use those paths directly. Their old `.mjs` names remain as behavior-free
 compatibility bridges for one transition window. The complete bridge list and
 the LP9 cleanup owner are recorded in the LP8 evidence bundle.
 
-## Temporary compatibility bridges
+## Compatibility bridges: removed
 
-Some mail and legacy runtime consumers are still JavaScript until their own
-recovery milestone. Small `.mjs` bridge files remain only where an older
-consumer still imports the moved module. A bridge contains no business logic:
-it re-exports the TypeScript implementation or the compiled JavaScript output.
-The LP2 bridge is `src/integrations/tenant-context.mjs`; the runtime bridges
-are in `src/runtime/`.
-
-When a later milestone migrates a remaining consumer, remove its bridge in the
-same change and update the affected test and documentation entry points. Do
-not add new product behavior to a bridge.
+Mail and legacy runtime consumers that previously imported moved modules
+through small `.mjs` re-export shims now import the TypeScript implementation
+directly. There are no compatibility bridge files left under `src/`: the
+server side of Gulo Gulo has a single canonical TypeScript build boundary, and
+`src/integrations/` and `src/runtime/` import directly from the moved
+`src/core/` modules.
 
 ## Runtime and dependency notes
 

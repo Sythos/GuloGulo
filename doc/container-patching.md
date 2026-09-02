@@ -35,7 +35,7 @@ allowed through that boundary:
 - the root-only `scripts/container-patch.sh` helper.
 
 Documentation, READMEs, tests, fixtures, release evidence, Compose files, CI
-metadata, synthetic Docker contexts, compatibility bridges, and local tooling
+metadata, synthetic Docker contexts, and local tooling
 are excluded. They remain available in the checkout for maintainers and for a
 future GitHub Pages site or project wiki, but they are not sent into the
 application image.
@@ -123,7 +123,7 @@ credentials, or arbitrary command text into that file.
 On an APT failure the helper atomically replaces the transient `checking` or
 `applying` state with `state: "failed"` and a short allowlisted reason such as
 `apt_update_failed` or `apt_apply_failed`. The application reads the file
-through the typed `src/ops/patch/status.ts` sanitizer, so absent, corrupt, or
+through the typed `src/core/ops/patch/status.ts` sanitizer, so absent, corrupt, or
 unrecognised state is exposed as a fail-closed `unknown` DTO.
 
 The LP5 Compose proof makes the ownership boundary visible: the disposable

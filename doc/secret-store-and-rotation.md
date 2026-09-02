@@ -7,7 +7,7 @@ Author: Sythos (https://www.sythos.net)
 -->
 
 Gulo Gulo resolves credential references through the provider-neutral contract
-in `src/secrets/`. The contract deliberately keeps secret delivery separate
+in `src/core/secrets/`. The contract deliberately keeps secret delivery separate
 from LDAP, PostgreSQL, and control-panel configuration: configuration contains
 references such as `ldap-bind` or `postgres-dsn`, while the selected store owns
 the corresponding values.
@@ -76,7 +76,7 @@ the resolver into clients:
 import {
   VersionedFileSecretStore,
   createSecretResolver,
-} from '../src/secrets/index.ts';
+} from '../src/core/secrets/index.ts';
 
 const secretStore = new VersionedFileSecretStore({
   rootDirectory: '/var/lib/gulogulo/secrets',

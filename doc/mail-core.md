@@ -17,16 +17,16 @@ M3 is the first mail-core implementation. It provides dependency-free,
 deterministic contracts for the services that will be wired to Postfix,
 Rspamd, ClamAV, Dovecot, LMTP, and Sieve:
 
-- `src/mail/mail-policy.ts` owns tenant-domain checks, explicit mailbox and
+- `src/core/mail/mail-policy.ts` owns tenant-domain checks, explicit mailbox and
   alias resolution, submission authorization, message limits, Sieve safety,
   and the per-user submission rate limit;
-- `src/mail/mail-scanners.ts` normalizes Rspamd and ClamAV results and turns a
+- `src/core/mail/mail-scanners.ts` normalizes Rspamd and ClamAV results and turns a
   missing or broken scanner into an explicit `unavailable` result;
-- `src/mail/mail-queue.ts` owns retry, defer, bounce, quarantine, and a
+- `src/core/mail/mail-queue.ts` owns retry, defer, bounce, quarantine, and a
   metadata-only operational view;
-- `src/mail/imap-idle.ts` supplies monotonic, reconnect-safe notification
+- `src/core/mail/imap-idle.ts` supplies monotonic, reconnect-safe notification
   identities for the Dovecot IMAP IDLE adapter;
-- `src/mail/mail-core.ts` composes those contracts into inbound delivery and
+- `src/core/mail/mail-core.ts` composes those contracts into inbound delivery and
   authenticated submission flows.
 
 The current implementation keeps the message itself behind an opaque
@@ -274,7 +274,7 @@ npm ci --ignore-scripts --no-audit --no-fund
 npm test
 ```
 
-`src/mail/mail-core.test.ts` covers the M3 acceptance cases:
+`src/core/mail/mail-core.test.ts` covers the M3 acceptance cases:
 
 - unknown recipients and catch-all rejection;
 - alias expansion;

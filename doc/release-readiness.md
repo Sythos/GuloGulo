@@ -43,8 +43,8 @@ external evidence.
 LP8 packages this boundary in
 [`release/lp8-local-proof-bundle.json`](../release/lp8-local-proof-bundle.json)
 and [`doc/lp8-evidence-operator.md`](lp8-evidence-operator.md). The bundle
-indexes the local proof manifests, fixtures, operator notes, CI provenance,
-and temporary TypeScript bridges. It remains safe to share because it contains
+indexes the local proof manifests, fixtures, operator notes, and CI
+provenance. It remains safe to share because it contains
 synthetic references and sanitized links only; live provider evidence and
 provider-specific Plesk/cPanel adapters remain outside this checkout. The
 repository now contains the manual field lane plus an automatic numeric-tag
@@ -100,7 +100,7 @@ The focused M10 checks can be run while iterating:
 npm run test:m10
 ```
 
-That command runs `src/release/release-evidence.test.ts` through Node's native
+That command runs `src/core/release/release-evidence.test.ts` through Node's native
 TypeScript stripping mode and then audits the portable example at
 `release/v1-release-evidence.template.json`. The audit
 prints only a sanitized decision summary. It never prints credentials, raw
@@ -108,8 +108,8 @@ deployment output, mailbox content, or local workstation paths.
 
 ## Evidence object
 
-The canonical validator lives in `src/release/release-evidence.ts`; the `.mjs`
-file is a thin compatibility bridge. Its public API is
+The canonical validator lives in `src/core/release/release-evidence.ts`; there
+is no `.mjs` compatibility bridge. Its public API is
 small on purpose:
 
 ```js
@@ -117,7 +117,7 @@ import {
   createReleaseEvidence,
   evaluateReleaseEvidence,
   REQUIRED_SECTION30_ITEMS,
-} from './src/release/release-evidence.ts';
+} from './src/core/release/release-evidence.ts';
 
 const evidence = createReleaseEvidence({
   evidenceVersion: '1.0',
