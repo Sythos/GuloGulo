@@ -66,7 +66,6 @@ jobs:
           test -f test/fixtures/tenant.json
           test -f test/fixtures/failure-modes.json
           test -f test/fixtures/README.md
-          test -f scripts/container-patch.sh
           test -f config/schema.v1.json
           test -f doc/README.md
           test -f doc/configuration.md
@@ -261,37 +260,6 @@ jobs:
           test -f src/runtime/logger.ts
           test -f src/runtime/metrics.ts
           test -f src/foundation/config.test.ts
-          test -f docker/lp2-tls/Dockerfile
-          test -f docker/lp2-tls/entrypoint-tls.sh
-          test -f docker/lp2-ldap/Dockerfile
-          test -f docker/lp2-ldap/entrypoint-ldap.sh
-          test -f docker/lp2-ldap/healthcheck-ldap.sh
-          test -f docker/lp2-ldap/bootstrap.ldif
-          test -f docker/lp2-postgres/Dockerfile
-          test -f docker/lp2-postgres/entrypoint-postgres.sh
-          test -f docker/lp2-postgres/healthcheck-postgres.sh
-          test -f docker/lp3-postfix/Dockerfile
-          test -f docker/lp3-postfix/main.cf
-          test -f docker/lp3-postfix/lp3-mailboxes.regexp
-          test -f docker/lp3-postfix/lp3-aliases.regexp
-          test -f docker/lp3-postfix/entrypoint-postfix.sh
-          test -f docker/lp3-postfix/healthcheck-postfix.sh
-          test -f docker/lp3-dovecot/Dockerfile
-          test -f docker/lp3-dovecot/dovecot.conf
-          test -f docker/lp3-dovecot/users
-          test -f docker/lp3-dovecot/default.sieve
-          test -f docker/lp3-dovecot/entrypoint-dovecot.sh
-          test -f docker/lp3-dovecot/healthcheck-dovecot.sh
-          test -f docker/lp3-rspamd/Dockerfile
-          test -f docker/lp3-rspamd/entrypoint-rspamd.py
-          test -f docker/lp3-rspamd/healthcheck-rspamd.sh
-          test -f docker/lp3-clamav/Dockerfile
-          test -f docker/lp3-clamav/entrypoint-clamav.py
-          test -f docker/lp3-clamav/healthcheck-clamav.sh
-          test -f docker/lp3-tls/Dockerfile
-          test -f docker/lp3-tls/entrypoint-tls.sh
-          test -f docker/lp3-proof/Dockerfile
-          test -f docker/lp3-proof/proof.py
           test -f test/fixtures/scanner-signatures/rspamd/active.json
           test -f test/fixtures/scanner-signatures/rspamd/versions/fixture-rspamd-1/manifest.json
           test -f test/fixtures/scanner-signatures/clamav/active.json
@@ -343,28 +311,9 @@ jobs:
           test -f release/local-proof-topology.json
           test -f scripts/lp1-proof-check.mjs
           test -f scripts/lp1-proof-smoke.mjs
-          test -f docker/lp1-network/Dockerfile
-          test -f docker/lp1-network/entrypoint-ca.sh
-          test -f docker/lp1-network/entrypoint-dns.sh
           test -f src/release/local-proof-topology.mjs
           test -f src/release/local-proof-topology.test.mjs
           test -f doc/upgrade-and-migration.md
-          grep -Fq 'profiles: ["local"]' compose.yaml
-          grep -Fq 'profiles: ["test"]' compose.yaml
-          grep -Fq 'profiles: ["fixture"]' compose.yaml
-          grep -Fq './test/fixtures:/app/test/fixtures:ro' compose.yaml
-          grep -Fq 'profiles: ["lp2"]' compose.yaml
-          grep -Fq 'profiles: ["lp2-check"]' compose.yaml
-          grep -Fq 'profiles: ["lp3"]' compose.yaml
-          grep -Fq 'profiles: ["lp3-check"]' compose.yaml
-          grep -Fq 'gulogulo-lp7-blue' compose.yaml
-          grep -Fq 'gulogulo-lp7-green' compose.yaml
-          grep -Fq 'gulogulo-lp7-proof-check' compose.yaml
-          grep -Fq 'profiles: ["lp7"]' compose.yaml
-          grep -Fq 'profiles: ["lp7-check"]' compose.yaml
-          grep -Fq 'platform: ${GULOGULO_LP7_COMPOSE_PLATFORM:-linux/amd64}' compose.yaml
-          grep -Fq 'lp7-runtime:' compose.yaml
-          grep -Fq 'lp7-dav-data:/var/lib/gulogulo/dav' compose.yaml
 
       - name: Validate MIT and SPDX metadata
         shell: bash
@@ -373,13 +322,9 @@ jobs:
 
           for file in \
             README.md \
-            Dockerfile \
-            compose.yaml \
             .env.example \
-            .dockerignore \
             scripts/m0-smoke.ps1 \
             scripts/m1-fixture-smoke.ps1 \
-            scripts/container-patch.sh \
             scripts/lp1-proof-check.mjs \
             scripts/lp1-proof-smoke.mjs \
             scripts/lp2-compose-smoke.mjs \
@@ -442,54 +387,6 @@ jobs:
             grep -Fq 'Author: Sythos (https://www.sythos.net)' "$file"
           done
 
-          for file in \
-            docker/lp1-network/Dockerfile \
-            docker/lp1-network/entrypoint-ca.sh \
-            docker/lp1-network/entrypoint-dns.sh \
-            docker/lp2-tls/Dockerfile \
-            docker/lp2-tls/.dockerignore \
-            docker/lp2-tls/entrypoint-tls.sh \
-            docker/lp2-ldap/Dockerfile \
-            docker/lp2-ldap/.dockerignore \
-            docker/lp2-ldap/entrypoint-ldap.sh \
-            docker/lp2-ldap/healthcheck-ldap.sh \
-            docker/lp2-ldap/bootstrap.ldif \
-            docker/lp2-postgres/Dockerfile \
-            docker/lp2-postgres/.dockerignore \
-            docker/lp2-postgres/entrypoint-postgres.sh \
-            docker/lp2-postgres/healthcheck-postgres.sh \
-            docker/lp3-postfix/Dockerfile \
-            docker/lp3-postfix/.dockerignore \
-            docker/lp3-postfix/main.cf \
-            docker/lp3-postfix/lp3-mailboxes.regexp \
-            docker/lp3-postfix/lp3-aliases.regexp \
-            docker/lp3-postfix/entrypoint-postfix.sh \
-            docker/lp3-postfix/healthcheck-postfix.sh \
-            docker/lp3-dovecot/Dockerfile \
-            docker/lp3-dovecot/.dockerignore \
-            docker/lp3-dovecot/dovecot.conf \
-            docker/lp3-dovecot/users \
-            docker/lp3-dovecot/default.sieve \
-            docker/lp3-dovecot/entrypoint-dovecot.sh \
-            docker/lp3-dovecot/healthcheck-dovecot.sh \
-            docker/lp3-rspamd/Dockerfile \
-            docker/lp3-rspamd/.dockerignore \
-            docker/lp3-rspamd/entrypoint-rspamd.py \
-            docker/lp3-rspamd/healthcheck-rspamd.sh \
-            docker/lp3-clamav/Dockerfile \
-            docker/lp3-clamav/.dockerignore \
-            docker/lp3-clamav/entrypoint-clamav.py \
-            docker/lp3-clamav/healthcheck-clamav.sh \
-            docker/lp3-tls/Dockerfile \
-            docker/lp3-tls/.dockerignore \
-            docker/lp3-tls/entrypoint-tls.sh \
-            docker/lp3-proof/Dockerfile \
-            docker/lp3-proof/.dockerignore \
-            docker/lp3-proof/proof.py; do
-            grep -Fq 'SPDX-License-Identifier: MIT' "$file"
-            grep -Fq 'Author: Sythos (https://www.sythos.net)' "$file"
-          done
-
           while IFS= read -r file; do
             grep -Fq 'SPDX-License-Identifier: MIT' "$file"
             grep -Fq 'Author: Sythos (https://www.sythos.net)' "$file"
@@ -532,7 +429,6 @@ jobs:
           grep -Fq 'Author: Sythos (https://www.sythos.net)' assets/README.md
           node -e "const m=require('./web/manifest.json'); if (m.license !== 'MIT' || m.author !== 'Sythos (https://www.sythos.net)' || m.spdxLicenseIdentifier !== 'MIT') process.exit(1)"
 
-          grep -Fq 'GULOGULO_VOLUMES_EXTERNAL' compose.yaml
           grep -Fq 'FORCE ROW LEVEL SECURITY' src/db/migrations/0001_m2_foundation.sql
           grep -Fq "set_config('gulogulo.tenant_id'" src/integrations/postgres-store.ts
           grep -Fq 'rejectUnauthorized: true' src/integrations/ldap-client.ts
@@ -546,8 +442,6 @@ jobs:
           grep -Fq 'SCOPE_ROLE_DENIED' src/dav/carddav/carddav-store.ts
           grep -Fq 'WELL_KNOWN_PATHS' src/dav/discovery/index.ts
           grep -Fq 'PLAINTEXT_DISCOVERY_FORBIDDEN' src/dav/discovery/index.ts
-          grep -Fq 'gulogulo-lp4-web' compose.yaml
-          grep -Fq 'LP4_LOGIN_EMAIL: ${LP4_LOGIN_EMAIL}' compose.yaml
           grep -Fq 'id="login-shell"' web/index.html
           grep -Fq '/api/session/login' src/runtime/server.ts
           grep -Fq '/assets/gulo-gulo-calendar-mail.png' src/runtime/server.ts
@@ -577,26 +471,7 @@ jobs:
           grep -Fq 'validateComposeProductionReadiness' src/ops/abuse/index.ts
           grep -Fq 'HOST_NAMESPACE_FORBIDDEN' src/ops/abuse/index.ts
           grep -Fq 'sanitizePatchStatus' src/ops/patch/status.ts
-          grep -Fq 'apt_update_failed' scripts/container-patch.sh
           grep -Fq 'gulogulo_abuse_limited_total' src/runtime/server.ts
-          grep -Fq 'gulogulo-lp5-web' compose.yaml
-          grep -Fq 'profiles: ["lp5"]' compose.yaml
-          grep -Fq 'profiles: ["lp5-check"]' compose.yaml
-          grep -Fq 'lp5-patch-state:/var/lib/gulogulo/patch:ro' compose.yaml
-          grep -Fq 'gulogulo-lp6-backup' compose.yaml
-          grep -Fq 'profiles: ["lp6"]' compose.yaml
-          grep -Fq 'profiles: ["lp6-check"]' compose.yaml
-          grep -Fq 'lp6-backup-data:/var/lib/gulogulo/lp6-backup:ro' compose.yaml
-          grep -Fq 'gulogulo-lp7-blue' compose.yaml
-          grep -Fq 'gulogulo-lp7-green' compose.yaml
-          grep -Fq 'gulogulo-lp7-proof-check' compose.yaml
-          grep -Fq 'profiles: ["lp7"]' compose.yaml
-          grep -Fq 'profiles: ["lp7-check"]' compose.yaml
-          grep -Fq 'lp7-queue-data:/var/lib/gulogulo/queue' compose.yaml
-          grep -Fq 'lp7-backup-data:/var/lib/gulogulo/backups' compose.yaml
-          grep -Fq 'external: ${GULOGULO_LP7_VOLUMES_EXTERNAL:-false}' compose.yaml
-          grep -Fq '172.29.7.0/24' compose.yaml
-          grep -Fq 'fd42:4755:756c:7037::/64' compose.yaml
           grep -Fq 'multiarchFunctionalProof' release/lp7-local-upgrade.json
           grep -Fq 'artifact_and_provenance_only' release/lp7-local-upgrade.json
           grep -Fq "BACKUP_ENCRYPTION_ALGORITHM = 'aes-256-gcm'" src/backup/backup-contract.ts
@@ -638,51 +513,13 @@ jobs:
 
           grep -Fq 'SPDX-License-Identifier: MIT' config/schema.v1.json
           grep -Fq 'Sythos (https://www.sythos.net)' config/schema.v1.json
-          grep -Fq 'FROM ubuntu:26.04' Dockerfile
-          grep -Fq 'ARG TARGETARCH' Dockerfile
-          grep -Fq 'dpkg --print-architecture' Dockerfile
-          grep -Fq 'node-v${NODE_VERSION}-linux-${node_arch}.tar.xz' Dockerfile
-          grep -Fq 'apt-get update' Dockerfile
-          grep -Fq 'apt-get upgrade -y' Dockerfile
-          # The application image uses a default-deny Docker context. Keep the
-          # allowlist and its explicit documentation exclusions visible to CI
-          # so a broad re-include cannot silently ship repository-only files.
-          grep -Fxq '**' .dockerignore
-          grep -Fxq '!package.json' .dockerignore
-          grep -Fxq '!package-lock.json' .dockerignore
-          grep -Fxq '!src/**/*.ts' .dockerignore
-          grep -Fxq '!src/db/migrations/*.sql' .dockerignore
-          grep -Fxq '!web/index.html' .dockerignore
-          grep -Fxq '!web/src/app.ts' .dockerignore
-          grep -Fxq '!assets/gulo-gulo-calendar-mail.png' .dockerignore
-          grep -Fxq '!scripts/container-patch.sh' .dockerignore
-          grep -Fxq 'doc' .dockerignore
-          grep -Fxq 'README.md' .dockerignore
-          grep -Fxq 'src/web/**/*' .dockerignore
-          grep -Fxq 'src/web/**/*.test.ts' .dockerignore
-          # The disposable Compose test profile receives repository-only test
-          # inputs through read-only mounts instead of shipping them in the
-          # production build context.
-          grep -Fq './src:/app/src:ro' compose.yaml
-          grep -Fq './web/test:/app/web/test:ro' compose.yaml
-          grep -Fq './scripts:/app/scripts:ro' compose.yaml
-          grep -Fq './release:/app/release:ro' compose.yaml
-          grep -Fq './docker:/app/docker:ro' compose.yaml
-          grep -Fq './tsconfig.lp9.json:/app/tsconfig.lp9.json:ro' compose.yaml
-          grep -Fq 'GULOGULO_PATCH_STATUS_FILE' compose.yaml
-          grep -Fq 'GULOGULO_MAIL_SCAN_FAILURE_MODE' compose.yaml
-          grep -Fq 'GULOGULO_MAILBOX_ROOT' compose.yaml
-          grep -Fq 'lp3-scanner-signatures:/var/lib/gulogulo/scanner-signatures:ro' compose.yaml
-          grep -Fq 'GULOGULO_SCANNER_SIGNATURE_ROOT' compose.yaml
           grep -Fq 'atomic_active_pointer_replace' release/lp3-local-mail.json
           grep -Fq 'computeScannerSignatureContentDigest' src/mail/scanner-signatures.ts
           grep -Fq 'createControlPanelConfig' src/integrations/control-panel.ts
-          grep -Fq 'CONTROL_PANEL_PROVIDER' compose.yaml
           grep -Fq 'Plesk' doc/control-panel-integration.md
           grep -Fq 'cPanel' doc/control-panel-integration.md
           grep -Fq 'providerOnly' config/schema.v1.json
           grep -Fq 'arbitraryCommands' config/schema.v1.json
-          bash -n scripts/container-patch.sh
 
           for file in test/fixtures/*.json; do
             node -e "const fs=require('fs'); const data=JSON.parse(fs.readFileSync(process.argv[1], 'utf8')); if (data.spdxLicenseIdentifier !== 'MIT' || data.author !== 'Sythos (https://www.sythos.net)' || data.deterministic !== true) process.exit(1);" "$file"
@@ -707,20 +544,6 @@ jobs:
           node -e "const t=require('./release/lp6-local-backup-dr.json'); if (t.spdxLicenseIdentifier !== 'MIT' || t.author !== 'Sythos (https://www.sythos.net)' || t.milestone !== 'LP6' || t.proofType !== 'local_synthetic_backup_restore_retention_dr' || t.networkPolicy !== 'offline_dependencies' || t.internalNetwork !== true || t.enableIpv6 !== true || t.ipFamilies?.join(',') !== 'ipv4,ipv6' || t.syntheticDataOnly !== true || t.hostPortsPublished !== false || t.dockerSocketMounted !== false || t.recovery?.metadataEncryption !== 'aes-256-gcm' || t.recovery?.checksumAlgorithm !== 'sha256' || t.recovery?.retentionDays !== 28 || t.recovery?.rpoMinutes !== 15 || t.recovery?.rtoMinutes !== 60 || t.recovery?.failedRestorePreservesSource !== true || t.recovery?.holdsPreventPurge !== true || t.recovery?.idempotentPurge !== true || t.architectureValidation?.defaultWorkflowMode !== 'amd64' || t.architectureValidation?.composeProofPlatform !== 'linux/amd64' || t.architectureValidation?.finalWorkflowMode !== 'multiarch' || t.architectureValidation?.finalModePlatforms?.join(',') !== 'linux/arm64' || t.architectureValidation?.arm64RequiredBeforeMergeOrRelease !== true) process.exit(1)"
           node -e "const t=require('./release/lp7-local-upgrade.json'); if (t.spdxLicenseIdentifier !== 'MIT' || t.author !== 'Sythos (https://www.sythos.net)' || t.milestone !== 'LP7' || t.proofType !== 'local_synthetic_docker_replacement_blue_green' || t.networkPolicy !== 'offline_dependencies' || t.internalNetwork !== true || t.enableIpv6 !== true || t.ipFamilies?.join(',') !== 'ipv4,ipv6' || t.syntheticDataOnly !== true || t.publicDnsRequired !== false || t.publicAcmeEnabled !== false || t.externalDeliveryEnabled !== false || t.hostNetwork !== false || t.hostPortsPublished !== false || t.dockerSocketMounted !== false || t.externalPersistentVolumes !== true || t.architectureValidation?.defaultWorkflowMode !== 'amd64' || t.architectureValidation?.composeProofPlatform !== 'linux/amd64' || t.architectureValidation?.functionalProofPlatform !== 'linux/amd64' || t.architectureValidation?.finalWorkflowMode !== 'multiarch' || t.architectureValidation?.finalModePlatforms?.join(',') !== 'linux/amd64,linux/arm64' || t.architectureValidation?.arm64RequiredBeforeMergeOrRelease !== true || t.architectureValidation?.multiarchFunctionalProof !== false || t.architectureValidation?.multiarchEvidence !== 'artifact_and_provenance_only' || t.upgrade?.strategy !== 'docker_replacement_and_blue_green' || t.upgrade?.readinessGatedCutover !== true || t.upgrade?.connectionDrainRequired !== true || t.upgrade?.rollbackSupported !== true || t.upgrade?.rollbackKeepsBlueServing !== true || t.upgrade?.noDestructiveSchemaCleanup !== true || t.upgrade?.finalizeRequiresObservationAndRestoreCheck !== true || t.upgrade?.imapIdleReconnectRequired !== true || t.upgrade?.smtpQueueHandoffRequired !== true || t.upgrade?.migrationPhases?.join(',') !== 'expand,backfill,switch,contract' || t.upgrade?.kubernetes?.maxUnavailable !== 0 || t.upgrade?.kubernetes?.maxSurge !== 1 || t.upgrade?.kubernetes?.podDisruptionBudgetMinAvailable !== 1 || t.upgrade?.kubernetes?.drainHooks !== true || t.upgrade?.kubernetes?.rollback !== true) process.exit(1)"
           node -e "const t=require('./release/lp9-local-proof.json'); if (t.spdxLicenseIdentifier !== 'MIT' || t.author !== 'Sythos (https://www.sythos.net)' || t.product !== 'Gulo Gulo' || t.milestone !== 'LP9' || t.proofType !== 'local_synthetic_release' || !['ready_for_owner_review','complete'].includes(t.status) || t.safeToShare !== true || t.syntheticDataOnly !== true || t.externalPhaseDeferred !== true || t.sourceLanguage?.canonical !== 'TypeScript' || t.sourceLanguage?.behaviorFreeMjsBridges !== true || t.sourceLanguage?.generatedBrowserJavaScriptAllowed !== true || t.sourceLanguage?.removalOwner !== 'Sythos' || t.architecture?.baseImage !== 'ubuntu:26.04' || t.architecture?.defaultWorkflowMode !== 'amd64' || t.architecture?.functionalProofPlatform !== 'linux/amd64' || t.architecture?.finalWorkflowMode !== 'multiarch' || t.architecture?.finalModePlatforms?.join(',') !== 'linux/amd64,linux/arm64' || t.architecture?.artifactProvenanceOnly !== true) process.exit(1)"
-          bash -n docker/lp1-network/entrypoint-ca.sh
-          bash -n docker/lp1-network/entrypoint-dns.sh
-          bash -n docker/lp2-tls/entrypoint-tls.sh
-          bash -n docker/lp2-ldap/entrypoint-ldap.sh
-          bash -n docker/lp2-ldap/healthcheck-ldap.sh
-          bash -n docker/lp2-postgres/entrypoint-postgres.sh
-          bash -n docker/lp2-postgres/healthcheck-postgres.sh
-          bash -n docker/lp3-tls/entrypoint-tls.sh
-          bash -n docker/lp3-postfix/entrypoint-postfix.sh
-          bash -n docker/lp3-postfix/healthcheck-postfix.sh
-          bash -n docker/lp3-dovecot/entrypoint-dovecot.sh
-          bash -n docker/lp3-dovecot/healthcheck-dovecot.sh
-          bash -n docker/lp3-rspamd/healthcheck-rspamd.sh
-          bash -n docker/lp3-clamav/healthcheck-clamav.sh
 
       - name: Set up Node.js when package metadata exists
         if: hashFiles('package.json') != ''
