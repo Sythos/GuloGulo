@@ -8,7 +8,7 @@ import { PassThrough } from 'node:stream';
 import type { AddressInfo } from 'node:net';
 import test from 'node:test';
 
-import { createDiscoveryContract } from '../dav/discovery/index.ts';
+import { createDiscoveryContract } from '../core/dav/discovery/index.ts';
 import { createWebSecurity } from '../web/security/index.ts';
 import { loadConfig } from './config.js';
 import { createLogger } from './logger.js';
@@ -215,7 +215,7 @@ test('runtime serves the HTML5 shell with defensive static headers and rejects t
     assert.match(headerString(artwork.headers, 'content-type'), /^image\/png/);
     assert.ok(artwork.body.length > 1_024);
 
-    const traversal = await getJson(runtime, '/web/%2e%2e/src/runtime/server.mjs');
+    const traversal = await getJson(runtime, '/web/%2e%2e/src/runtime/server.ts');
     assert.equal(traversal.statusCode, 404);
   } finally {
     await stopServer(runtime);

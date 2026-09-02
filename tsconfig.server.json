@@ -24,17 +24,18 @@
   },
   "include": [
     "src/runtime/**/*.ts",
-    "src/foundation/**/*.ts",
+    "src/core/foundation/**/*.ts",
     "src/integrations/**/*.ts",
-    "src/auth/**/*.ts",
-    "src/admin/**/*.ts",
-    "src/mail/**/*.ts",
-    "src/ops/**/*.ts",
-    "src/observability/**/*.ts",
-    "src/capacity/**/*.ts",
-    "src/secrets/**/*.ts",
-    "src/upgrade/**/*.ts",
-    "src/dav/**/*.ts",
-    "src/web/**/*.ts"
+    "src/core/auth/**/*.ts",
+    "src/core/admin/**/*.ts",
+    "src/core/mail/**/*.ts",
+    "src/core/ops/**/*.ts",
+    "src/core/observability/**/*.ts",
+    "src/core/capacity/**/*.ts",
+    "src/core/secrets/**/*.ts",
+    "src/core/upgrade/**/*.ts",
+    "src/core/dav/**/*.ts",
+    "src/web/**/*.ts",
+    "src/platform/**/*.ts"
   ]
 }

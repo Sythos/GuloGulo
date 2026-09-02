@@ -8,7 +8,7 @@
     "rootDir": "."
   },
   "include": [
-    "src/upgrade/**/*.ts",
+    "src/core/upgrade/**/*.ts",
     "scripts/lp7-*.ts"
   ],
   "exclude": [

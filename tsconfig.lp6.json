@@ -8,13 +8,13 @@
     "rootDir": "."
   },
   "include": [
-    "src/backup/backup-contract.ts",
-    "src/backup/index.ts",
-    "src/backup/backup-contract.test.ts",
-    "src/lifecycle/retention.ts",
-    "src/lifecycle/retention.test.ts",
-    "src/lifecycle/account-lifecycle.ts",
-    "src/lifecycle/account-lifecycle.test.ts",
+    "src/core/backup/backup-contract.ts",
+    "src/core/backup/index.ts",
+    "src/core/backup/backup-contract.test.ts",
+    "src/core/lifecycle/retention.ts",
+    "src/core/lifecycle/retention.test.ts",
+    "src/core/lifecycle/account-lifecycle.ts",
+    "src/core/lifecycle/account-lifecycle.test.ts",
     "scripts/lp6-*.ts"
   ],
   "exclude": [

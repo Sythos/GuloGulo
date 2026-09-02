@@ -7,7 +7,7 @@
 
 import { readFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
-import { createReleaseEvidence, evaluateReleaseEvidence } from '../src/release/release-evidence.ts';
+import { createReleaseEvidence, evaluateReleaseEvidence } from '../src/core/release/release-evidence.ts';
 
 const inputPath = process.argv[2] ?? 'release/v1-release-evidence.template.json';
 const evidence = JSON.parse(await readFile(resolve(process.cwd(), inputPath), 'utf8'));

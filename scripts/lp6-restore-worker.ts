@@ -14,8 +14,8 @@ import {
   sha256Hex,
   validateRestorePlan,
   verifyArchiveManifest,
-} from '../src/backup/backup-contract.ts';
-import { createRetentionStore } from '../src/lifecycle/retention.ts';
+} from '../src/core/backup/backup-contract.ts';
+import { createRetentionStore } from '../src/core/lifecycle/retention.ts';
 
 function requiredEnvironment(name: string): string {
   const value = process.env[name];

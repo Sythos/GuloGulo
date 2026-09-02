@@ -8,9 +8,9 @@
     "rootDir": "."
   },
   "include": [
-    "src/capacity/**/*.ts",
-    "src/ops/**/*.ts",
-    "src/observability/**/*.ts",
+    "src/core/capacity/**/*.ts",
+    "src/core/ops/**/*.ts",
+    "src/core/observability/**/*.ts",
     "scripts/lp5-*.ts"
   ],
   "exclude": [

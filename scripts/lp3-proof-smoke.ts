@@ -261,7 +261,7 @@ async function probeRspamd() {
 }
 
 async function probeTypedMailContracts() {
-  const module = async (name) => import(pathToFileURL(resolve(root, `dist/server/src/mail/${name}.js`)).href);
+  const module = async (name) => import(pathToFileURL(resolve(root, `dist/server/src/core/mail/${name}.js`)).href);
   const [{ createMailPolicy }, { createRspamdScanner, createClamAvScanner }, { createMailQueue }, { createImapIdleBroker }] = await Promise.all([
     module('mail-policy'),
     module('mail-scanners'),

@@ -14,7 +14,7 @@
     "scripts/lp3-*.ts",
     "scripts/m10-release-audit.ts",
     "scripts/lp8-*.ts",
-    "src/release/**/*.ts"
+    "src/core/release/**/*.ts"
   ],
   "exclude": [
     "dist",

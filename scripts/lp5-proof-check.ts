@@ -2,9 +2,9 @@
 // SPDX-FileCopyrightText: 2026 Sythos (https://www.sythos.net)
 // Author: Sythos (https://www.sythos.net)
 
-import { createImapIdleBroker } from '../src/mail/imap-idle.ts';
-import { createMailQueue } from '../src/mail/mail-queue.ts';
-import { AMD64_LOCAL_PROOF_BUDGET, evaluateCapacity, percentile, type CapacityMeasurement } from '../src/capacity/capacity-contract.ts';
+import { createImapIdleBroker } from '../src/core/mail/imap-idle.ts';
+import { createMailQueue } from '../src/core/mail/mail-queue.ts';
+import { AMD64_LOCAL_PROOF_BUDGET, evaluateCapacity, percentile, type CapacityMeasurement } from '../src/core/capacity/capacity-contract.ts';
 import { createTenantContext } from '../src/integrations/tenant-context.ts';
 
 function requiredEnvironment(name: string): string {

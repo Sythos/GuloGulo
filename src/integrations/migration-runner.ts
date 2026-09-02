@@ -48,7 +48,7 @@ async function loadMigrations(directory: string): Promise<Array<{ version: strin
     // migration review, while the TypeScript output directory intentionally
     // contains only generated runtime files. Fall back to that source path
     // when the relative compiled path is not present.
-    resolvedDirectory = join(process.cwd(), 'src/db/migrations');
+    resolvedDirectory = join(process.cwd(), 'src/core/db/migrations');
     names = await readdir(resolvedDirectory);
   }
   names = names

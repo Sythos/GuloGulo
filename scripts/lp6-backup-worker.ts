@@ -12,7 +12,7 @@ import {
   encryptArchiveMetadata,
   sha256Hex,
   verifyArchiveManifest,
-} from '../src/backup/backup-contract.ts';
+} from '../src/core/backup/backup-contract.ts';
 
 type SyntheticSource = {
   readonly schemaVersion: number;

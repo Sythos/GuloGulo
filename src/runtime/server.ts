@@ -10,9 +10,9 @@ import { extname, join, relative, resolve } from 'node:path';
 import { loadConfig } from './config.js';
 import { createDependencyRegistry, createMetrics } from './metrics.js';
 import { createLogger } from './logger.js';
-import { getWellKnownResource, WELL_KNOWN_PATHS } from '../dav/discovery/index.ts';
-import { createRateLimiter } from '../ops/abuse/index.ts';
-import { parsePatchStatus, type PatchStatusDto } from '../ops/patch/status.ts';
+import { getWellKnownResource, WELL_KNOWN_PATHS } from '../core/dav/discovery/index.ts';
+import { createRateLimiter } from '../core/ops/abuse/index.ts';
+import { parsePatchStatus, type PatchStatusDto } from '../core/ops/patch/status.ts';
 import { CSRF_HEADER_NAME, createWebSecurity } from '../web/security/index.ts';
 import type { SessionIdentity, WebSecurity, WebSession } from '../web/security/index.ts';
 
