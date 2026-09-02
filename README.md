@@ -6,6 +6,8 @@ Author: Sythos (https://www.sythos.net)
 
 # Gulo Gulo
 
+> **⚠️ Documento in transizione.** Il modello di distribuzione container/Docker descritto in questo documento è stato rimosso dal repository. Il progetto sta migrando a tre pacchetti di distribuzione (cPanel, Plesk, archivio standalone) — vedi [ADR-002](../ADR-002-gulogulo-packaging-and-distribution-targets.md). Questo documento verrà riscritto in una milestone successiva; nel frattempo le istruzioni Docker/compose qui sotto non sono più applicabili.
+
 [![Issues](https://img.shields.io/github/issues/Sythos/GuloGulo?label=issues)](https://github.com/Sythos/GuloGulo/issues)
 [![Last commit](https://img.shields.io/github/last-commit/Sythos/GuloGulo?label=last%20commit)](https://github.com/Sythos/GuloGulo/commits/main/)
 [![Commit tests](https://github.com/Sythos/GuloGulo/actions/workflows/commit-tests.yml/badge.svg)](https://github.com/Sythos/GuloGulo/actions/workflows/commit-tests.yml)
@@ -271,33 +273,24 @@ gulogulo/
 ├── scripts/
 │   ├── m0-smoke.ps1
 │   ├── m1-fixture-smoke.ps1
-│   ├── lp0-scope-audit.ts (+ .mjs compatibility bridge)
-│   ├── lp1-compose-audit.ts (+ .mjs compatibility bridge)
 │   ├── lp1-proof-check.ts (+ .mjs compatibility bridge)
 │   ├── lp1-proof-smoke.ts (+ .mjs compatibility bridge)
-│   ├── lp2-compose-audit.ts (+ .mjs compatibility bridge)
 │   ├── lp2-compose-smoke.ts (+ .mjs compatibility bridge)
 │   ├── lp2-proof-smoke.ts (+ .mjs compatibility bridge)
-│   ├── lp3-compose-audit.ts (+ .mjs compatibility bridge)
 │   ├── lp3-compose-smoke.ts (+ .mjs compatibility bridge)
 │   ├── lp3-proof-smoke.ts (+ .mjs compatibility bridge)
 │   ├── lp8-bundle-smoke.ts
 │   ├── lp8-evidence-audit.test.ts
 │   ├── lp8-evidence-audit.ts
-│   ├── lp4-compose-audit.ts
 │   ├── lp4-compose-smoke.ts
 │   ├── lp4-proof-check.ts
 │   ├── lp4-web-runtime.ts
-│   ├── lp5-capacity-smoke.ts
-│   ├── lp5-compose-audit.ts
 │   ├── lp5-compose-smoke.ts
 │   ├── lp5-proof-check.ts
 │   ├── lp6-source-fixture.ts
 │   ├── lp6-backup-worker.ts
 │   ├── lp6-restore-worker.ts
-│   ├── lp6-compose-audit.ts
 │   ├── lp6-compose-smoke.ts
-│   ├── lp7-compose-audit.ts
 │   ├── lp7-compose-smoke.ts
 │   ├── lp7-proof-check.ts
 │   ├── m10-release-audit.ts (+ .mjs compatibility bridge)
