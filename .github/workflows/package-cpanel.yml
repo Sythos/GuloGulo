@@ -1,0 +1,116 @@
+# SPDX-License-Identifier: MIT
+# SPDX-FileCopyrightText: 2026 Sythos (https://www.sythos.net)
+# Author: Sythos (https://www.sythos.net)
+
+name: Package cPanel archive
+
+# Unlike package-standalone.yml, this workflow cannot start the installed
+# service and hit its health endpoint end to end: install.sh installs a
+# real systemd unit and expects a real cPanel/WHM host (/usr/local/cpanel),
+# neither of which the ubuntu-latest runner provides. What this workflow
+# verifies instead: the archive builds and contains everything the
+# installer needs, and install.sh's own argument parsing / precondition /
+# dry-run logic is sound - run with --non-interactive --dry-run, it must
+# never touch systemd or Apache on the runner (it downgrades the
+# root/cPanel precondition checks to warnings only under --dry-run).
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: package-cpanel-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-and-dry-run-install:
+    name: Build the cPanel archive and dry-run the installer
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: latest
+          check-latest: true
+
+      - name: Install dependencies
+        shell: bash
+        run: npm ci --no-audit --no-fund
+
+      - name: Build web and server bundles
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm run build:web
+          npm run build:server
+
+      - name: Build the cPanel package
+        shell: bash
+        env:
+          GULOGULO_SKIP_BUILD: "1"
+        run: node --experimental-strip-types packaging/cpanel/build-cpanel-package.ts
+
+      - name: Extract the tarball into a clean install directory
+        shell: bash
+        run: |
+          set -euo pipefail
+          TARBALL="$(ls packaging/dist/gulogulo-*-cpanel.tar.gz)"
+          INSTALL_DIR="$RUNNER_TEMP/gulogulo-cpanel-install"
+          mkdir -p "$INSTALL_DIR"
+          tar -xzf "$TARBALL" -C "$INSTALL_DIR" --strip-components=1
+          echo "INSTALL_DIR=$INSTALL_DIR" >> "$GITHUB_ENV"
+
+          test -f "$INSTALL_DIR/dist/server/src/runtime/index.js"
+          test -f "$INSTALL_DIR/web/index.html"
+          test -f "$INSTALL_DIR/web/dist/app.js"
+          test -f "$INSTALL_DIR/assets/gulo-gulo-calendar-mail.png"
+          test -f "$INSTALL_DIR/src/core/db/migrations/0001_m2_foundation.sql"
+          test -f "$INSTALL_DIR/.env.example"
+          test -f "$INSTALL_DIR/VERSION"
+          test -f "$INSTALL_DIR/install.sh"
+          test -f "$INSTALL_DIR/upgrade.sh"
+          test -f "$INSTALL_DIR/uninstall.sh"
+          test -f "$INSTALL_DIR/run-migrations.mjs"
+          test -f "$INSTALL_DIR/gulogulo.service.template"
+          test -f "$INSTALL_DIR/gulogulo-proxy.conf.example"
+          test -f "$INSTALL_DIR/gulogulo-appconfig.conf.example"
+          grep -q '^CPANEL_API_ENABLED=' "$INSTALL_DIR/.env.example"
+
+      - name: Dry-run the installer non-interactively
+        shell: bash
+        run: |
+          set -euo pipefail
+          chmod +x "$INSTALL_DIR"/install.sh "$INSTALL_DIR"/upgrade.sh "$INSTALL_DIR"/uninstall.sh "$INSTALL_DIR"/run-migrations.mjs
+          # Not a real cPanel/WHM host and not running as root here - only
+          # --dry-run makes that safe: the script downgrades those two
+          # preconditions to warnings and skips every systemd/Apache/user
+          # write, while still exercising npm ci, .env creation, and the
+          # (no-op, Postgres disabled) migration step for real.
+          "$INSTALL_DIR/install.sh" --non-interactive --dry-run
+
+          # install.sh must still reject unknown flags and must never leave
+          # a real systemd unit or system user behind under --dry-run.
+          if "$INSTALL_DIR/install.sh" --this-flag-does-not-exist; then
+            echo "install.sh accepted an unknown flag; expected it to fail." >&2
+            exit 1
+          fi
+          test ! -f /etc/systemd/system/gulogulo.service
+          test -f "$INSTALL_DIR/gulogulo.service.rendered"
+          ! id gulogulo >/dev/null 2>&1
+
+      - name: Upload the cPanel package artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: gulogulo-cpanel-package
+          path: packaging/dist/gulogulo-*-cpanel.tar.gz
+          if-no-files-found: error

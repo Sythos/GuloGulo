@@ -1,0 +1,33 @@
+# SPDX-License-Identifier: MIT
+# SPDX-FileCopyrightText: 2026 Sythos (https://www.sythos.net)
+# Author: Sythos (https://www.sythos.net)
+#
+# Optional WHM AppConfig registration for Gulo Gulo: gives it a minimal
+# entry/link in the WHM interface. This is NOT required for Gulo Gulo to
+# work - the systemd service plus the Apache reverse proxy
+# (gulogulo-proxy.conf.example) are the whole functional install. Treat
+# this purely as a "nice to have" UI convenience.
+#
+# install.sh only ever writes this file into the install directory as a
+# starting point; it never runs register_appconfig itself - that command
+# adds a persistent WHM-wide registration and should be a deliberate,
+# reviewed, manual step:
+#
+#   1. Verify the fields below against the AppConfig reference for your
+#      installed cPanel/WHM version (the format has shifted across cPanel
+#      releases; check /usr/local/cpanel/bin/register_appconfig --help and
+#      https://api.docs.cpanel.net/ for the version running on this host
+#      before trusting this example as-is).
+#   2. Copy this file into cPanel's apps directory, e.g.:
+#        cp gulogulo-appconfig.conf.example /var/cpanel/apps/gulogulo.conf
+#   3. Register it:
+#        /usr/local/cpanel/bin/register_appconfig /var/cpanel/apps/gulogulo.conf
+#   4. To remove it later:
+#        /usr/local/cpanel/bin/unregister_appconfig gulogulo
+
+name=cPanel::Gulogulo
+displayname=Gulo Gulo
+url=/gulogulo/
+user=root
+group=root
+acls=any

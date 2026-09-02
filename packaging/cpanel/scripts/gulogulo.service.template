@@ -1,0 +1,37 @@
+# SPDX-License-Identifier: MIT
+# SPDX-FileCopyrightText: 2026 Sythos (https://www.sythos.net)
+# Author: Sythos (https://www.sythos.net)
+#
+# systemd unit template for the cPanel/WHM target. install.sh renders this
+# into /etc/systemd/system/gulogulo.service (substituting the placeholders
+# below) and, on a real cPanel/WHM host in interactive mode or
+# --non-interactive --yes, runs `systemctl daemon-reload && systemctl
+# enable --now gulogulo`. Under --dry-run this file is only rendered to a
+# local review copy; nothing is written under /etc or reloaded.
+#
+# Placeholders substituted by install.sh: @INSTALL_DIR@, @SERVICE_USER@,
+# @SERVICE_GROUP@, @NODE_BIN@, @READ_WRITE_PATH@
+
+[Unit]
+Description=Gulo Gulo groupware runtime
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=@SERVICE_USER@
+Group=@SERVICE_GROUP@
+WorkingDirectory=@INSTALL_DIR@
+ExecStart=@NODE_BIN@ --env-file=@INSTALL_DIR@/.env @INSTALL_DIR@/dist/server/src/runtime/index.js
+Restart=on-failure
+RestartSec=5
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+# Adjust to wherever GULOGULO_MAILBOX_ROOT and patch status files actually
+# live for this install; the service needs write access there only.
+ReadWritePaths=@READ_WRITE_PATH@
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target
