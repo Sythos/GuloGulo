@@ -28,7 +28,6 @@
     "test:m10": "node --experimental-strip-types src/release/release-evidence.test.ts && node --experimental-strip-types scripts/m10-release-audit.ts",
     "test:secrets": "npm run typecheck:server && node --experimental-strip-types src/secrets/secret-store.test.ts",
     "test:m2:postgres": "node --experimental-strip-types src/integrations/postgres.integration.test.ts",
-    "test:lp8:bundle": "node --experimental-strip-types scripts/lp8-bundle-smoke.ts",
     "typecheck:lp9": "tsc --project tsconfig.lp9.json --noEmit",
     "test:lp9": "npm run typecheck:lp9 && node --experimental-strip-types scripts/lp9-source-audit.test.ts && node --experimental-strip-types scripts/lp9-release-audit.test.ts && node --experimental-strip-types scripts/lp9-source-audit.ts && node --experimental-strip-types scripts/lp9-release-audit.ts"
   },

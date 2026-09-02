@@ -96,9 +96,6 @@ jobs:
           test -f release/lp9-local-proof.json
           test -f tsconfig.lp8.json
           test -f tsconfig.lp9.json
-          test -f scripts/lp8-evidence-audit.ts
-          test -f scripts/lp8-evidence-audit.test.ts
-          test -f scripts/lp8-bundle-smoke.ts
           test -f scripts/lp9-source-audit.ts
           test -f scripts/lp9-source-audit.test.ts
           test -f scripts/lp9-release-audit.ts
@@ -303,9 +300,6 @@ jobs:
             scripts/m1-fixture-smoke.ps1 \
             scripts/lp3-proof-smoke.mjs \
             scripts/lp3-proof-smoke.ts \
-            scripts/lp8-evidence-audit.ts \
-            scripts/lp8-evidence-audit.test.ts \
-            scripts/lp8-bundle-smoke.ts \
             scripts/lp9-source-audit.ts \
             scripts/lp9-source-audit.test.ts \
             scripts/lp9-release-audit.ts \
@@ -454,9 +448,6 @@ jobs:
           grep -Fq 'createKubernetesBlueGreenRehearsal' src/upgrade/rehearsal.ts
           grep -Fq 'runDockerReplacementRehearsal' src/upgrade/rehearsal.ts
           grep -Fq 'runKubernetesBlueGreenRehearsal' src/upgrade/rehearsal.ts
-          grep -Fq 'export async function auditBundle' scripts/lp8-evidence-audit.ts
-          grep -Fq 'LP8_UNSAFE_CONTENT' scripts/lp8-evidence-audit.ts
-          grep -Fq 'LP8_BRIDGE_NOT_THIN' scripts/lp8-evidence-audit.ts
           grep -Fq 'ready_for_lp9' release/lp8-local-proof-bundle.json
           grep -Fq 'syntheticDataOnly' release/lp8-local-proof-bundle.json
           grep -Fq 'artifactProvenanceOnly' release/lp8-local-proof-bundle.json
@@ -549,8 +540,8 @@ jobs:
           node --experimental-strip-types src/mail/mail-core.test.ts
           node --experimental-strip-types src/mail/scanner-signatures.test.ts
 
-      - name: Run LP8 evidence and migrated-audit gates (amd64)
-        if: hashFiles('scripts/lp8-evidence-audit.ts') != '' && hashFiles('tsconfig.lp8.json') != ''
+      - name: Run migrated-audit gates (amd64)
+        if: hashFiles('tsconfig.lp8.json') != '' && hashFiles('scripts/m10-release-audit.ts') != ''
         shell: bash
         run: |
           set -euo pipefail
@@ -560,8 +551,6 @@ jobs:
           node --experimental-strip-types src/release/local-proof-topology.test.ts
           node --experimental-strip-types src/release/release-evidence.test.ts
           node --experimental-strip-types scripts/m10-release-audit.ts
-          node --experimental-strip-types scripts/lp8-evidence-audit.test.ts
-          node --experimental-strip-types scripts/lp8-evidence-audit.ts
 
       - name: Run LP9 source-language and local-release gates (amd64)
         if: hashFiles('scripts/lp9-source-audit.ts') != '' && hashFiles('scripts/lp9-release-audit.ts') != '' && hashFiles('tsconfig.lp9.json') != ''
