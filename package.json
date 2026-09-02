@@ -27,7 +27,7 @@
     "test:m9": "node --experimental-strip-types src/core/upgrade/upgrade-contract.test.ts",
     "test:m10": "node --experimental-strip-types src/core/release/release-evidence.test.ts && node --experimental-strip-types scripts/m10-release-audit.ts",
     "test:secrets": "npm run typecheck:server && node --experimental-strip-types src/core/secrets/secret-store.test.ts",
-    "test:platform": "npm run typecheck:server && node --experimental-strip-types --test src/platform/contract/*.test.ts",
+    "test:platform": "npm run typecheck:server && node --experimental-strip-types --test src/platform/contract/*.test.ts src/platform/standalone/*.test.ts",
     "test:m2:postgres": "node --experimental-strip-types src/integrations/postgres.integration.test.ts",
     "typecheck:lp9": "tsc --project tsconfig.lp9.json --noEmit",
     "test:lp9": "npm run typecheck:lp9 && node --experimental-strip-types scripts/lp9-source-audit.test.ts && node --experimental-strip-types scripts/lp9-release-audit.test.ts && node --experimental-strip-types scripts/lp9-source-audit.ts && node --experimental-strip-types scripts/lp9-release-audit.ts"
