@@ -731,11 +731,15 @@ removed or replaced below; see ADR-002 for why.
   verified generations from a shared read-only signature volume. Verify real
   scanner endpoints, timeouts, quarantine/reject policy, queue behavior,
   malware/spam samples, feed licensing, and the host-side updater.
-- [x] **DONE — CalDAV/CardDAV object contracts.** Tenant/user scope,
-  conditional writes, opaque ETags, sync tokens, tombstones, bounded
-  iCalendar/vCard parsing, and metadata-only export are implemented. Verify
-  the persistent DAV backend, XML method adapter, standard clients, sharing
-  boundaries, and concurrency.
+- [x] **DONE — CalDAV/CardDAV object contracts and persistent PostgreSQL
+  backend.** Tenant/user scope, conditional writes, opaque ETags, sync
+  tokens, tombstones, bounded iCalendar/vCard parsing, and metadata-only
+  export are implemented, plus a PostgreSQL-backed storage adapter
+  (`src/core/dav/caldav/postgres-caldav-store.ts`,
+  `src/core/dav/carddav/postgres-carddav-store.ts`,
+  `src/core/db/migrations/0003_dav_storage.sql`) tested against a fake pool.
+  Verify against a real PostgreSQL instance, the XML method adapter, standard
+  clients, sharing boundaries, and concurrency.
 - [x] **DONE — discovery and timezone behavior.** HTTPS-only well-known
   resources, autodiscovery, manual fallback, ICS/vCard validation, and sender
   local-time presentation are defined. Verify DNS, reverse proxy paths
@@ -1029,8 +1033,22 @@ as tester work:
   the DB-backed identity option (today's workaround is inserting rows
   directly with `createPasswordHasher().hash(password)`, see
   `doc/identity-and-postgres.md`);
-- [ ] production Postfix/Dovecot mail adapters, persistent DAV backend, and
-  complete HTTP/WebDAV method and XML-report integration;
+- [ ] production Postfix/Dovecot mail adapters: minimal IMAP IDLE and SMTP
+  submission protocol clients and their adapters (`src/core/mail/imap-client.ts`,
+  `src/core/mail/imap-idle-adapter.ts`, `src/core/mail/smtp-client.ts`,
+  `src/core/mail/smtp-queue-adapter.ts`) are implemented and tested end to end
+  against a local TCP protocol fake (see `doc/mail-core.md`); verification
+  against a real Dovecot/Postfix installation is still outstanding;
+- [x] persistent DAV backend: PostgreSQL-backed CalDAV/CardDAV storage
+  (`src/core/dav/caldav/postgres-caldav-store.ts`,
+  `src/core/dav/carddav/postgres-carddav-store.ts`,
+  `src/core/db/migrations/0003_dav_storage.sql`), reusing the pure in-memory
+  contracts' own ETag/sync-token functions so the two implementations cannot
+  drift; tested against a fake pool — verification against a real PostgreSQL
+  instance and real CalDAV/CardDAV clients is still outstanding;
+- [ ] complete HTTP/WebDAV method and XML-report integration (the protocol
+  adapter that authenticates a request, applies the method table in
+  `doc/dav-and-discovery.md`, and calls the storage backend above);
 - [ ] durable external backup, restore, account-deletion execution, and
   scheduled retention workers for volume, PostgreSQL, mailbox, DAV, and
   object-store adapters;

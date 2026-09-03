@@ -226,8 +226,23 @@ the checked contracts belongs in [INSTALL.md](INSTALL.md).
   standalone, UAPI for cPanel, REST for Plesk — instead of the fixture
   authenticator; field verification against real backends belongs in
   INSTALL.md;
-- [ ] production Postfix/Dovecot mail adapters, persistent DAV backend, and
-  complete HTTP/WebDAV method and XML-report integration;
+- [ ] production Postfix/Dovecot mail adapters: minimal IMAP IDLE and SMTP
+  submission protocol clients and their adapters (`src/core/mail/imap-client.ts`,
+  `src/core/mail/imap-idle-adapter.ts`, `src/core/mail/smtp-client.ts`,
+  `src/core/mail/smtp-queue-adapter.ts`) are implemented and tested end to end
+  against a local TCP protocol fake (see `doc/mail-core.md`); verification
+  against a real Dovecot/Postfix installation is still outstanding;
+- [x] persistent DAV backend: PostgreSQL-backed CalDAV/CardDAV storage
+  (`src/core/dav/caldav/postgres-caldav-store.ts`,
+  `src/core/dav/carddav/postgres-carddav-store.ts`,
+  `src/core/db/migrations/0003_dav_storage.sql`), reusing the pure in-memory
+  contracts' own ETag/sync-token functions so the two implementations cannot
+  drift; tested against a fake pool (see `doc/dav-and-discovery.md`) —
+  verification against a real PostgreSQL instance and real CalDAV/CardDAV
+  clients is still outstanding;
+- [ ] complete HTTP/WebDAV method and XML-report integration (the protocol
+  adapter that authenticates a request, applies the method table in
+  `doc/dav-and-discovery.md`, and calls the storage backend above);
 - [ ] durable external backup, restore, account-deletion execution, and
   scheduled retention workers;
 - [ ] deployed log collector, alert-delivery, and paging adapters (the ACME/DNS

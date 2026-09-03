@@ -235,6 +235,76 @@ after a durable mailbox change. A reconnecting client should use the event ID
 and then resynchronize mailbox state through normal IMAP semantics; it must not
 assume that an IDLE event is a complete message list.
 
+## Protocol adapters: IMAP IDLE and SMTP submission clients
+
+`imap-idle.ts` and `mail-queue.ts` stay pure, dependency-free contracts —
+"the real adapter subscribes to Dovecot" and "production wiring replaces
+[the queue] with the Postfix queue adapter" are no longer just comments:
+
+- `src/core/mail/imap-client.ts` is a minimal IMAP4rev1 + IDLE (RFC 3501 /
+  RFC 2177) client built on Node's native `node:tls`/`node:net`, not a
+  third-party IMAP library: the surface this app needs — LOGIN, SELECT,
+  IDLE/DONE, and untagged `EXISTS`/`EXPUNGE` parsing — is small and stable
+  enough that hand-rolling it keeps the dependency count (`ldapts`, `pg`)
+  unchanged and avoids a general-purpose IMAP client's much larger surface
+  for functionality this app does not use.
+- `src/core/mail/imap-idle-adapter.ts` connects that client to the
+  `imap-idle.ts` broker: `watch(context, { userId, mailbox, credentials })`
+  opens one real IMAP IDLE connection, and every real `EXISTS` update becomes
+  a `broker.notify(...)` call, so local subscribers see it exactly as they do
+  today. The IMAP transport is injected through an `ImapClientFactory`, never
+  hardcoded, so the adapter stays testable.
+- `src/core/mail/smtp-client.ts` is a minimal SMTP (RFC 5321) client for the
+  same reason: EHLO, STARTTLS, AUTH LOGIN, MAIL FROM/RCPT TO/DATA (with
+  dot-stuffing), and QUIT, over `node:net`/`node:tls`.
+- `src/core/mail/smtp-queue-adapter.ts` connects that client to the existing,
+  unchanged `mail-queue.ts` contract: `deliver(context, queueId)` claims one
+  queued item, submits it to the local Postfix submission port, and reports
+  the outcome back onto the *same* queue instance — a 5xx (or an
+  unrecognized/malformed reply) bounces, a 4xx or a connection failure
+  defers. Retry counting, exponential backoff, and bounce-after-
+  `queueMaxAttempts` stay entirely owned by `mail-queue.ts`; the adapter
+  never keeps a second counter.
+
+### Testing without Docker or a real mail server
+
+The project has no Docker-based integration harness. Both adapters are
+instead proven against a real `node:net` TCP server started inline in the
+test file — a genuine socket on `127.0.0.1`, a genuine RFC 3501/RFC 5321
+line-based protocol exchange, deliberately including a reply split across two
+TCP writes to prove the client reassembles a chunked frame:
+
+- `src/core/mail/imap-idle-adapter.test.ts`: connect + LOGIN + SELECT + IDLE
+  against a fake IMAP server, including a real `EXISTS` push forwarded into
+  the broker, and a failed-LOGIN case that surfaces `AUTHENTICATION_FAILED`
+  instead of silently connecting.
+- `src/core/mail/smtp-queue-adapter.test.ts`: a full EHLO/MAIL FROM/RCPT
+  TO/DATA delivery (dot-stuffing verified on the wire), a permanent (5xx)
+  recipient rejection that bounces, a temporary (4xx) rejection that defers,
+  and a second `deliver()` call that exhausts `queueMaxAttempts` and bounces.
+
+This is a genuine test of the wire protocol. It is **not** a claim that the
+fake server is a real Dovecot or Postfix: these fakes speak plain TCP, so TLS
+itself is not exercised against them — wrapping either client in `node:tls`
+is standard library behavior (the real `tls.connect`/
+`tls.connect({ socket })` calls in `imap-client.ts`/`smtp-client.ts`), but
+not against a certificate chain in these tests. Interoperability with a real
+Dovecot/Postfix, including its TLS configuration, SASL mechanisms, and any
+quirks in its reply text, remains unverified operational work — see the
+checklist below.
+
+### PlatformAdapter wiring
+
+`src/platform/contract/platform-adapter.ts` adds an optional
+`createMailClients(config)` method returning `MailClientFactories`
+(`createImapClient()`/`createSmtpClient()`), built by the shared
+`createLocalMailClients()` helper. Every packaging target — standalone,
+cPanel, and Plesk — implements it identically: connect to `127.0.0.1` (the
+panel's or the standalone host's own local Dovecot/Postfix) using the
+already-configurable `mail.imapsPort`/`mail.smtpSubmissionPort` ports. The
+method is optional on the contract so it does not force every existing
+adapter or test double to implement it.
+
 ## Configuration
 
 The M3 configuration fields are secret-free and available both in
@@ -288,10 +358,18 @@ npm test
 - metadata-only queue views;
 - deterministic IMAP IDLE event sequences.
 
+`src/core/mail/imap-idle-adapter.test.ts` and
+`src/core/mail/smtp-queue-adapter.test.ts` cover the protocol adapters
+described above end to end against a local `node:net` TCP fake — see
+"Testing without Docker or a real mail server" above for what they do and do
+not prove.
+
 The CI workflow runs this test with the existing M0–M2 gates. It does not claim
 that a fake scanner is a production Rspamd or ClamAV deployment: real service
 interoperability, image selection, TLS certificates, and freshclam/map update
-rehearsals remain operational verification work.
+rehearsals remain operational verification work. The same applies to the IMAP/
+SMTP protocol adapters: a passing local-fake test is not a claim of Dovecot or
+Postfix interoperability.
 
 ## Operational checklist before wiring vendors
 
@@ -312,5 +390,11 @@ rehearsals remain operational verification work.
    the scanner services.
 6. Run the M3 contract tests plus real SMTP, LMTP, IMAP IDLE, Sieve, alias,
    quota, spam, malware, queue, and restart tests in a disposable environment.
+   `imap-client.ts`/`imap-idle-adapter.ts` and `smtp-client.ts`/
+   `smtp-queue-adapter.ts` already implement and unit-test the wire protocol
+   against a local fake (see above); this step is where that protocol
+   implementation is rehearsed against the actual selected Dovecot/Postfix
+   images — TLS certificates, SASL mechanism support, and reply-text quirks
+   included.
 7. Inspect logs and queue views to confirm that no body, credential, or secret
    is present and that tenant/master visibility remains metadata-only.
