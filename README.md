@@ -43,25 +43,43 @@ because in practice nobody deploys a mail/groupware app the same way twice:
 some run it on a hosting panel they already have, some run it on a bare
 Linux box they fully control. One generic artifact can't serve both well.
 
-Each package targets the OS its ecosystem actually runs on, and uses that
-OS's native package format instead of a generic tarball + shell script,
-so the host's own package manager handles dependency resolution, upgrade
-tracking, and clean removal instead of Gulo Gulo reinventing it:
+Each package targets the OS its ecosystem actually runs on. The
+cPanel/Plesk targets have a real, OS-native package format fully
+implemented (`.rpm` for cPanel, `.deb` for Plesk - see below), but **all
+three targets currently ship as a plain `.tar.gz` + shell scripts**: this
+project does not yet have a code-signing key/certificate for RPM/DEB
+packages, and publishing an unsigned package through a host's package
+manager (`dnf install`/`apt install`) is a worse trust signal than an
+unsigned tar.gz - a package-manager install implies the artifact went
+through a normal, curated channel, while a plain archive the operator
+downloads and extracts themselves communicates "verify this yourself" far
+more clearly. The RPM/DEB code is not deleted; it is one call away from
+being re-enabled once a signing key exists (see
+`packaging/cpanel/build-cpanel-package.ts` and
+`packaging/plesk/build-plesk-package.ts`'s top-of-file comments).
 
-- **cPanel → `.rpm`, built and tested on AlmaLinux 9.** cPanel & WHM only
-  runs on RHEL-family Linux (AlmaLinux/CloudLinux/RHEL) - there is no such
-  thing as "cPanel on Ubuntu". Building and CI-testing on anything else
-  would validate a host that doesn't actually exist in cPanel's world.
-- **Plesk → `.deb`, built and tested on Debian Trixie.** Plesk officially
-  supports Debian/Ubuntu (also RHEL-family and Windows, out of scope here).
-  This deliberately does not use Plesk's own extension mechanism
-  (`meta.xml` + `plesk bin extension -i`) - the extension format buys UI
-  integration this project never wired up anyway, at the cost of not being
-  a package the host's own package manager understands.
+- **cPanel → `gulogulo-<version>_cpanel_.tar.gz`, built and tested on
+  AlmaLinux 9.** cPanel & WHM only runs on RHEL-family Linux
+  (AlmaLinux/CloudLinux/RHEL) - there is no such thing as "cPanel on
+  Ubuntu". Building and CI-testing on anything else would validate a host
+  that doesn't actually exist in cPanel's world. A real `.rpm` pipeline
+  (`packaging/cpanel/gulogulo.spec`, built with `rpmbuild`) already exists
+  and is verified to build correctly, but is not published while unsigned.
+- **Plesk → `gulogulo-<version>_plesk_.tar.gz`, built and tested on Debian
+  Trixie.** Plesk officially supports Debian/Ubuntu (also RHEL-family and
+  Windows, out of scope here). This does not use Plesk's own extension
+  mechanism (`meta.xml` + `plesk bin extension -i`) - the extension format
+  buys UI integration this project never wired up anyway, at the cost of
+  not being a package the host's own package manager understands. A real
+  `.deb` pipeline (`packaging/plesk/debian/`, built with `dpkg-deb`)
+  already exists and is verified to build correctly, but is not published
+  while unsigned.
 - **Standalone → `.tar.gz`, built and tested on Ubuntu.** No panel, no OS
   constraint - this is the "any Linux host with Node.js 26+" target, so it
   stays the simplest, most portable format rather than picking one
-  distro's native package for a target that isn't distro-specific.
+  distro's native package for a target that isn't distro-specific. This
+  target was never RPM/DEB-based, so it is unaffected by the signing-key
+  gap above.
 
 See [ADR-002](doc/adr/ADR-002-gulogulo-packaging-and-distribution-targets.md)
 for the full architectural rationale.
@@ -80,31 +98,38 @@ cd /opt/gulogulo && ./install.sh
 ```
 
 **cPanel** (RHEL-family host - AlmaLinux/CloudLinux/RHEL - with root/WHM
-access; ships as a real `.rpm`, built and installed at a fixed
-`/opt/gulogulo`, and Node.js 26+ must already be installed, see
+access; ships as a `.tar.gz` while the RPM pipeline is unsigned - see "Why
+three packages" above - and Node.js 26+ must already be installed, see
 INSTALL.md):
 
 ```bash
 node --experimental-strip-types packaging/cpanel/build-cpanel-package.ts
-sudo dnf install ./packaging/dist/gulogulo-<version>-1*.rpm
+sudo mkdir -p /opt/gulogulo
+sudo tar xzf packaging/dist/gulogulo-<version>_cpanel_.tar.gz -C /opt/gulogulo --strip-components=1
+cd /opt/gulogulo && sudo ./install.sh
 ```
 
-**Plesk** (Debian/Ubuntu host; ships as a real `.deb`, not a Plesk extension
-- root access required, and Node.js 26+ must already be installed, see
-INSTALL.md):
+**Plesk** (Debian/Ubuntu host; ships as a `.tar.gz` while the DEB pipeline
+is unsigned - see "Why three packages" above - root access required, and
+Node.js 26+ must already be installed, see INSTALL.md):
 
 ```bash
 node --experimental-strip-types packaging/plesk/build-plesk-package.ts
-sudo apt install ./packaging/dist/gulogulo_<version>_all.deb
+sudo mkdir -p /opt/gulogulo
+sudo tar xzf packaging/dist/gulogulo-<version>_plesk_.tar.gz -C /opt/gulogulo --strip-components=1
+cd /opt/gulogulo && sudo ./install.sh
 ```
 
-Only the standalone archive has a real end-to-end install-and-health-check
-rehearsal today (in CI, on a clean runner). The cPanel `.rpm` and Plesk
-`.deb` build and their structure is verified (each additionally gets a real
-partial extraction/unpack inside its target OS's CI container - `almalinux:9`
-for cPanel, `debian:trixie` for Plesk), but completing an install on a real
-host is still field work - see the honesty notes in INSTALL.md before
-relying on either in production.
+All three archives now get a real end-to-end install-and-health-check
+rehearsal in CI: each package-*.yml workflow extracts the tarball, runs
+`install.sh --non-interactive` for real (dedicated system user, `npm ci`,
+migrations), starts the compiled server, and polls `/health/ready` and `/`
+until they respond. The cPanel and Plesk workflows additionally run inside
+a real target-OS container (`almalinux:9`, `debian:trixie`) and stub only
+`systemctl` (those containers have no running init system for it to talk
+to) - actually enabling/starting the systemd unit, and the Apache/nginx
+reverse-proxy wiring, remain field work on a real host; see the honesty
+notes in INSTALL.md before relying on either in production.
 
 ## Production readiness checklist
 
@@ -167,9 +192,13 @@ still missing.
 - [x] offline synthetic web/session/DAV/discovery proof with restart continuity;
 - [x] fast CI on Ubuntu 26.04 LTS (AMD64);
 - [x] tenant-bound DAV ETags and sync tokens;
-- [x] cPanel, Plesk, and standalone packages build and their structure is
-  verified in CI; only the standalone archive has a real install-and-health-
-  check rehearsal today, tracked in [INSTALL.md](INSTALL.md);
+- [x] cPanel, Plesk, and standalone packages all ship as `.tar.gz` today
+  (RPM/DEB code exists and builds correctly but is not published unsigned -
+  see "Why three packages" above) and each gets a real install-and-health-
+  check rehearsal in CI (`install.sh --non-interactive`, server boot,
+  `/health/ready`); on cPanel/Plesk the systemd enable/start step is stubbed
+  since their CI containers have no init system, tracked in
+  [INSTALL.md](INSTALL.md);
 - [x] provenance and release permissions are granted only by version-tag pushes
   or trusted manual callers, while pull-request validation remains read-only;
 - [x] log rotation;
@@ -292,8 +321,10 @@ gulogulo/
 ├── packaging/
 │   ├── shared/ (staging + tar/deb/rpm package-building helpers shared by all three build scripts)
 │   ├── standalone/ (build-standalone-package.ts, install/upgrade/uninstall.sh)
-│   ├── cpanel/ (build-cpanel-package.ts, gulogulo.spec, systemd unit + reverse-proxy example)
-│   └── plesk/ (build-plesk-package.ts, debian/DEBIAN/ control + maintainer scripts)
+│   ├── cpanel/ (build-cpanel-package.ts + scripts/install-upgrade-uninstall.sh (active);
+│   │   gulogulo.spec (RPM pipeline, implemented, not currently published - see README))
+│   └── plesk/ (build-plesk-package.ts + scripts/install-upgrade-uninstall.sh (active);
+│       debian/DEBIAN/ (DEB pipeline, implemented, not currently published - see README))
 ├── scripts/
 │   ├── lp3-proof-smoke.ts (+ .mjs compatibility bridge)
 │   ├── lp4-proof-check.ts

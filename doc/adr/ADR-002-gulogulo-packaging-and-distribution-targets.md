@@ -61,14 +61,22 @@ avoiding the deprecated cpapi2; Plesk's modern REST API or XML-RPC
 version) is documented separately once the adapters are implemented.
 
 Package naming: `gulogulo-<semver>-standalone.tar.gz` for the standalone
-target; the cPanel and Plesk targets instead ship as real, OS-native Linux
-packages — `gulogulo-<semver>-1.<dist>.noarch.rpm` for cPanel (built with
-`rpmbuild`, standard RPM NVRA convention) and `gulogulo_<semver>_all.deb` for
-Plesk (built with `dpkg-deb`, standard Debian archive convention) — rather
-than the `gulogulo-<semver>-<target>.tar.gz` shape originally used for all
-three; see `packaging/cpanel/` and `packaging/plesk/` for the current build
-scripts. None of the three package names encode a panel major version; exact
-version compatibility is documented apart from the package itself.
+target. The cPanel and Plesk targets have real, OS-native Linux package
+formats fully implemented — `gulogulo-<semver>-1.<dist>.noarch.rpm` for
+cPanel (built with `rpmbuild`, standard RPM NVRA convention,
+`packaging/cpanel/gulogulo.spec`) and `gulogulo_<semver>_all.deb` for Plesk
+(built with `dpkg-deb`, standard Debian archive convention,
+`packaging/plesk/debian/`) — but as of this revision both build scripts
+temporarily produce a tar.gz instead (`gulogulo-<semver>_cpanel_.tar.gz`,
+`gulogulo-<semver>_plesk_.tar.gz`), because no code-signing key/certificate
+exists yet for RPM/DEB packages and an unsigned package published through a
+host's package manager is a worse trust signal than an unsigned tar.gz. The
+RPM/DEB code is untouched and one call away from being re-enabled once a
+signing key exists — see `packaging/cpanel/build-cpanel-package.ts` and
+`packaging/plesk/build-plesk-package.ts`'s top-of-file comments, and
+INSTALL.md Sections 3–4 for the full detail. None of the package names
+encode a panel major version; exact version compatibility is documented
+apart from the package itself.
 
 ## Reference architecture
 
@@ -84,8 +92,12 @@ src/core/            (RBAC, TenantContext, quota, delegation, auth,
       │
       └── src/runtime/               (common bootstrap)
             │
-            ├── git/packaging/cpanel/       → gulogulo-<semver>-1.<dist>.noarch.rpm
-            ├── git/packaging/plesk/        → gulogulo_<semver>_all.deb
+            ├── git/packaging/cpanel/       → gulogulo-<semver>_cpanel_.tar.gz
+            │                                 (RPM pipeline implemented, not
+            │                                  currently built - no signing key)
+            ├── git/packaging/plesk/        → gulogulo-<semver>_plesk_.tar.gz
+            │                                 (DEB pipeline implemented, not
+            │                                  currently built - no signing key)
             └── git/packaging/standalone/   → gulogulo-<semver>-standalone.tar.gz
 ~~~
 

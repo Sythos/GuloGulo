@@ -43,8 +43,8 @@ for any of the following:
 - exposure, exfiltration or cross-tenant access to mail, calendar, contacts, identity data,
   tokens or secrets;
 - LDAP, PostgreSQL, secret store or rotation compromise;
-- CI, release, packaging (cPanel `.rpm`, Plesk `.deb`, standalone `.tar.gz`) or GitHub Actions
-  compromise;
+- CI, release, packaging (cPanel, Plesk and standalone all currently ship as `.tar.gz`; see
+  "Security controls" below) or GitHub Actions compromise;
 - runner or host compromise, persistence or unauthorized lateral movement;
 - a practical bypass of authentication, session, CSRF, RBAC or tenant-isolation boundaries.
 
@@ -111,6 +111,14 @@ contract-tested; the audit trail is verified to carry no secrets.
 
 Each cPanel, Plesk and standalone release archive ships with a SHA256 checksum sidecar and an
 aggregated `checksums.txt`, verified in CI before upload; GPG/minisign signing is not built yet.
+cPanel and Plesk both have a real, OS-native package format implemented (`.rpm` built with
+`rpmbuild`, `.deb` built with `dpkg-deb`), but as of this revision both ship as a plain `.tar.gz`
+instead, temporarily: publishing an *unsigned* package through a host's own package manager
+implies a level of curated distribution and signature verification that isn't actually there yet,
+which is a worse trust signal than an unsigned tar.gz the operator downloads, checksums, and
+extracts themselves. The RPM/DEB code is untouched on disk and will be re-enabled once a
+code-signing key/certificate exists; see INSTALL.md Sections 3–4 for the current state of each
+target.
 
 Release integrity also depends on review as well as automation: the development toolchain is
 bound by `package-lock.json`, and continuous integration installs dependencies with
