@@ -6,7 +6,7 @@ Author: Sythos (https://www.sythos.net)
 
 # Gulo Gulo
 
-> **⚠️ Documento in transizione.** Il modello di distribuzione container/Docker descritto in questo documento è stato rimosso dal repository. Il progetto sta migrando a tre pacchetti di distribuzione (cPanel, Plesk, archivio standalone) — vedi [ADR-002](../ADR-002-gulogulo-packaging-and-distribution-targets.md). Questo documento verrà riscritto in una milestone successiva; nel frattempo le istruzioni Docker/compose qui sotto non sono più applicabili.
+> **ℹ️ Nota.** Il vecchio modello di distribuzione container/Docker è stato rimosso — vedi [ADR-002](../ADR-002-gulogulo-packaging-and-distribution-targets.md). Le checklist sotto sono state aggiornate al nuovo modello a 3 pacchetti; alcune voci restano deliberatamente non spuntate dove il lavoro di packaging non ha ancora un equivalente del vecchio meccanismo container (es. firma/checksum dei pacchetti).
 
 [![Issues](https://img.shields.io/github/issues/Sythos/GuloGulo?label=issues)](https://github.com/Sythos/GuloGulo/issues)
 [![Last commit](https://img.shields.io/github/last-commit/Sythos/GuloGulo?label=last%20commit)](https://github.com/Sythos/GuloGulo/commits/main/)
@@ -37,6 +37,41 @@ mail, calendar, contacts, quotas, retention, and audit. The integration is
 deliberately read-only and tenant-bound today, with provider-specific API
 reconciliation kept as a separate backlog item.
 
+## Quickstart
+
+Full instructions, requirements, and known gaps for each target are in
+[READ_BEFORE_USE.md](doc/READ_BEFORE_USE.md) - this is the short version.
+
+**Standalone** (any Linux host, Node.js 26+):
+
+```bash
+node --experimental-strip-types packaging/standalone/build-standalone-package.ts
+tar xzf packaging/dist/gulogulo-<version>-standalone.tar.gz -C /opt/gulogulo
+cd /opt/gulogulo && ./install.sh
+```
+
+**cPanel** (root/WHM access required):
+
+```bash
+node --experimental-strip-types packaging/cpanel/build-cpanel-package.ts
+tar xzf packaging/dist/gulogulo-<version>-cpanel.tar.gz -C /opt/gulogulo
+cd /opt/gulogulo && sudo ./install.sh
+```
+
+**Plesk** (root access to install the systemd unit; the extension zip itself
+installs via `plesk bin extension -i`):
+
+```bash
+node --experimental-strip-types packaging/plesk/build-plesk-package.ts
+plesk bin extension -i packaging/dist/gulogulo-<version>-plesk.zip
+```
+
+Only the standalone archive has a real end-to-end install-and-health-check
+rehearsal today (in CI, on a clean runner). The cPanel and Plesk packages
+build and their structure is verified, but installing them on a real host is
+still field work - see the honesty notes in READ_BEFORE_USE.md before relying
+on either in production.
+
 ## Production readiness checklist
 
 This is the implementation checklist derived from section 30 of the
@@ -55,17 +90,17 @@ still missing.
 - [x] LDAP uses TLS and minimum bind privilege;
 - [x] PostgreSQL protected and backed up;
 - [x] secret store and rotation configured through an allowlisted, versioned
-  rotation/expiry/rollback contract with tested Docker/Kubernetes projected-
-  file adapters;
+  rotation/expiry/rollback contract with tested versioned-file adapters;
 - [x] CSP, CSRF, and security headers;
 - [x] secure web sessions, generic login failures, and login rate limits;
 - [x] email HTML sanitization;
 - [x] rate and abuse controls contract tested;
 - [x] audit has no secrets;
-- [x] images have an SBOM workflow, digest-bound attestations, and a
-  consumer-verification gate; an owner-pushed numeric version tag publishes
-  the final image and matching GitHub Release automatically, as documented in
-  [READ_BEFORE_USE.md](doc/READ_BEFORE_USE.md).
+- [ ] package checksum/signing and consumer-verification gate for the cPanel,
+  Plesk, and standalone archives; the container-era SBOM/image-attestation
+  workflow was retired with the container model (see
+  [ADR-002](../ADR-002-gulogulo-packaging-and-distribution-targets.md)) and
+  has no packaging-target equivalent yet.
 
 ### Data
 
@@ -95,29 +130,31 @@ still missing.
 ### Operations
 
 - [x] health and metrics;
-- [x] default-deny Docker build context and runtime-layer cleanup keep documentation, tests, fixtures, CI metadata, and local tooling outside the application image;
 - [x] dual-stack IPv4 and IPv6 network support;
-- [x] persistent external mail volumes and restart continuity;
+- [x] persistent external mail storage and restart continuity;
 - [x] offline synthetic LP2 LDAP and PostgreSQL dependency proof with verified TLS;
 - [x] offline synthetic mail proof with Postfix, Dovecot, Rspamd, and ClamAV;
 - [x] offline synthetic web/session/DAV/discovery proof with restart continuity;
 - [x] fast CI on Ubuntu 26.04 LTS (AMD64);
 - [x] tenant-bound DAV ETags and sync tokens;
-- [x] OCI build-provenance attestations generated and verified;
-- [x] reproducible local release evidence and consumer-verifiable provenance metadata;
+- [x] cPanel, Plesk, and standalone packages build and their structure is
+  verified in CI; only the standalone archive has a real install-and-health-
+  check rehearsal today, tracked in [READ_BEFORE_USE.md](doc/READ_BEFORE_USE.md);
 - [x] provenance and release permissions are granted only by version-tag pushes
   or trusted manual callers, while pull-request validation remains read-only;
 - [x] log rotation;
 - [x] alerts;
 - [x] Postfix queue visibility;
-- [x] bounded operations and capacity proof (AMD64 Compose proof);
+- [x] capacity contract tested;
 - [x] fail-closed disposable patch helper and sanitized read-only patch status;
 - [x] externally managed Rspamd/ClamAV definition updates through a shared
   read-only signature volume with freshness, atomic activation, and rollback
   metadata; provider updater execution is tracked in READ_BEFORE_USE.md;
 - [x] provider-only migration contract, compatibility window, and rollback state machine;
-- [x] bounded Docker replacement and Kubernetes blue/green rehearsal with external-volume continuity (AMD64 functional proof);
-- [x] blue/green cutover and rollback runbook defined; live rehearsal is
+- [x] in-place upgrade scripts for all three packaging targets (backup,
+  replace, migrate, restart); field rehearsal on cPanel/Plesk is tracked in
+  READ_BEFORE_USE.md;
+- [x] in-place upgrade and rollback runbook defined; live rehearsal is
   tracked in READ_BEFORE_USE.md;
 - [x] RPO/RTO contract defined; measured objectives and approval are tracked
   in READ_BEFORE_USE.md;
@@ -134,8 +171,9 @@ still missing.
 - [x] canonical TypeScript source tree audited, with a single build boundary and zero compatibility bridges;
 - [x] optional upstream Plesk/cPanel tenant-tool contract with safe binding and
   read-only capabilities;
-- [x] deployment documentation is complete for the local-proof hand-off;
-  provider runbooks remain an external release responsibility.
+- [x] deployment documentation is complete for the packaging hand-off in
+  [READ_BEFORE_USE.md](doc/READ_BEFORE_USE.md); field verification on real
+  cPanel and Plesk hosts remains an external release responsibility.
 
 ## Repository implementation backlog
 
@@ -143,12 +181,16 @@ The production checklist above is intentionally about repository work. These
 are the only remaining unchecked implementation items; field verification for
 the checked contracts belongs in [READ_BEFORE_USE.md](doc/READ_BEFORE_USE.md).
 
-- [x] provider-neutral secret-store contract, managed versioned-file rotation,
-  and read-only Docker/Kubernetes projected-file adapters;
-- [x] SBOM generation, GitHub Release assets, and consumer verification
-  workflow; the owner still controls the version tag and field evidence is
-  documented in [READ_BEFORE_USE.md](doc/READ_BEFORE_USE.md);
-- [ ] provider-specific Plesk/cPanel API adapter and idempotent reconciliation;
+- [x] provider-neutral secret-store contract and managed versioned-file rotation;
+- [ ] package checksum/signing and consumer verification workflow for the
+  cPanel, Plesk, and standalone archives (the container-era SBOM/GitHub
+  Release workflow was retired, no packaging-target replacement built yet);
+- [x] cPanel and Plesk PlatformAdapter implementations (identity via UAPI/REST,
+  data via the existing PostgreSQL store, packaging pipeline for both) - real
+  password authentication for cPanel/Plesk mailboxes and MySQL/MariaDB support
+  remain backlog, documented in each adapter's README;
+- [ ] wire the CPANEL_API_*/PLESK_API_* settings added to .env.example into
+  runtime/config.ts's loader (currently declared but not read at runtime);
 - [ ] provider-backed authenticated login/session wiring to the real LDAP
   adapter;
 - [ ] production Postfix/Dovecot mail adapters, persistent DAV backend, and
@@ -169,6 +211,9 @@ gulogulo/
 ├── .github/
 │   └── workflows/
 │       ├── commit-tests.yml
+│       ├── package-cpanel.yml
+│       ├── package-plesk.yml
+│       ├── package-standalone.yml
 │       ├── pr-validation.yml
 │       └── quality-gates.yml
 ├── assets/
@@ -181,10 +226,8 @@ gulogulo/
 │   ├── READ_BEFORE_USE.md
 │   ├── api-and-mcp.md
 │   ├── acme-abuse-deployment.md
-│   ├── compose-and-fixtures.md
 │   ├── control-panel-integration.md
 │   ├── configuration.md
-│   ├── container-patching.md
 │   ├── dav-and-discovery.md
 │   ├── identity-and-postgres.md
 │   ├── lifecycle-backup-dr.md
@@ -199,9 +242,12 @@ gulogulo/
 │   ├── storage-and-quotas.md
 │   ├── upgrade-and-migration.md
 │   └── web-foundation.md
+├── packaging/
+│   ├── shared/ (staging + zip helpers shared by all three build scripts)
+│   ├── standalone/ (build-standalone-package.ts, install/upgrade/uninstall.sh)
+│   ├── cpanel/ (build-cpanel-package.ts, systemd + reverse-proxy install scripts)
+│   └── plesk/ (build-plesk-package.ts, meta.xml, PHP lifecycle hooks)
 ├── scripts/
-│   ├── m0-smoke.ps1
-│   ├── m1-fixture-smoke.ps1
 │   ├── lp3-proof-smoke.ts (+ .mjs compatibility bridge)
 │   ├── lp4-proof-check.ts
 │   ├── lp5-proof-check.ts
@@ -279,6 +325,11 @@ gulogulo/
 │   │       ├── rollout.ts
 │   │       └── upgrade-contract.test.ts
 │   ├── integrations/ (TypeScript LDAP, PostgreSQL, tenant, migration, and optional Plesk/cPanel adapters)
+│   ├── platform/
+│   │   ├── contract/ (PlatformAdapter interface)
+│   │   ├── standalone/ (LDAP + PostgreSQL adapter)
+│   │   ├── cpanel/ (UAPI identity client + adapter)
+│   │   └── plesk/ (REST identity client + adapter)
 │   ├── runtime/ (TypeScript HTTP runtime and observability)
 │   └── web/
 │       ├── backup/ (typed user backup boundary)
