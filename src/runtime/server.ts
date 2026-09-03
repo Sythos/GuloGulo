@@ -317,7 +317,15 @@ function staticFile(config: RuntimeConfig, path: string) {
 
   const root = resolve(isArtwork ? join(webRoot, '..', 'assets') : webRoot);
   const target = resolve(root, `.${pathname}`);
-  const withinRoot = target === root || relative(root, target) && !relative(root, target).startsWith('..') && !relative(root, target).includes('\\');
+  // pathname was already rejected above if it carried a literal backslash, so
+  // the only thing left to check here is that resolving it didn't escape
+  // root via a `..` segment - not the OS-specific separator relative() uses
+  // in its own output, which is a backslash on Windows for every legitimate
+  // subdirectory file and previously made this reject e.g. /web/dist/app.js
+  // on a Windows host (never observed in CI/production, which are Linux-only
+  // targets, but a real bug for local Windows development).
+  const relativeToRoot = relative(root, target);
+  const withinRoot = target === root || (relativeToRoot !== '' && !relativeToRoot.startsWith('..'));
   if (!withinRoot || !existsSync(target)) {
     return null;
   }
