@@ -29,6 +29,10 @@ function createNoopPlatformAdapter(): PlatformAdapter {
       healthCheck: async () => ({ status: 'disabled' as const }),
       close: async () => {},
     }),
+    createDavStore: async () => ({
+      caldav: { enabled: false as const, healthCheck: async () => ({ status: 'disabled' as const }), close: async () => {} },
+      carddav: { enabled: false as const, healthCheck: async () => ({ status: 'disabled' as const }), close: async () => {} },
+    }),
     createSessionStore: async () => new Map<string, WebSession>(),
   };
 }
@@ -43,5 +47,8 @@ test('every contract method resolves for the no-op adapter', async () => {
   assert.deepEqual(await adapter.loadConfig(), {});
   assert.equal((await adapter.createIdentityClient({})).enabled, false);
   assert.equal((await adapter.createDataStore({})).enabled, false);
+  const davStore = await adapter.createDavStore({});
+  assert.equal(davStore.caldav.enabled, false);
+  assert.equal(davStore.carddav.enabled, false);
   assert.equal((await adapter.createSessionStore()).size, 0);
 });

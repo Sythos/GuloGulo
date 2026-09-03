@@ -5,9 +5,12 @@
 import { loadConfig as loadRuntimeConfig } from '../../runtime/config.ts';
 import { createLdapIdentityClient } from '../../integrations/ldap-client.ts';
 import { createPostgresStore } from '../../integrations/postgres-store.ts';
+import { createPostgresCalDavStore } from '../../core/dav/caldav/postgres-caldav-store.ts';
+import { createPostgresCardDavStore } from '../../core/dav/carddav/postgres-carddav-store.ts';
 import { createDatabaseIdentityClient } from './db-identity-client.ts';
 import type { IntegrationConfig, IntegrationLogger, LdapIdentityClient, PostgresStore, SecretResolver } from '../../integrations/types.ts';
-import type { PlatformAdapter } from '../contract/platform-adapter.ts';
+import { createLocalMailClients } from '../contract/platform-adapter.ts';
+import type { DavStore, MailClientFactories, PlatformAdapter } from '../contract/platform-adapter.ts';
 import type { SessionStore, WebSession } from '../../web/security/session-manager.ts';
 
 function asRecord(value: unknown): Record<string, unknown> {
@@ -61,6 +64,15 @@ export interface StandaloneAdapterOptions {
  *   rather not stand up an LDAP directory.
  * - `createDataStore()` calls `createPostgresStore()` from
  *   `src/integrations/postgres-store.ts`.
+ * - `createDavStore()` calls `createPostgresCalDavStore()`/
+ *   `createPostgresCardDavStore()` from `src/core/dav/caldav/` and
+ *   `src/core/dav/carddav/` — the persistent backends for the in-memory
+ *   `caldav-contract.ts`/`carddav-store.ts` object contracts.
+ * - `createMailClients()` calls `createLocalMailClients()` from
+ *   `../contract/platform-adapter.ts`, shared by all three targets: IMAP/SMTP
+ *   client factories against `127.0.0.1` (the host's own Dovecot/Postfix)
+ *   with ports from the existing `mail.imapsPort`/`mail.smtpSubmissionPort`
+ *   config.
  * - `createSessionStore()` returns the same in-memory `Map` that
  *   `createSessionManager()` in `src/web/security/session-manager.ts` already
  *   uses as its default `store`.
@@ -86,6 +98,17 @@ export function createStandaloneAdapter(options: StandaloneAdapterOptions = {}):
     return createPostgresStore({ config, resolveSecret, logger });
   }
 
+  async function createDavStore(config: IntegrationConfig): Promise<DavStore> {
+    return {
+      caldav: createPostgresCalDavStore({ config, resolveSecret, logger }),
+      carddav: createPostgresCardDavStore({ config, resolveSecret, logger }),
+    };
+  }
+
+  async function createMailClients(config: IntegrationConfig): Promise<MailClientFactories> {
+    return createLocalMailClients(config, { logger });
+  }
+
   async function createSessionStore(): Promise<SessionStore> {
     return new Map<string, WebSession>();
   }
@@ -95,6 +118,8 @@ export function createStandaloneAdapter(options: StandaloneAdapterOptions = {}):
     loadConfig,
     createIdentityClient,
     createDataStore,
+    createDavStore,
+    createMailClients,
     createSessionStore,
   });
 }

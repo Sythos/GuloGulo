@@ -343,6 +343,7 @@ function fakeAdapterFromClient(client: LdapIdentityClient): PlatformAdapter {
     loadConfig: async () => ({}),
     createIdentityClient: async () => client,
     createDataStore: async () => { throw new Error('not exercised by this test'); },
+    createDavStore: async () => { throw new Error('not exercised by this test'); },
     createSessionStore: async () => new Map(),
   };
 }

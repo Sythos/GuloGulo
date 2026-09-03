@@ -45,6 +45,18 @@ test('createDataStore() builds a real PostgresStore from src/integrations/postgr
   await store.close();
 });
 
+test('createDavStore() builds real PostgreSQL-backed CalDAV/CardDAV stores from src/core/dav/', async () => {
+  const adapter = createStandaloneAdapter({ environment: emptyEnvironment() });
+  const config = await adapter.loadConfig();
+  const davStore = await adapter.createDavStore(config);
+  assert.equal(davStore.caldav.enabled, false);
+  assert.deepEqual(await davStore.caldav.healthCheck(), { status: 'disabled' });
+  assert.equal(davStore.carddav.enabled, false);
+  assert.deepEqual(await davStore.carddav.healthCheck(), { status: 'disabled' });
+  await davStore.caldav.close();
+  await davStore.carddav.close();
+});
+
 function ldapEnabledEnvironment(overrides: NodeJS.ProcessEnv = {}): NodeJS.ProcessEnv {
   return {
     GULOGULO_LDAP_ENABLED: 'true',

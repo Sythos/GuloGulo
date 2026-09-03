@@ -5,8 +5,11 @@
 import { loadConfig as loadRuntimeConfig } from '../../runtime/config.ts';
 import { createCpanelIdentityClient } from './cpanel-identity-client.ts';
 import { createPostgresStore } from '../../integrations/postgres-store.ts';
+import { createPostgresCalDavStore } from '../../core/dav/caldav/postgres-caldav-store.ts';
+import { createPostgresCardDavStore } from '../../core/dav/carddav/postgres-carddav-store.ts';
 import type { IntegrationConfig, IntegrationLogger, LdapIdentityClient, PostgresStore, SecretResolver } from '../../integrations/types.ts';
-import type { PlatformAdapter } from '../contract/platform-adapter.ts';
+import { createLocalMailClients } from '../contract/platform-adapter.ts';
+import type { DavStore, MailClientFactories, PlatformAdapter } from '../contract/platform-adapter.ts';
 import type { SessionStore, WebSession } from '../../web/security/session-manager.ts';
 
 /**
@@ -43,6 +46,9 @@ export interface CpanelAdapterOptions {
  *   made for the standalone target in PK2: MySQL/MariaDB (cPanel's usual
  *   default engine) stays backlog, a cPanel host with PostgreSQL enabled
  *   works today.
+ * - `createMailClients()` calls `createLocalMailClients()` from
+ *   `../contract/platform-adapter.ts` — see `standalone-adapter.ts` for the
+ *   shared 127.0.0.1/configured-port wiring.
  * - `createSessionStore()` uses the same in-memory `Map` default that
  *   `createSessionManager()` in `src/web/security/session-manager.ts` uses.
  */
@@ -65,6 +71,17 @@ export function createCpanelAdapter(options: CpanelAdapterOptions = {}): Platfor
     return createPostgresStore({ config, resolveSecret, logger });
   }
 
+  async function createDavStore(config: IntegrationConfig): Promise<DavStore> {
+    return {
+      caldav: createPostgresCalDavStore({ config, resolveSecret, logger }),
+      carddav: createPostgresCardDavStore({ config, resolveSecret, logger }),
+    };
+  }
+
+  async function createMailClients(config: IntegrationConfig): Promise<MailClientFactories> {
+    return createLocalMailClients(config, { logger });
+  }
+
   async function createSessionStore(): Promise<SessionStore> {
     return new Map<string, WebSession>();
   }
@@ -74,6 +91,8 @@ export function createCpanelAdapter(options: CpanelAdapterOptions = {}): Platfor
     loadConfig,
     createIdentityClient,
     createDataStore,
+    createDavStore,
+    createMailClients,
     createSessionStore,
   });
 }
