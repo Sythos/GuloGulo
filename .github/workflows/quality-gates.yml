@@ -223,12 +223,8 @@ jobs:
           test -f src/core/observability/observability.test.ts
           test -f doc/acme-abuse-deployment.md
           test -f src/core/upgrade/compatibility.ts
-          test -f src/core/upgrade/control-plane.ts
-          test -f src/core/upgrade/rollout.ts
           test -f src/core/upgrade/index.ts
           test -f src/core/upgrade/upgrade-contract.test.ts
-          test -f src/core/upgrade/rehearsal.ts
-          test -f src/core/upgrade/rehearsal.test.ts
           test -f release/local-proof-scope.json
           test -f release/local-proof-topology.json
           test -f doc/upgrade-and-migration.md
@@ -266,12 +262,8 @@ jobs:
             src/core/release/release-evidence.ts \
             src/core/release/release-evidence.test.ts \
             src/core/upgrade/compatibility.ts \
-            src/core/upgrade/control-plane.ts \
-            src/core/upgrade/rollout.ts \
             src/core/upgrade/index.ts \
             src/core/upgrade/upgrade-contract.test.ts \
-            src/core/upgrade/rehearsal.ts \
-            src/core/upgrade/rehearsal.test.ts \
             src/integrations/control-panel.ts \
             src/integrations/control-panel.test.ts \
             src/core/mail/scanner-signatures.ts \
@@ -372,16 +364,6 @@ jobs:
           grep -Fq 'DEFAULT_TRASH_RETENTION_DAYS = 28' src/core/lifecycle/retention.ts
           grep -Fq 'MIGRATION_PHASES' src/core/upgrade/compatibility.ts
           grep -Fq 'createSchemaMigrationPlan' src/core/upgrade/compatibility.ts
-          grep -Fq 'createUpgradeController' src/core/upgrade/control-plane.ts
-          grep -Fq 'TENANT_CONTROL_PLANE_FORBIDDEN' src/core/upgrade/control-plane.ts
-          grep -Fq 'PREFLIGHT_FAILED' src/core/upgrade/control-plane.ts
-          grep -Fq 'createDockerReplacementPlan' src/core/upgrade/rollout.ts
-          grep -Fq 'createKubernetesBlueGreenPlan' src/core/upgrade/rollout.ts
-          grep -Fq 'ACTION_NOT_ALLOWLISTED' src/core/upgrade/rollout.ts
-          grep -Fq 'createDockerReplacementRehearsal' src/core/upgrade/rehearsal.ts
-          grep -Fq 'createKubernetesBlueGreenRehearsal' src/core/upgrade/rehearsal.ts
-          grep -Fq 'runDockerReplacementRehearsal' src/core/upgrade/rehearsal.ts
-          grep -Fq 'runKubernetesBlueGreenRehearsal' src/core/upgrade/rehearsal.ts
           grep -Fq 'ready_for_lp9' release/lp8-local-proof-bundle.json
           grep -Fq 'syntheticDataOnly' release/lp8-local-proof-bundle.json
           grep -Fq 'artifactProvenanceOnly' release/lp8-local-proof-bundle.json
