@@ -162,6 +162,62 @@ jobs:
           } >> "$GITHUB_OUTPUT"
           tail -n 40 bun-full-suite.log
 
+      - name: Probe 7 - render the systemd unit template with @RUNTIME_BIN@ set to bun
+        id: probe_render
+        shell: bash
+        continue-on-error: true
+        run: |
+          set -uo pipefail
+          BUN_PATH="$(command -v bun)"
+          sed \
+            -e "s#@INSTALL_DIR@#/opt/gulogulo#g" \
+            -e "s#@SERVICE_USER@#gulogulo#g" \
+            -e "s#@SERVICE_GROUP@#gulogulo#g" \
+            -e "s#@RUNTIME_BIN@#$BUN_PATH#g" \
+            -e "s#@READ_WRITE_PATH@#/var/lib/gulogulo#g" \
+            packaging/shared/gulogulo-deb.service.template > /tmp/gulogulo-bun.service
+          if grep -q "^ExecStart=${BUN_PATH} --env-file=/opt/gulogulo/.env /opt/gulogulo/dist/server/src/runtime/index.js\$" /tmp/gulogulo-bun.service; then
+            echo "result=pass" >> "$GITHUB_OUTPUT"
+          else
+            echo "result=fail" >> "$GITHUB_OUTPUT"
+            cat /tmp/gulogulo-bun.service
+          fi
+
+      - name: Probe 8 - boot under Bun with the exact ExecStart shape (--env-file, real .env)
+        id: probe_envfile
+        shell: bash
+        continue-on-error: true
+        run: |
+          set -uo pipefail
+          # This is the literal command line gulogulo.service.template renders
+          # into ExecStart= (see probe 7) - unlike probe 1, which ran bun with
+          # no .env at all, this proves --env-file itself works under Bun,
+          # since that flag (not just "can Bun run this file") is the one
+          # genuinely new, unverified piece the systemd unit depends on.
+          cp .env.example /tmp/gulogulo-test.env
+          bun --env-file=/tmp/gulogulo-test.env dist/server/src/runtime/index.js > bun-envfile-server.log 2>&1 &
+          SERVER_PID=$!
+
+          READY=0
+          for _ in $(seq 1 20); do
+            if curl -fsS http://127.0.0.1:8080/health/ready >/dev/null 2>&1; then
+              READY=1
+              break
+            fi
+            sleep 1
+          done
+
+          if [ "$READY" -eq 1 ] && curl -fsS http://127.0.0.1:8080/ >/dev/null 2>&1; then
+            echo "result=pass" >> "$GITHUB_OUTPUT"
+          else
+            echo "result=fail" >> "$GITHUB_OUTPUT"
+            echo "--- server log ---"
+            cat bun-envfile-server.log || true
+          fi
+
+          kill "$SERVER_PID" 2>/dev/null || true
+          wait "$SERVER_PID" 2>/dev/null || true
+
       - name: Compatibility summary
         shell: bash
         run: |
@@ -176,6 +232,8 @@ jobs:
             echo "| Webhook alert adapter test (real node:http server) | ${{ steps.probe_webhook.outputs.result }} |"
             echo "| DAV contract tests (pure logic, no I/O) | ${{ steps.probe_dav.outputs.result }} |"
             echo "| Full repository test suite (every \`*.test.ts\`, \`bun test .\`) | ${{ steps.probe_full.outputs.result }} |"
+            echo "| systemd unit template renders a correct ExecStart for @RUNTIME_BIN@=bun | ${{ steps.probe_render.outputs.result }} |"
+            echo "| Server boots under \`bun --env-file=...\` (the exact ExecStart shape) | ${{ steps.probe_envfile.outputs.result }} |"
             echo ""
             echo "This is an exploratory probe on the \`bun-engine\` branch only."
             echo "A \`fail\` here means real, observed incompatibility under Bun -"
@@ -188,7 +246,9 @@ jobs:
              [ "${{ steps.probe_smtp.outputs.result }}" != "pass" ] || \
              [ "${{ steps.probe_webhook.outputs.result }}" != "pass" ] || \
              [ "${{ steps.probe_dav.outputs.result }}" != "pass" ] || \
-             [ "${{ steps.probe_full.outputs.result }}" != "pass" ]; then
+             [ "${{ steps.probe_full.outputs.result }}" != "pass" ] || \
+             [ "${{ steps.probe_render.outputs.result }}" != "pass" ] || \
+             [ "${{ steps.probe_envfile.outputs.result }}" != "pass" ]; then
             echo "One or more Bun compatibility probes failed; see the summary above." >&2
             exit 1
           fi

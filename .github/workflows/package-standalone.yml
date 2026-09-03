@@ -70,6 +70,9 @@ jobs:
           test -f "$INSTALL_DIR/install.sh"
           test -f "$INSTALL_DIR/upgrade.sh"
           test -f "$INSTALL_DIR/uninstall.sh"
+          test -f "$INSTALL_DIR/switch-runtime.sh"
+          test -f "$INSTALL_DIR/switch-to-node.sh"
+          test -f "$INSTALL_DIR/switch-to-bun.sh"
           test -f "$INSTALL_DIR/run-migrations.mjs"
           test -f "$INSTALL_DIR/gulogulo.service.example"
 
@@ -88,8 +91,11 @@ jobs:
           GULOGULO_NON_INTERACTIVE: "1"
         run: |
           set -euo pipefail
-          chmod +x "$INSTALL_DIR"/install.sh "$INSTALL_DIR"/upgrade.sh "$INSTALL_DIR"/uninstall.sh "$INSTALL_DIR"/run-migrations.mjs
+          chmod +x "$INSTALL_DIR"/install.sh "$INSTALL_DIR"/upgrade.sh "$INSTALL_DIR"/uninstall.sh "$INSTALL_DIR"/run-migrations.mjs \
+            "$INSTALL_DIR"/switch-runtime.sh "$INSTALL_DIR"/switch-to-node.sh "$INSTALL_DIR"/switch-to-bun.sh
           "$INSTALL_DIR/install.sh" --non-interactive
+          test -f "$INSTALL_DIR/.runtime"
+          [ "$(cat "$INSTALL_DIR/.runtime")" = "node" ]
 
       - name: Start the installed service and verify readiness
         shell: bash
