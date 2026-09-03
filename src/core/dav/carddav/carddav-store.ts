@@ -65,7 +65,7 @@ function readClock(clock: () => DavValue): number {
   return Math.trunc(timestamp);
 }
 
-function normalizeScope(scope: DavValue): Readonly<DavRecord> {
+export function normalizeScope(scope: DavValue): Readonly<DavRecord> {
   if (scope === null || typeof scope !== 'object') {
     throw cardDavError('an authenticated tenant/user scope is required', 'SCOPE_INVALID', 401);
   }
@@ -83,11 +83,11 @@ function normalizeScope(scope: DavValue): Readonly<DavRecord> {
   return Object.freeze({ tenantId, userId });
 }
 
-function normalizeAddressBookId(value: DavValue): string {
+export function normalizeAddressBookId(value: DavValue): string {
   return assertString(value, 'addressBookId', { pattern: ADDRESS_BOOK_ID_PATTERN, maxLength: 64 });
 }
 
-function normalizeHref(value: DavValue): string {
+export function normalizeHref(value: DavValue): string {
   const href = assertString(value, 'href', { pattern: HREF_PATTERN, maxLength: 128 });
   if (href.includes('..') || href.includes('%') || href.includes('/') || href.includes('\\')) {
     throw cardDavError('href must be a single safe vCard object name', 'INVALID_HREF');
@@ -104,18 +104,18 @@ function keyFor(scope: DavRecord, addressBookId: string): string {
   return `${scope.tenantId}\u0000${scope.userId}\u0000${addressBookId}`;
 }
 
-function scopeFingerprint(scope: DavRecord, addressBookId: string): string {
+export function scopeFingerprint(scope: DavRecord, addressBookId: string): string {
   return createHash('sha256')
     .update(`${scope.tenantId}\u0000${scope.userId}\u0000${addressBookId}`, 'utf8')
     .digest('base64url')
     .slice(0, 22);
 }
 
-function makeSyncToken(scope: DavRecord, addressBookId: string, version: number): string {
+export function makeSyncToken(scope: DavRecord, addressBookId: string, version: number): string {
   return `${CARD_DAV_SYNC_TOKEN_PREFIX}${scopeFingerprint(scope, addressBookId)}:${version}`;
 }
 
-function parseSyncToken(token: DavValue, scope: DavRecord, addressBookId: string): number {
+export function parseSyncToken(token: DavValue, scope: DavRecord, addressBookId: string): number {
   if (typeof token !== 'string') {
     throw cardDavError('syncToken must be a string', 'SYNC_TOKEN_INVALID', 400);
   }
@@ -130,22 +130,22 @@ function parseSyncToken(token: DavValue, scope: DavRecord, addressBookId: string
   return version;
 }
 
-function makeEtag(canonicalVCard: string): string {
+export function makeEtag(canonicalVCard: string): string {
   return `"${createHash('sha256').update(canonicalVCard, 'utf8').digest('base64url')}"`;
 }
 
-function makeCollectionEtag(state: DavRecord): string {
+export function makeCollectionEtag(state: DavRecord): string {
   const value = `${state.addressBookId}\u0000${state.displayName}\u0000${state.description}\u0000${state.color}\u0000${state.revision}`;
   return `"${createHash('sha256').update(value, 'utf8').digest('base64url')}"`;
 }
 
-function matchesIfMatch(ifMatch: DavValue, currentEtag: string): boolean {
+export function matchesIfMatch(ifMatch: DavValue, currentEtag: string): boolean {
   if (ifMatch === '*') return true;
   if (typeof ifMatch !== 'string' || ifMatch.length === 0) return false;
   return ifMatch.split(',').map((part) => part.trim()).some((part) => part === currentEtag);
 }
 
-function assertIfMatch(ifMatch: DavValue, currentEtag: string, resourceName: string): void {
+export function assertIfMatch(ifMatch: DavValue, currentEtag: string, resourceName: string): void {
   if (ifMatch === undefined) {
     throw cardDavError(`If-Match is required for ${resourceName}`, 'PRECONDITION_REQUIRED', 428);
   }

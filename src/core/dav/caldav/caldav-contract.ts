@@ -53,15 +53,15 @@ function requiredPattern(value: DavValue, pattern: RegExp, field: string, code =
   return value;
 }
 
-function canonicalTenantId(value: DavValue): string {
+export function canonicalTenantId(value: DavValue): string {
   return requiredPattern(value, TENANT_ID_PATTERN, 'tenantId', 'INVALID_TENANT');
 }
 
-function canonicalUserId(value: DavValue, field = 'userId'): string {
+export function canonicalUserId(value: DavValue, field = 'userId'): string {
   return requiredPattern(value, USER_ID_PATTERN, field, 'INVALID_USER');
 }
 
-function canonicalCalendarSlug(value: DavValue, field = 'calendarId'): string {
+export function canonicalCalendarSlug(value: DavValue, field = 'calendarId'): string {
   return requiredPattern(value, CALENDAR_ID_PATTERN, field, 'INVALID_CALENDAR_ID');
 }
 
@@ -83,7 +83,7 @@ function freezeObject<T extends object>(value: T): Readonly<T> {
   return Object.freeze(value);
 }
 
-function normalizeActor(actor: DavValue, tenantId: string): Readonly<DavRecord> {
+export function normalizeActor(actor: DavValue, tenantId: string): Readonly<DavRecord> {
   if (actor === null || typeof actor !== 'object') fail('an authenticated DAV actor is required', 'AUTHENTICATION_REQUIRED', 401);
   const actorTenantId = canonicalTenantId(actor.tenantId);
   if (actorTenantId !== tenantId) fail('cross-tenant DAV access is denied', 'CROSS_TENANT_DENIED', 403);
@@ -94,11 +94,11 @@ function normalizeActor(actor: DavValue, tenantId: string): Readonly<DavRecord> 
   return freezeObject({ tenantId: actorTenantId, userId, role: actor.role });
 }
 
-function canonicalCalendarKey(ownerUserId: string, collectionId: string): string {
+export function canonicalCalendarKey(ownerUserId: string, collectionId: string): string {
   return `${ownerUserId}/${collectionId}`;
 }
 
-function splitCalendarId(value: DavValue): { ownerUserId: string | null; collectionId: string } {
+export function splitCalendarId(value: DavValue): { ownerUserId: string | null; collectionId: string } {
   if (typeof value !== 'string') fail('calendarId is required', 'INVALID_CALENDAR_ID', 422);
   const parts = value.split('/');
   if (parts.length === 1) return { ownerUserId: null, collectionId: canonicalCalendarSlug(parts[0]) };
@@ -109,7 +109,7 @@ function splitCalendarId(value: DavValue): { ownerUserId: string | null; collect
   };
 }
 
-function decodeToken(value: DavValue, { tenantId, ownerUserId, collectionId }: DavRecord): number {
+export function decodeToken(value: DavValue, { tenantId, ownerUserId, collectionId }: DavRecord): number {
   if (value === undefined || value === null) return 0;
   if (typeof value !== 'string') fail('syncToken is invalid', 'INVALID_SYNC_TOKEN', 400);
   const match = TOKEN_PATTERN.exec(value);
@@ -131,7 +131,7 @@ function decodeToken(value: DavValue, { tenantId, ownerUserId, collectionId }: D
   return revision;
 }
 
-function makeToken(tenantId: string, ownerUserId: string, collectionId: string, revision: number): string {
+export function makeToken(tenantId: string, ownerUserId: string, collectionId: string, revision: number): string {
   return `https://gulogulo.invalid/caldav/${encodeURIComponent(tenantId)}/${encodeURIComponent(ownerUserId)}/${encodeURIComponent(collectionId)}/sync/${revision}`;
 }
 
@@ -348,7 +348,7 @@ export function validateICalendar(icalText: unknown): Readonly<DavRecord> {
   return freezeObject({ ...calendarMetadata(root), canonicalText: canonical });
 }
 
-function calculateEtag({ tenantId, calendarKey, objectId, canonicalText }: DavRecord): string {
+export function calculateEtag({ tenantId, calendarKey, objectId, canonicalText }: DavRecord): string {
   const scopedInput = `${tenantId}\u0000${calendarKey}\u0000${objectId}\u0000${canonicalText}`;
   return `"${createHash('sha256').update(scopedInput, 'utf8').digest('hex')}"`;
 }
@@ -410,7 +410,7 @@ function assertPermission(collection: DavRecord, actor: DavRecord, permission: s
   if (!permissions.has(permission)) fail(`actor is not allowed to ${permission} this calendar`, 'ACL_DENIED', 403);
 }
 
-function collectionEtag(collection: DavRecord): string {
+export function collectionEtag(collection: DavRecord): string {
   return `"${createHash('sha256').update(`${collection.displayName}\u0000${collection.description}\u0000${collection.updatedAt}`, 'utf8').digest('hex')}"`;
 }
 
@@ -722,6 +722,8 @@ export const calDavContract = Object.freeze({
   calendarIdPattern: CALENDAR_ID_PATTERN,
   userIdPattern: USER_ID_PATTERN,
   tenantIdPattern: TENANT_ID_PATTERN,
+  tzidPattern: TZID_PATTERN,
+  colorPattern: COLOR_PATTERN,
   aclPermissions: freezeArray([...ACL_PERMISSIONS]),
   supportedComponents: freezeArray([...SUPPORTED_COMPONENTS]),
 });
