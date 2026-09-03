@@ -128,6 +128,7 @@ jobs:
           test -f tsconfig.json
           test -f tsconfig.server.json
           test -f tsconfig.lp4.json
+          test -f eslint.config.js
           test -f web/index.html
           test -f web/styles.css
           test -f web/manifest.json
@@ -303,6 +304,8 @@ jobs:
           grep -Fq 'Author: Sythos (https://www.sythos.net)' tsconfig.lp8.json
           grep -Fq 'SPDX-License-Identifier: MIT' tsconfig.lp9.json
           grep -Fq 'Author: Sythos (https://www.sythos.net)' tsconfig.lp9.json
+          grep -Fq 'SPDX-License-Identifier: MIT' eslint.config.js
+          grep -Fq 'Author: Sythos (https://www.sythos.net)' eslint.config.js
           grep -Fq 'SPDX-License-Identifier: MIT' web/README.md
           grep -Fq 'Author: Sythos (https://www.sythos.net)' web/README.md
           grep -Fq 'SPDX-License-Identifier: MIT' web/build.ts
@@ -434,6 +437,11 @@ jobs:
           else
             echo "No package test script is defined; repository checks remain active."
           fi
+
+      - name: Run ESLint
+        if: hashFiles('package.json') != '' && hashFiles('eslint.config.js') != ''
+        shell: bash
+        run: npm run lint
 
       - name: Run LP3 typed mail contract gates
         if: hashFiles('src/core/mail/mail-core.test.ts') != ''
