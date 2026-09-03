@@ -1,0 +1,19 @@
+# Gulo Gulo
+
+> Secure, tenant-isolated mail, calendar, and contacts groupware, distributed as cPanel, Plesk, and standalone packages built from the same TypeScript core.
+
+Gulo Gulo is a self-hosted webmail, calendar, and contacts platform (the guiding animal is the wolverine, *Gulo gulo*). The backend is Node.js/TypeScript (Bun is an optional alternative runtime), state lives in PostgreSQL, and identity is external LDAP or a local database. It does not use Docker or containers: it ships as native OS packages for cPanel, Plesk, and standalone Linux hosts, built from one shared TypeScript core.
+
+## Documentation
+
+- [README](https://github.com/Sythos/GuloGulo/blob/main/README.md): project overview, the three-package model and why it exists, production readiness checklist
+- [INSTALL](https://github.com/Sythos/GuloGulo/blob/main/INSTALL.md): install, upgrade, and field-verification guide for all three targets
+- [Documentation index](https://github.com/Sythos/GuloGulo/blob/main/doc/README.md): the complete doc/ directory
+- [Architecture Decision Records](https://github.com/Sythos/GuloGulo/tree/main/doc/adr): the runtime/frontend and packaging/distribution decisions this project is built on
+- [Security policy](https://github.com/Sythos/GuloGulo/blob/main/SECURITY.md): how to report a vulnerability
+
+## Source
+
+- [Repository](https://github.com/Sythos/GuloGulo)
+- [Releases](https://github.com/Sythos/GuloGulo/releases)
+- [License (MIT)](https://github.com/Sythos/GuloGulo/blob/main/LICENSE)
