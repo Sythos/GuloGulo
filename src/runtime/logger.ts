@@ -123,7 +123,7 @@ function writeRecord(stream, record) {
 export function createLogger({
   serviceName = 'gulogulo-runtime',
   environment = 'development',
-  version = '0.1.4',
+  version = '0.1.5',
   build = 'development',
   output = process.stdout,
   errorOutput = process.stderr,

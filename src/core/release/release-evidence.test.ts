@@ -34,7 +34,7 @@ function validEvidence(overrides = {}) {
   return {
     evidenceVersion: '1.0',
     product: 'Gulo Gulo',
-    version: '0.1.4',
+    version: '0.1.5',
     commitSha: COMMIT,
     generatedAt: '2026-08-23T00:00:00Z',
     releaseDecision: 'conditional',
