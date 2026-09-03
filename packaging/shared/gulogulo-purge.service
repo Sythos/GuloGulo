@@ -1,0 +1,51 @@
+# SPDX-License-Identifier: MIT
+# SPDX-FileCopyrightText: 2026 Sythos (https://www.sythos.net)
+# Author: Sythos (https://www.sythos.net)
+#
+# systemd oneshot unit that runs one retention/purge batch
+# (src/core/lifecycle/run-purge-batch.ts) and exits. Triggered periodically
+# by gulogulo-purge.timer (also in packaging/shared/) rather than run
+# directly - matches the same "the host owns scheduling" philosophy already
+# used for the main gulogulo.service unit (systemd, not application-level
+# orchestration).
+#
+# VERIFY BEFORE USE:
+#   1. ExecStart below points at the compiled output
+#      dist/server/src/core/lifecycle/run-purge-batch.js. As of this
+#      writing, src/core/lifecycle/**/*.ts is NOT part of
+#      tsconfig.server.json's compile "include" list (the same is true of
+#      retention.ts and account-lifecycle.ts themselves - see
+#      doc/lifecycle-backup-dr.md), so `npm run build:server` does not yet
+#      produce this file, and no packaging script yet stages src/core/
+#      TypeScript sources or a compiled lifecycle/ directory into a package.
+#      Wiring that up is deliberately left to a follow-up packaging update.
+#   2. Even once built and running, this script's real effect today is "logs
+#      a message and exits 0": retention.ts's createRetentionStore() keeps
+#      its state in a process-local Map with no persistent backing store, so
+#      every fresh invocation starts with zero candidates. See the top-of-file
+#      comment in run-purge-batch.ts for the exact seam to replace once a
+#      persistent retention store exists.
+#
+# Installed at %{_unitdir}/gulogulo-purge.service (RPM/cPanel target) or
+# /etc/systemd/system/gulogulo-purge.service (.deb/Plesk target), mirroring
+# gulogulo-rpm.service's fixed install layout: /opt/gulogulo, the "gulogulo"
+# system user, /var/lib/gulogulo.
+
+[Unit]
+Description=Gulo Gulo retention/purge batch worker (one run)
+After=network-online.target
+
+[Service]
+Type=oneshot
+User=gulogulo
+Group=gulogulo
+WorkingDirectory=/opt/gulogulo
+ExecStart=/usr/bin/node /opt/gulogulo/dist/server/src/core/lifecycle/run-purge-batch.js
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+# The purge worker needs write access only here - GULOGULO_MAILBOX_ROOT and
+# the local backup adapter's configured path (default
+# /var/lib/gulogulo/backups) both live under this path.
+ReadWritePaths=/var/lib/gulogulo
+PrivateTmp=true

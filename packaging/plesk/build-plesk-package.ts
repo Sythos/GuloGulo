@@ -118,6 +118,10 @@ async function main(): Promise<void> {
       join(stagingRoot, 'gulogulo.service.template'),
     );
 
+    log('Staging the purge timer units (packaging/shared/gulogulo-purge.service, gulogulo-purge.timer)...');
+    await cp(join(sharedDirectory, 'gulogulo-purge.service'), join(stagingRoot, 'gulogulo-purge.service'));
+    await cp(join(sharedDirectory, 'gulogulo-purge.timer'), join(stagingRoot, 'gulogulo-purge.timer'));
+
     log('Staging the nginx reverse proxy example...');
     await cp(
       join(pleskScriptsDirectory, 'gulogulo-proxy.conf.example'),

@@ -1,0 +1,29 @@
+# SPDX-License-Identifier: MIT
+# SPDX-FileCopyrightText: 2026 Sythos (https://www.sythos.net)
+# Author: Sythos (https://www.sythos.net)
+#
+# systemd timer that triggers gulogulo-purge.service (also in
+# packaging/shared/) once a day. See that unit's own top-of-file comment for
+# the VERIFY BEFORE USE notes this timer inherits (it is currently harmless
+# to enable: the worker it triggers is a safe no-op until a persistent
+# retention store exists).
+#
+# Enable with: systemctl daemon-reload && systemctl enable --now gulogulo-purge.timer
+# Installed alongside gulogulo-purge.service (see that file for the exact
+# install path per packaging target).
+
+[Unit]
+Description=Run the Gulo Gulo retention/purge batch worker daily
+
+[Timer]
+OnCalendar=daily
+# Spreads actual run time up to 30 minutes after OnCalendar fires, so a
+# fleet of hosts installed from the same image does not all purge at
+# exactly the same second.
+RandomizedDelaySec=1800
+# Catches up a run that was missed while the host was powered off, instead
+# of silently waiting for the next daily boundary.
+Persistent=true
+
+[Install]
+WantedBy=timers.target

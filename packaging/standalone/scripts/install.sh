@@ -53,6 +53,10 @@ log "Start the service with:"
 log "  node --env-file=.env dist/server/src/runtime/index.js"
 log "A systemd unit example is available at gulogulo.service.example - copy it,"
 log "edit the paths/user, and enable it manually; it is never installed automatically."
+log "A daily retention/purge timer example is also available at"
+log "gulogulo-purge.service.example / gulogulo-purge.timer.example - same deal,"
+log "copy them to /etc/systemd/system/, adjust the paths/user, then"
+log "systemctl daemon-reload && systemctl enable --now gulogulo-purge.timer."
 
 if [ "$NON_INTERACTIVE" != "1" ]; then
   log "Review .env before starting the service in production."

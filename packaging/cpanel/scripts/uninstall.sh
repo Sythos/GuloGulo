@@ -23,6 +23,8 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 NON_INTERACTIVE="${GULOGULO_NON_INTERACTIVE:-0}"
 FORCE_YES=0
 UNIT_PATH=/etc/systemd/system/gulogulo.service
+PURGE_UNIT_PATH=/etc/systemd/system/gulogulo-purge.service
+PURGE_TIMER_PATH=/etc/systemd/system/gulogulo-purge.timer
 
 for arg in "$@"; do
   case "$arg" in
@@ -71,6 +73,21 @@ if [ -f "$UNIT_PATH" ]; then
   rm -f "$UNIT_PATH"
   systemctl daemon-reload >/dev/null 2>&1 || true
   log "Removed systemd unit $UNIT_PATH."
+fi
+
+# --- purge timer: same stop/disable/remove treatment as the main service -
+
+if command -v systemctl >/dev/null 2>&1 && systemctl list-unit-files gulogulo-purge.timer >/dev/null 2>&1; then
+  systemctl disable --now gulogulo-purge.timer >/dev/null 2>&1 || log "WARNING: systemctl disable --now gulogulo-purge.timer failed (continuing)."
+  log "Purge timer stopped and disabled."
+else
+  log "No gulogulo-purge.timer systemd unit found - nothing to stop/disable."
+fi
+
+if [ -f "$PURGE_UNIT_PATH" ] || [ -f "$PURGE_TIMER_PATH" ]; then
+  rm -f "$PURGE_UNIT_PATH" "$PURGE_TIMER_PATH"
+  systemctl daemon-reload >/dev/null 2>&1 || true
+  log "Removed purge systemd units ($PURGE_UNIT_PATH, $PURGE_TIMER_PATH)."
 fi
 
 # --- %postun equivalent: application files and runtime-generated output -

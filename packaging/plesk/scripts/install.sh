@@ -26,6 +26,8 @@ SERVICE_USER="${GULOGULO_SERVICE_USER:-gulogulo}"
 SERVICE_GROUP="${GULOGULO_SERVICE_GROUP:-$SERVICE_USER}"
 READ_WRITE_PATH="${GULOGULO_SERVICE_READ_WRITE_PATH:-/var/lib/gulogulo}"
 UNIT_PATH=/etc/systemd/system/gulogulo.service
+PURGE_UNIT_PATH=/etc/systemd/system/gulogulo-purge.service
+PURGE_TIMER_PATH=/etc/systemd/system/gulogulo-purge.timer
 
 for arg in "$@"; do
   case "$arg" in
@@ -102,9 +104,23 @@ sed \
   "$SCRIPT_DIR/gulogulo.service.template" > "$UNIT_PATH"
 chmod 0644 "$UNIT_PATH"
 
+# --- purge timer: fixed-path unit, staged verbatim (no template) --------
+# Unlike gulogulo.service above, this unit assumes the documented fixed
+# /opt/gulogulo layout (see gulogulo-purge.service's own header comment) -
+# it is not rendered against SCRIPT_DIR/SERVICE_USER/etc.
+cp "$SCRIPT_DIR/gulogulo-purge.service" "$PURGE_UNIT_PATH"
+cp "$SCRIPT_DIR/gulogulo-purge.timer" "$PURGE_TIMER_PATH"
+chmod 0644 "$PURGE_UNIT_PATH" "$PURGE_TIMER_PATH"
+
 systemctl daemon-reload
 systemctl enable --now gulogulo
 log "systemd service installed, enabled, and started ($UNIT_PATH)."
+
+# The purge timer is a harmless daily no-op until a persistent retention
+# store exists (see gulogulo-purge.service's own header comment), so it is
+# enabled and started right away, same as the main service on this target.
+systemctl enable --now gulogulo-purge.timer
+log "Purge timer installed, enabled, and started ($PURGE_TIMER_PATH, runs daily)."
 
 # --- nginx reverse proxy (never touches the real domain config) -------------
 

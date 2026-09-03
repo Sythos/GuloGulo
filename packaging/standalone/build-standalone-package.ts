@@ -40,6 +40,7 @@ import {
 const scriptDirectory = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(scriptDirectory, '..', '..');
 const packagingScriptsDirectory = join(scriptDirectory, 'scripts');
+const sharedDirectory = join(repoRoot, 'packaging', 'shared');
 const outputDirectory = join(repoRoot, 'packaging', 'dist');
 
 function log(message: string): void {
@@ -74,6 +75,16 @@ async function main(): Promise<void> {
     for (const executable of ['install.sh', 'upgrade.sh', 'uninstall.sh', 'run-migrations.mjs']) {
       await chmod(join(stagingRoot, executable), 0o755);
     }
+
+    // Same treatment as gulogulo.service.example above: staged as a
+    // `.example` file, never installed automatically by install.sh. This
+    // target has no fixed install location (the operator extracts the
+    // tarball wherever they like) and install.sh never touches systemd or
+    // requires root, so - like the main service - the purge timer is left
+    // for the operator to copy, review, and enable manually.
+    log('Staging the purge timer as an example unit (packaging/shared/gulogulo-purge.service, gulogulo-purge.timer)...');
+    await cp(join(sharedDirectory, 'gulogulo-purge.service'), join(stagingRoot, 'gulogulo-purge.service.example'));
+    await cp(join(sharedDirectory, 'gulogulo-purge.timer'), join(stagingRoot, 'gulogulo-purge.timer.example'));
 
     const archivePath = await createTarball({ stagingParent, archiveBaseName, outputDirectory, version, log });
 
