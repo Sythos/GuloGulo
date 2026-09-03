@@ -2,17 +2,33 @@
 # SPDX-FileCopyrightText: 2026 Sythos (https://www.sythos.net)
 # Author: Sythos (https://www.sythos.net)
 
-name: Package cPanel archive
+name: Package cPanel RPM
 
-# Unlike package-standalone.yml, this workflow cannot start the installed
-# service and hit its health endpoint end to end: install.sh installs a
-# real systemd unit and expects a real cPanel/WHM host (/usr/local/cpanel),
-# neither of which the ubuntu-latest runner provides. What this workflow
-# verifies instead: the archive builds and contains everything the
-# installer needs, and install.sh's own argument parsing / precondition /
-# dry-run logic is sound - run with --non-interactive --dry-run, it must
-# never touch systemd or Apache on the runner (it downgrades the
-# root/cPanel precondition checks to warnings only under --dry-run).
+# This target (packaging/cpanel/) no longer builds a generic tar.gz - it
+# builds a real RPM (see packaging/cpanel/gulogulo.spec and
+# build-cpanel-package.ts, and INSTALL.md for the full rationale). Runs
+# inside a real `almalinux:9` container (not the ubuntu-latest runner the
+# other two package-*.yml workflows use), because cPanel & WHM only runs on
+# RHEL-family Linux and rpmbuild itself is RHEL-family-only - this is the
+# actual target OS family, not a stand-in.
+#
+# What this workflow CANNOT do: run this package's %pre/%post/%preun/
+# %postun scriptlets to completion. %post ends with `systemctl
+# daemon-reload && systemctl enable gulogulo` (and, on upgrade, `systemctl
+# restart gulogulo`), and a plain `almalinux:9` container has no running
+# init system (no PID 1 systemd, no D-Bus) - `systemctl` has nothing to
+# talk to. `rpm -i --test` (used below) only resolves dependencies and
+# checks for file conflicts; it runs NO scriptlets at all. So instead of a
+# real `dnf install ./*.rpm`, this workflow does the closest safe
+# approximation: `rpm2cpio | cpio -idmv` (which really extracts the actual
+# payload to a throwaway directory and proves the archive is structurally
+# installable, without executing anything) plus a syntax check
+# (`bash -n`) of each scriptlet's real, built body (extracted verbatim via
+# `rpm -qp --qf '%{PREIN}'` etc., not re-derived from the source .spec).
+# The full install - %post's npm ci / migrations / system user / systemd
+# enable, actually reaching an HTTP-serving process - has NOT been
+# exercised end to end on a real host by this workflow and remains field
+# work; see INSTALL.md.
 
 on:
   push:
@@ -27,21 +43,52 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  build-and-dry-run-install:
-    name: Build the cPanel archive and dry-run the installer
+  build-and-verify-package:
+    name: Build the RPM and verify its structure
     runs-on: ubuntu-latest
+    container: almalinux:9
     timeout-minutes: 20
     steps:
+      # actions/checkout needs git, and this is a bare almalinux:9 container
+      # image - neither git nor rpmbuild/the NodeSource setup script's own
+      # prerequisites (curl, ca-certificates) are present by default.
+      # systemd and shadow-utils are installed too (not run - there is no
+      # init system in this container - just present as real packages) so
+      # that `rpm -i --test` below can resolve gulogulo.spec's
+      # `%{?systemd_requires}` / `Requires(pre): shadow-utils` instead of
+      # failing on unmet dependencies that would trivially be satisfied on
+      # any real cPanel/WHM host.
+      - name: Install RHEL-family build prerequisites (dnf)
+        shell: bash
+        run: |
+          set -euo pipefail
+          dnf install -y \
+            git tar gzip curl ca-certificates \
+            rpm-build systemd-rpm-macros systemd shadow-utils cpio
+
       - name: Checkout
         uses: actions/checkout@v6
         with:
           persist-credentials: false
 
-      - name: Set up Node.js
-        uses: actions/setup-node@v6
-        with:
-          node-version: latest
-          check-latest: true
+      # Compito 1 research: RHEL9/AlmaLinux9's own AppStream repos do not
+      # ship a Node.js >= 26 package. NodeSource does publish a genuine
+      # `setup_26.x` RPM repo script for EL9
+      # (https://github.com/nodesource/distributions), which this step
+      # actually exercises rather than assuming works - if NodeSource drops
+      # or breaks EL9 support for 26.x, this job fails here. gulogulo.spec
+      # deliberately does not declare `Requires: nodejs` for this same
+      # reason (see the spec's own comment); this is the operator step it
+      # documents as the recommended path.
+      - name: Install Node.js 26.x (NodeSource)
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -fsSL https://rpm.nodesource.com/setup_26.x -o /tmp/nodesource_setup.sh
+          bash /tmp/nodesource_setup.sh
+          dnf install -y nodejs
+          node --version
+          npm --version
 
       - name: Install dependencies
         shell: bash
@@ -54,74 +101,145 @@ jobs:
           npm run build:web
           npm run build:server
 
-      - name: Build the cPanel package
+      - name: Build the RPM
         shell: bash
         env:
           GULOGULO_SKIP_BUILD: "1"
         run: node --experimental-strip-types packaging/cpanel/build-cpanel-package.ts
 
-      - name: Extract the tarball into a clean install directory
+      - name: Resolve the built package path
         shell: bash
         run: |
           set -euo pipefail
-          TARBALL="$(ls packaging/dist/gulogulo-*-cpanel.tar.gz)"
-          INSTALL_DIR="$RUNNER_TEMP/gulogulo-cpanel-install"
-          mkdir -p "$INSTALL_DIR"
-          tar -xzf "$TARBALL" -C "$INSTALL_DIR" --strip-components=1
-          echo "INSTALL_DIR=$INSTALL_DIR" >> "$GITHUB_ENV"
-
-          test -f "$INSTALL_DIR/dist/server/src/runtime/index.js"
-          test -f "$INSTALL_DIR/web/index.html"
-          test -f "$INSTALL_DIR/web/dist/app.js"
-          test -f "$INSTALL_DIR/assets/gulo-gulo-calendar-mail.png"
-          test -f "$INSTALL_DIR/src/core/db/migrations/0001_m2_foundation.sql"
-          test -f "$INSTALL_DIR/.env.example"
-          test -f "$INSTALL_DIR/VERSION"
-          test -f "$INSTALL_DIR/install.sh"
-          test -f "$INSTALL_DIR/upgrade.sh"
-          test -f "$INSTALL_DIR/uninstall.sh"
-          test -f "$INSTALL_DIR/run-migrations.mjs"
-          test -f "$INSTALL_DIR/gulogulo.service.template"
-          test -f "$INSTALL_DIR/gulogulo-proxy.conf.example"
-          test -f "$INSTALL_DIR/gulogulo-appconfig.conf.example"
-          grep -q '^CPANEL_API_ENABLED=' "$INSTALL_DIR/.env.example"
+          # Absolute path - later steps (rpm2cpio extraction) cd elsewhere.
+          RPM="$(realpath packaging/dist/gulogulo-*.rpm)"
+          echo "RPM=$RPM" >> "$GITHUB_ENV"
 
       - name: Verify the package checksum
         shell: bash
         run: |
           set -euo pipefail
           cd packaging/dist
-          TARBALL="$(basename "$(ls gulogulo-*-cpanel.tar.gz)")"
-          test -f "${TARBALL}.sha256"
-          sha256sum -c "${TARBALL}.sha256"
+          ARCHIVE_NAME="$(basename "$(ls gulogulo-*.rpm)")"
+          test -f "${ARCHIVE_NAME}.sha256"
+          sha256sum -c "${ARCHIVE_NAME}.sha256"
 
-      - name: Dry-run the installer non-interactively
+      - name: Inspect package metadata (rpm -qp --info / --requires)
         shell: bash
         run: |
           set -euo pipefail
-          chmod +x "$INSTALL_DIR"/install.sh "$INSTALL_DIR"/upgrade.sh "$INSTALL_DIR"/uninstall.sh "$INSTALL_DIR"/run-migrations.mjs
-          # Not a real cPanel/WHM host and not running as root here - only
-          # --dry-run makes that safe: the script downgrades those two
-          # preconditions to warnings and skips every systemd/Apache/user
-          # write, while still exercising npm ci, .env creation, and the
-          # (no-op, Postgres disabled) migration step for real.
-          "$INSTALL_DIR/install.sh" --non-interactive --dry-run
+          rpm -qp --info "$RPM"
+          echo "--- Requires ---"
+          rpm -qp --requires "$RPM"
 
-          # install.sh must still reject unknown flags and must never leave
-          # a real systemd unit or system user behind under --dry-run.
-          if "$INSTALL_DIR/install.sh" --this-flag-does-not-exist; then
-            echo "install.sh accepted an unknown flag; expected it to fail." >&2
+          INFO="$(rpm -qp --info "$RPM")"
+          echo "$INFO" | grep -qE '^Name *: gulogulo$'
+          echo "$INFO" | grep -qE '^Architecture *: noarch$'
+          echo "$INFO" | grep -qE '^License *: MIT$'
+
+          # Node.js must NOT be a declared RPM dependency - see gulogulo.spec's
+          # comment on why (no reliable RHEL9/AlmaLinux9 AppStream package for
+          # Node >= 26). If this ever starts failing because someone added
+          # `Requires: nodejs`, that was a deliberate decision this assertion
+          # is meant to catch and force a conscious re-read of that comment.
+          if rpm -qp --requires "$RPM" | grep -qi '^nodejs'; then
+            echo "gulogulo.spec unexpectedly declares an RPM Requires on nodejs." >&2
             exit 1
           fi
-          test ! -f /etc/systemd/system/gulogulo.service
-          test -f "$INSTALL_DIR/gulogulo.service.rendered"
-          ! id gulogulo >/dev/null 2>&1
 
-      - name: Upload the cPanel package artifact
+      - name: Verify package contents (rpm -qlp)
+        shell: bash
+        run: |
+          set -euo pipefail
+          CONTENTS="$(rpm -qlp "$RPM")"
+          echo "$CONTENTS"
+
+          for path in \
+            /opt/gulogulo/dist/server/src/runtime/index.js \
+            /opt/gulogulo/web/index.html \
+            /opt/gulogulo/web/dist/app.js \
+            /opt/gulogulo/assets/gulo-gulo-calendar-mail.png \
+            /opt/gulogulo/src/core/db/migrations/0001_m2_foundation.sql \
+            /opt/gulogulo/.env.example \
+            /opt/gulogulo/VERSION \
+            /opt/gulogulo/package.json \
+            /opt/gulogulo/run-migrations.mjs \
+            /usr/lib/systemd/system/gulogulo.service \
+            /usr/share/doc/gulogulo/gulogulo-proxy.conf.example \
+            /usr/share/doc/gulogulo/gulogulo-appconfig.conf.example \
+            /var/lib/gulogulo \
+          ; do
+            echo "$CONTENTS" | grep -qF "$path" || { echo "Missing from package payload: $path" >&2; exit 1; }
+          done
+
+      - name: Lint the RPM scriptlets (bash -n)
+        shell: bash
+        run: |
+          set -euo pipefail
+          SCRIPTLET_DIR="$RUNNER_TEMP/gulogulo-scriptlets"
+          mkdir -p "$SCRIPTLET_DIR"
+
+          # Extract each scriptlet's real, built body verbatim (not
+          # re-derived from the source .spec) via rpm's own query tags.
+          rpm -qp --qf '%{PREIN}'  "$RPM" > "$SCRIPTLET_DIR/pre.sh"
+          rpm -qp --qf '%{POSTIN}' "$RPM" > "$SCRIPTLET_DIR/post.sh"
+          rpm -qp --qf '%{PREUN}'  "$RPM" > "$SCRIPTLET_DIR/preun.sh"
+          rpm -qp --qf '%{POSTUN}' "$RPM" > "$SCRIPTLET_DIR/postun.sh"
+
+          for script in pre post preun postun; do
+            test -s "$SCRIPTLET_DIR/$script.sh" || { echo "%$script scriptlet is empty or missing" >&2; exit 1; }
+            bash -n "$SCRIPTLET_DIR/$script.sh"
+            echo "$script: syntax OK"
+          done
+
+          # bash -n also happily accepts rpm's `(none)` placeholder for an
+          # absent scriptlet (it parses as a subshell) - a genuinely missing
+          # %pre/%post/%preun/%postun would pass the syntax check above
+          # silently. Assert real, expected content in each body too, the
+          # same tripwire idea package-plesk.yml uses for @VERSION@.
+          grep -q 'getent group gulogulo'   "$SCRIPTLET_DIR/pre.sh"
+          grep -q 'npm ci'                  "$SCRIPTLET_DIR/post.sh"
+          grep -q 'systemctl disable --now' "$SCRIPTLET_DIR/preun.sh"
+          grep -q 'node_modules'            "$SCRIPTLET_DIR/postun.sh"
+          echo "scriptlet content checks: OK"
+
+      - name: Dry-run install (rpm -i --test, no scriptlets)
+        shell: bash
+        run: |
+          set -euo pipefail
+          # `rpm -i --test` only resolves dependencies and checks for file
+          # conflicts - it does not write any file and does not run any
+          # scriptlet. This is the safe, no-op-on-disk half of "would this
+          # install cleanly on a real host".
+          rpm -i --test "$RPM"
+          echo "rpm -i --test: dependencies resolve and there are no file conflicts."
+
+      - name: Dry-run extraction (rpm2cpio | cpio, no scriptlets)
+        shell: bash
+        run: |
+          set -euo pipefail
+          # The strongest install proof this container can safely give: a
+          # real extraction of the actual payload (not just a file listing)
+          # via rpm2cpio + cpio, which - unlike `rpm -i` - never touches the
+          # RPM database and never runs %pre/%post, so it is safe even
+          # though this container has no init system for %post's systemctl
+          # calls to talk to.
+          EXTRACT_DIR="$RUNNER_TEMP/gulogulo-rpm-extract"
+          mkdir -p "$EXTRACT_DIR"
+          ( cd "$EXTRACT_DIR" && rpm2cpio "$RPM" | cpio -idmv )
+
+          test -f "$EXTRACT_DIR/opt/gulogulo/dist/server/src/runtime/index.js"
+          test -f "$EXTRACT_DIR/opt/gulogulo/web/index.html"
+          test -f "$EXTRACT_DIR/opt/gulogulo/.env.example"
+          test -f "$EXTRACT_DIR/usr/lib/systemd/system/gulogulo.service"
+          test -x "$EXTRACT_DIR/opt/gulogulo/run-migrations.mjs"
+          grep -q '^CPANEL_API_ENABLED=' "$EXTRACT_DIR/opt/gulogulo/.env.example"
+
+      - name: Upload the RPM package artifact
         uses: actions/upload-artifact@v4
         with:
           name: gulogulo-cpanel-package
           path: |
-            packaging/dist/gulogulo-*-cpanel.tar.gz
-            packaging/dist/gulogulo-*-cpanel.tar.gz.sha256
+            packaging/dist/gulogulo-*.rpm
+            packaging/dist/gulogulo-*.rpm.sha256
           if-no-files-found: error

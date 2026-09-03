@@ -3,31 +3,37 @@
 // Author: Sythos (https://www.sythos.net)
 
 /*
- * Shared staging/packaging helpers used by both distribution targets
- * (`packaging/standalone/build-standalone-package.ts` and
- * `packaging/cpanel/build-cpanel-package.ts`). Everything here is
+ * Shared staging/packaging helpers used by all three distribution targets
+ * (`packaging/standalone/build-standalone-package.ts`,
+ * `packaging/cpanel/build-cpanel-package.ts`, and
+ * `packaging/plesk/build-plesk-package.ts`). Everything here is
  * target-agnostic: building the web/server bundles, staging the parts of the
- * repository every tarball ships (compiled server, web assets, static
+ * repository every package ships (compiled server, web assets, static
  * assets, database migrations, package manifest/lockfile/license/env
- * example), and compressing a staging directory into the final
- * `.tar.gz`. Target-specific bits (which operator scripts to copy in, which
- * systemd unit, which reverse-proxy config) stay in each target's own build
- * script.
+ * example), and compressing a staging directory into the final archive.
+ * Target-specific bits (which operator scripts to copy in, which systemd
+ * unit, which reverse-proxy config, which archive format) stay in each
+ * target's own build script.
  *
- * `createZipArchive` below is also shared infrastructure (used today by
- * `packaging/plesk/build-plesk-package.ts`, which needs a real ZIP container
- * with `meta.xml` at its root rather than a tarball): it is a minimal,
- * dependency-free ZIP writer built on `node:zlib`'s `deflateRawSync`/`crc32`
- * (both available in the Node >=26 this project already requires - no new
- * npm dependency needed just to produce a ZIP).
+ * `createDebPackage` and `createRpmPackage` below are also shared
+ * infrastructure. `createDebPackage` (used by
+ * `packaging/plesk/build-plesk-package.ts`, which produces a real `.deb`
+ * rather than a tarball) shells out to `dpkg-deb --build`, the same way
+ * `createTarball` shells out to `tar` - `dpkg-deb` is not an npm dependency,
+ * it ships natively on Debian/Ubuntu (and is expected to be present in the
+ * `debian:trixie` container this target's CI job runs in). `createRpmPackage`
+ * (used by `packaging/cpanel/build-cpanel-package.ts`) shells out to
+ * `rpmbuild -bb` the same way, which is RHEL-family-only (see the function's
+ * own doc comment for why the cPanel target's CI job runs in an `almalinux:9`
+ * container instead).
  */
 
 import { spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { createReadStream } from 'node:fs';
-import { cp, mkdir, readFile, readdir, rm, stat, writeFile } from 'node:fs/promises';
-import { basename, dirname, join, relative } from 'node:path';
-import { crc32, deflateRawSync } from 'node:zlib';
+import { cp, mkdir, mkdtemp, readFile, readdir, rm, stat, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { basename, dirname, join } from 'node:path';
 
 export function humanFileSize(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
@@ -67,19 +73,19 @@ export async function writeChecksumFile(archivePath: string): Promise<string> {
 
 /**
  * Rebuilds `<outputDirectory>/checksums.txt`, one `sha256sum`-format line per
- * `.tar.gz`/`.zip` package currently sitting in `outputDirectory` (not just
- * the package a given build script just produced - every prior package left
- * over from earlier runs too). Reuses each package's own `<archive>.sha256`
- * sidecar (written by `writeChecksumFile`) when present instead of re-hashing
- * the archive; falls back to computing it if the sidecar is missing. Lines
- * are sorted by filename, one per archive, so re-running a build that
- * replaces an existing archive updates its line in place rather than
- * duplicating it.
+ * `.tar.gz`/`.deb`/`.rpm` package currently sitting in `outputDirectory` (not
+ * just the package a given build script just produced - every prior package
+ * left over from earlier runs too). Reuses each package's own
+ * `<archive>.sha256` sidecar (written by `writeChecksumFile`) when present
+ * instead of re-hashing the archive; falls back to computing it if the
+ * sidecar is missing. Lines are sorted by filename, one per archive, so
+ * re-running a build that replaces an existing archive updates its line in
+ * place rather than duplicating it.
  */
 export async function updateChecksumsAggregate(outputDirectory: string): Promise<string> {
   const entries = await readdir(outputDirectory, { withFileTypes: true });
   const archiveNames = entries
-    .filter((entry) => entry.isFile() && (entry.name.endsWith('.tar.gz') || entry.name.endsWith('.zip')))
+    .filter((entry) => entry.isFile() && (entry.name.endsWith('.tar.gz') || entry.name.endsWith('.deb') || entry.name.endsWith('.rpm')))
     .map((entry) => entry.name)
     .sort((a, b) => a.localeCompare(b));
 
@@ -246,138 +252,156 @@ export async function cleanupStagingParent(stagingParent: string): Promise<void>
   await rm(stagingParent, { recursive: true, force: true });
 }
 
-interface ZipFileEntry {
-  archivePath: string;
-  content: Buffer;
-}
-
-async function collectFilesRecursively(root: string, currentDir: string, out: ZipFileEntry[]): Promise<void> {
-  const entries = await readdir(currentDir, { withFileTypes: true });
-  // Sort for deterministic archive contents regardless of filesystem order.
-  entries.sort((a, b) => a.name.localeCompare(b.name));
-  for (const entry of entries) {
-    const absolutePath = join(currentDir, entry.name);
-    if (entry.isDirectory()) {
-      await collectFilesRecursively(root, absolutePath, out);
-    } else if (entry.isFile()) {
-      const content = await readFile(absolutePath);
-      const archivePath = relative(root, absolutePath).split('\\').join('/');
-      out.push({ archivePath, content });
-    }
-    // Symlinks and other special files are not expected in staged packaging
-    // output and are intentionally skipped.
-  }
-}
-
-function toDosDateTime(date: Date): { dosTime: number; dosDate: number } {
-  const year = Math.max(1980, date.getFullYear());
-  const dosTime = (date.getHours() << 11) | (date.getMinutes() << 5) | (Math.floor(date.getSeconds() / 2) & 0x1f);
-  const dosDate = ((year - 1980) << 9) | ((date.getMonth() + 1) << 5) | date.getDate();
-  return { dosTime, dosDate };
-}
-
-// Regular file, permission bits 0644, stored in a ZIP central directory
-// entry's "external file attributes" the way Unix-aware tools (and Plesk's
-// own extractor) expect: (unix mode << 16).
-const ZIP_UNIX_FILE_EXTERNAL_ATTRS = (0o100644 << 16) >>> 0;
-
 /**
- * Creates a real ZIP archive (local file headers + central directory + end
- * of central directory record - the format Plesk's extension installer
- * requires) from every file under `sourceRoot`, with archive-relative paths
- * matching each file's path relative to `sourceRoot`. Deflates each entry
- * with `zlib.deflateRawSync`, falling back to "stored" (uncompressed) if
- * deflating did not actually shrink the file. No external `zip` binary and
- * no npm dependency - pure `node:zlib` + `node:buffer`.
+ * Builds a real `.deb` binary package from a fully staged package root (a
+ * directory containing `DEBIAN/control` plus the payload laid out exactly as
+ * it should land on the target filesystem, e.g. `opt/gulogulo/...`) by
+ * shelling out to `dpkg-deb --build`, the tool every Debian/Ubuntu host
+ * already ships (part of `dpkg`, not a separate install). `--root-owner-group`
+ * makes every file in the resulting archive owned by root:root regardless of
+ * the uid/gid the build actually ran as, which matters here since CI builds
+ * as a non-root container user.
+ *
+ * Unlike `createTarball`, `dpkg-deb` names its own internal contents from
+ * `packageRoot` directly (there is no separate "staging parent" wrapper
+ * directory) - the caller passes the exact output filename it wants via
+ * `archivePath`.
  */
-export async function createZipArchive(options: {
-  sourceRoot: string;
+export async function createDebPackage(options: {
+  packageRoot: string;
   archivePath: string;
+  version: string;
   log: (message: string) => void;
 }): Promise<string> {
-  const { sourceRoot, archivePath, log } = options;
-
-  log(`Collecting files under ${sourceRoot} for the ZIP archive...`);
-  const files: ZipFileEntry[] = [];
-  await collectFilesRecursively(sourceRoot, sourceRoot, files);
-
-  const { dosTime, dosDate } = toDosDateTime(new Date());
-  const UTF8_NAMES_FLAG = 0x0800;
-
-  const localChunks: Buffer[] = [];
-  const centralChunks: Buffer[] = [];
-  let offset = 0;
-
-  for (const file of files) {
-    const nameBuffer = Buffer.from(file.archivePath, 'utf8');
-    const crc = crc32(file.content) >>> 0;
-    const deflated = deflateRawSync(file.content);
-    const useDeflate = deflated.length < file.content.length;
-    const method = useDeflate ? 8 : 0;
-    const storedContent = useDeflate ? deflated : file.content;
-
-    const localHeader = Buffer.alloc(30);
-    localHeader.writeUInt32LE(0x04034b50, 0);
-    localHeader.writeUInt16LE(20, 4); // version needed to extract
-    localHeader.writeUInt16LE(UTF8_NAMES_FLAG, 6);
-    localHeader.writeUInt16LE(method, 8);
-    localHeader.writeUInt16LE(dosTime, 10);
-    localHeader.writeUInt16LE(dosDate, 12);
-    localHeader.writeUInt32LE(crc, 14);
-    localHeader.writeUInt32LE(storedContent.length, 18);
-    localHeader.writeUInt32LE(file.content.length, 22);
-    localHeader.writeUInt16LE(nameBuffer.length, 26);
-    localHeader.writeUInt16LE(0, 28); // extra field length
-
-    localChunks.push(localHeader, nameBuffer, storedContent);
-
-    const centralHeader = Buffer.alloc(46);
-    centralHeader.writeUInt32LE(0x02014b50, 0);
-    centralHeader.writeUInt16LE((3 << 8) | 20, 4); // version made by: unix host, version 20
-    centralHeader.writeUInt16LE(20, 6); // version needed to extract
-    centralHeader.writeUInt16LE(UTF8_NAMES_FLAG, 8);
-    centralHeader.writeUInt16LE(method, 10);
-    centralHeader.writeUInt16LE(dosTime, 12);
-    centralHeader.writeUInt16LE(dosDate, 14);
-    centralHeader.writeUInt32LE(crc, 16);
-    centralHeader.writeUInt32LE(storedContent.length, 20);
-    centralHeader.writeUInt32LE(file.content.length, 24);
-    centralHeader.writeUInt16LE(nameBuffer.length, 28);
-    centralHeader.writeUInt16LE(0, 30); // extra field length
-    centralHeader.writeUInt16LE(0, 32); // file comment length
-    centralHeader.writeUInt16LE(0, 34); // disk number start
-    centralHeader.writeUInt16LE(0, 36); // internal file attributes
-    centralHeader.writeUInt32LE(ZIP_UNIX_FILE_EXTERNAL_ATTRS, 38);
-    centralHeader.writeUInt32LE(offset, 42);
-
-    centralChunks.push(centralHeader, nameBuffer);
-
-    offset += localHeader.length + nameBuffer.length + storedContent.length;
-  }
-
-  const centralDirectorySize = centralChunks.reduce((sum, chunk) => sum + chunk.length, 0);
-  const centralDirectoryOffset = offset;
-
-  const endOfCentralDirectory = Buffer.alloc(22);
-  endOfCentralDirectory.writeUInt32LE(0x06054b50, 0);
-  endOfCentralDirectory.writeUInt16LE(0, 4); // disk number
-  endOfCentralDirectory.writeUInt16LE(0, 6); // disk with central directory
-  endOfCentralDirectory.writeUInt16LE(files.length, 8);
-  endOfCentralDirectory.writeUInt16LE(files.length, 10);
-  endOfCentralDirectory.writeUInt32LE(centralDirectorySize, 12);
-  endOfCentralDirectory.writeUInt32LE(centralDirectoryOffset, 16);
-  endOfCentralDirectory.writeUInt16LE(0, 20); // comment length
-
-  const archiveBuffer = Buffer.concat([...localChunks, ...centralChunks, endOfCentralDirectory]);
+  const { packageRoot, archivePath, version, log } = options;
 
   await mkdir(dirname(archivePath), { recursive: true });
-  await writeFile(archivePath, archiveBuffer);
+
+  log(`Building .deb package from ${packageRoot} into ${archivePath}...`);
+  const dpkgResult = spawnSync('dpkg-deb', ['--build', '--root-owner-group', packageRoot, archivePath], {
+    stdio: 'inherit',
+  });
+  if (dpkgResult.error) {
+    throw new Error(
+      `Failed to start "dpkg-deb": ${dpkgResult.error.message}. This build step requires a Debian/Ubuntu ` +
+        'host (or container) with dpkg-dev installed - e.g. the debian:trixie CI container this target runs in.',
+    );
+  }
+  if (dpkgResult.status !== 0) {
+    throw new Error(`"dpkg-deb --build" exited with status ${dpkgResult.status ?? 'unknown'}.`);
+  }
 
   const archiveStats = await stat(archivePath);
   log('Package build complete.');
   log(`  archive: ${archivePath}`);
   log(`  size:    ${humanFileSize(archiveStats.size)} (${archiveStats.size} bytes)`);
-  log(`  entries: ${files.length}`);
+  log(`  version: ${version}`);
 
   return archivePath;
+}
+
+async function findRpmFilesRecursively(root: string): Promise<string[]> {
+  const found: string[] = [];
+  let entries: Awaited<ReturnType<typeof readdir>>;
+  try {
+    entries = await readdir(root, { withFileTypes: true });
+  } catch {
+    return found;
+  }
+  for (const entry of entries) {
+    const entryPath = join(root, entry.name);
+    if (entry.isDirectory()) {
+      found.push(...(await findRpmFilesRecursively(entryPath)));
+    } else if (entry.isFile() && entry.name.endsWith('.rpm')) {
+      found.push(entryPath);
+    }
+  }
+  return found;
+}
+
+/**
+ * Builds a real `.rpm` binary package by shelling out to `rpmbuild -bb`, the
+ * tool every RHEL-family host (RHEL/AlmaLinux/CloudLinux/Fedora) already
+ * ships as part of the `rpm-build` package - not an npm dependency, and not
+ * available at all on the Ubuntu/Debian hosts the other two targets build
+ * on, which is why this is only ever exercised inside the AlmaLinux 9
+ * container `.github/workflows/package-cpanel.yml` runs in (or a real
+ * RHEL-family host); it fails with a clear, actionable error everywhere
+ * else, e.g. on a developer's Windows/Ubuntu machine.
+ *
+ * Unlike `createDebPackage` (which builds directly from a fully laid-out
+ * package root), `rpmbuild` works from a `%{_topdir}` tree (`BUILD/`,
+ * `RPMS/`, `SOURCES/`, `SPECS/`, `SRPMS/`) plus a `.spec` file and a source
+ * tarball referenced by that spec's `Source0:` - this function sets all of
+ * that up in a throwaway temp directory, runs `rpmbuild -bb`, and moves the
+ * single resulting `.rpm` (there is exactly one for this noarch,
+ * no-debuginfo package) into `outputDirectory`, keeping the filename
+ * `rpmbuild` itself produced (standard `<name>-<version>-<release>.<arch>.rpm`
+ * NVRA convention - RPM tooling and operators expect that shape, so it is
+ * deliberately not renamed to the `gulogulo-<version>-<target>` convention
+ * the tarball targets use).
+ */
+export async function createRpmPackage(options: {
+  specPath: string;
+  sourceTarballPath: string;
+  sourceTarballName: string;
+  defines: Record<string, string>;
+  outputDirectory: string;
+  version: string;
+  log: (message: string) => void;
+}): Promise<string> {
+  const { specPath, sourceTarballPath, sourceTarballName, defines, outputDirectory, version, log } = options;
+
+  const topDir = await mkdtemp(join(tmpdir(), 'gulogulo-rpmbuild-'));
+  try {
+    for (const subdirectory of ['BUILD', 'BUILDROOT', 'RPMS', 'SOURCES', 'SPECS', 'SRPMS']) {
+      await mkdir(join(topDir, subdirectory), { recursive: true });
+    }
+
+    await cp(sourceTarballPath, join(topDir, 'SOURCES', sourceTarballName));
+    const specDestination = join(topDir, 'SPECS', basename(specPath));
+    await cp(specPath, specDestination);
+
+    const defineArgs = Object.entries(defines).flatMap(([key, value]) => ['--define', `${key} ${value}`]);
+
+    log(`Running "rpmbuild -bb" for ${specDestination}...`);
+    const rpmbuildResult = spawnSync(
+      'rpmbuild',
+      ['--define', `_topdir ${topDir}`, ...defineArgs, '-bb', specDestination],
+      { stdio: 'inherit' },
+    );
+    if (rpmbuildResult.error) {
+      throw new Error(
+        `Failed to start "rpmbuild": ${rpmbuildResult.error.message}. This build step requires an RHEL-family ` +
+          'host (or container) with the rpm-build package installed - e.g. the almalinux:9 CI container this ' +
+          'target runs in. It is expected to fail on Windows and on the Ubuntu/Debian hosts the other packaging ' +
+          'targets build on.',
+      );
+    }
+    if (rpmbuildResult.status !== 0) {
+      throw new Error(`"rpmbuild -bb" exited with status ${rpmbuildResult.status ?? 'unknown'}.`);
+    }
+
+    const builtRpms = await findRpmFilesRecursively(join(topDir, 'RPMS'));
+    if (builtRpms.length === 0) {
+      throw new Error(`"rpmbuild -bb" reported success but produced no .rpm file under ${join(topDir, 'RPMS')}.`);
+    }
+    if (builtRpms.length > 1) {
+      throw new Error(`"rpmbuild -bb" produced more than one .rpm file (expected exactly one): ${builtRpms.join(', ')}`);
+    }
+
+    await mkdir(outputDirectory, { recursive: true });
+    const archivePath = join(outputDirectory, basename(builtRpms[0]));
+    await cp(builtRpms[0], archivePath);
+
+    const archiveStats = await stat(archivePath);
+    log('Package build complete.');
+    log(`  archive: ${archivePath}`);
+    log(`  size:    ${humanFileSize(archiveStats.size)} (${archiveStats.size} bytes)`);
+    log(`  version: ${version}`);
+
+    return archivePath;
+  } finally {
+    await rm(topDir, { recursive: true, force: true });
+  }
 }

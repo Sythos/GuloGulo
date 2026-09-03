@@ -1,0 +1,38 @@
+#!/bin/sh
+# SPDX-License-Identifier: MIT
+# SPDX-FileCopyrightText: 2026 Sythos (https://www.sythos.net)
+# Author: Sythos (https://www.sythos.net)
+#
+# Debian maintainer script, run by dpkg as root before this package's files
+# are removed. Standard dpkg maintainer script contract: `prerm remove` runs
+# before a real removal (package fully going away, replaced by nothing);
+# `prerm upgrade <new-version>` runs before dpkg replaces this package's
+# files with a newer version's (the new version's postinst will restart the
+# service itself, so nothing should be stopped here). Only `remove` stops
+# and disables the systemd service - upgrades leave it running so there is
+# no unnecessary downtime between the old files being removed and the new
+# postinst re-enabling the service.
+
+set -e
+
+ACTION="$1"
+
+log() { printf '[gulogulo prerm] %s\n' "$1"; }
+
+case "$ACTION" in
+  remove)
+    if command -v systemctl >/dev/null 2>&1 && systemctl list-unit-files gulogulo.service >/dev/null 2>&1; then
+      systemctl disable --now gulogulo || log 'WARNING: systemctl disable --now gulogulo failed (continuing).'
+      log 'Service stopped and disabled.'
+    else
+      log 'No gulogulo systemd unit found - nothing to stop/disable.'
+    fi
+    ;;
+  upgrade | deconfigure | failed-upgrade)
+    # Leave the service running - the new version's postinst restarts it.
+    ;;
+  *)
+    ;;
+esac
+
+exit 0

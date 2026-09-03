@@ -8,10 +8,11 @@
 # (gulogulo-proxy.conf.example) are the whole functional install. Treat
 # this purely as a "nice to have" UI convenience.
 #
-# install.sh only ever writes this file into the install directory as a
-# starting point; it never runs register_appconfig itself - that command
-# adds a persistent WHM-wide registration and should be a deliberate,
-# reviewed, manual step:
+# This file ships as documentation only (RPM %doc, installed at
+# /usr/share/doc/gulogulo/gulogulo-appconfig.conf.example) as a starting
+# point; gulogulo.spec's scriptlets never run register_appconfig
+# themselves - that command adds a persistent WHM-wide registration and
+# should be a deliberate, reviewed, manual step:
 #
 #   1. Verify the fields below against the AppConfig reference for your
 #      installed cPanel/WHM version (the format has shifted across cPanel

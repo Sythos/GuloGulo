@@ -1,0 +1,68 @@
+#!/bin/sh
+# SPDX-License-Identifier: MIT
+# SPDX-FileCopyrightText: 2026 Sythos (https://www.sythos.net)
+# Author: Sythos (https://www.sythos.net)
+#
+# Debian maintainer script, run by dpkg as root after this package's files
+# are removed. Standard dpkg maintainer script contract: `postrm remove`
+# runs after a plain removal (config files, here just /opt/gulogulo/.env,
+# are deliberately left behind); `postrm purge` runs after `dpkg --purge` /
+# `apt purge` and is where anything a plain removal leaves behind should
+# finally go. dpkg itself already removed every file this package actually
+# shipped (dist/, web/, migrations, package.json, ...) by this point - what
+# is left to clean up here is only what postinst created at runtime and
+# therefore dpkg never tracked: node_modules/ (npm ci output), the rendered
+# systemd unit under /etc/systemd/system/, and (purge only) .env.
+#
+# Never touches external data (PostgreSQL database, mailbox storage, or
+# GULOGULO_SERVICE_READ_WRITE_PATH/var/lib/gulogulo) and never deletes the
+# dedicated system user - both are deliberate, matching the caution already
+# documented in every other target's uninstall script in this project (see
+# packaging/cpanel/scripts/uninstall.sh).
+
+set -e
+
+ACTION="$1"
+APP_DIR=/opt/gulogulo
+UNIT_PATH=/etc/systemd/system/gulogulo.service
+
+log() { printf '[gulogulo postrm] %s\n' "$1"; }
+
+remove_runtime_generated_files() {
+  if [ -d "$APP_DIR/node_modules" ]; then
+    rm -rf "$APP_DIR/node_modules"
+    log 'Removed node_modules/ (npm ci output, not part of the package payload).'
+  fi
+  if [ -f "$UNIT_PATH" ]; then
+    rm -f "$UNIT_PATH"
+    systemctl daemon-reload 2>/dev/null || true
+    log "Removed systemd unit $UNIT_PATH."
+  fi
+}
+
+case "$ACTION" in
+  remove)
+    remove_runtime_generated_files
+    log "$APP_DIR/.env (if present) was left in place. Run 'dpkg --purge gulogulo' to remove it too."
+    ;;
+  purge)
+    remove_runtime_generated_files
+    if [ -f "$APP_DIR/.env" ]; then
+      rm -f "$APP_DIR/.env"
+      log '.env removed (purge).'
+    fi
+    # dpkg removes every shipped file/directory under /opt/gulogulo on its
+    # own; this only clears the directory itself if nothing is left in it
+    # (e.g. an operator-created file would keep it around, which is fine).
+    rmdir "$APP_DIR" 2>/dev/null || true
+    ;;
+  upgrade | failed-upgrade | abort-install | abort-upgrade | disappear)
+    ;;
+  *)
+    ;;
+esac
+
+log 'External PostgreSQL database and mailbox storage were not touched and must be removed separately if that is what you want.'
+log 'Reminder (never done automatically by this package): remove the nginx directives you added from gulogulo-proxy.conf.example.'
+
+exit 0

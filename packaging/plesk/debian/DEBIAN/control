@@ -1,0 +1,31 @@
+Package: gulogulo
+Version: @VERSION@
+Section: net
+Priority: optional
+Architecture: all
+Maintainer: Sythos <sythos@gmail.com>
+Depends: systemd
+Homepage: https://github.com/Sythos/GuloGulo
+Description: Gulo Gulo groupware runtime (mail, calendar, contacts)
+ Gulo Gulo is a self-hosted, tenant-isolated groupware runtime (mail,
+ calendar, contacts) built on a single TypeScript application core. This
+ package installs it to /opt/gulogulo and runs it as a dedicated systemd
+ service (gulogulo.service) under its own system user, behind a reverse
+ proxy you configure yourself - postinst writes a reviewable nginx example
+ to /opt/gulogulo/gulogulo-proxy.conf.example but never applies it.
+ .
+ Requires Node.js >= 26 already installed and on PATH before this package
+ is configured; postinst checks this and aborts configuration if it is
+ missing or too old. This is deliberately not declared as an apt Depends:
+ no Debian Trixie main-archive or independently verified NodeSource apt
+ repository providing Node.js 26 on Trixie was confirmed as reliable at
+ packaging time - see INSTALL.md for how to install Node.js 26 first
+ (NodeSource's setup_26.x script) before installing this package.
+ .
+ PostgreSQL is optional and configured via /opt/gulogulo/.env after
+ install; this package does not depend on or install a database server.
+ .
+ No native/compiled dependencies are bundled - the application uses only
+ pure-JavaScript/TypeScript npm packages (ldapts, pg) and Node's built-in
+ crypto module for password hashing (scrypt), which is why this package is
+ Architecture: all rather than architecture-specific.

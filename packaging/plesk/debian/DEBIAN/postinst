@@ -1,0 +1,139 @@
+#!/bin/sh
+# SPDX-License-Identifier: MIT
+# SPDX-FileCopyrightText: 2026 Sythos (https://www.sythos.net)
+# Author: Sythos (https://www.sythos.net)
+#
+# Debian maintainer script, run by dpkg as root after this package's files
+# are unpacked - standard dpkg maintainer script contract: dpkg calls this
+# as `postinst configure <most-recently-configured-version>` on a fresh
+# install AND on every upgrade (there is no separate "first install only"
+# case to special-case here, matching this project's other packaging
+# targets, which also install/restart the systemd service unconditionally
+# on every install/upgrade run). Other invocations
+# (abort-upgrade/abort-remove/abort-deconfigure, used by dpkg to roll back a
+# failed operation) are no-ops.
+#
+# Same high-level steps as the retired Plesk post-install.php and the
+# cPanel install.sh: create .env from .env.example if missing, npm ci, run
+# migrations, create the dedicated system user, install/enable/start the
+# systemd unit, and write (never apply) an nginx reverse-proxy example. It
+# NEVER touches any real nginx/Apache configuration - only a reviewable
+# example file - for the same reason as every other target in this project:
+# editing a live web server config without operator review is too risky to
+# automate.
+#
+# Layout this script expects (produced by build-plesk-package.ts):
+#   /opt/gulogulo/                  <- the staged application (dist/, web/,
+#                                      migrations, package.json,
+#                                      .env.example, run-migrations.mjs, the
+#                                      systemd unit template, the nginx
+#                                      proxy example, ...)
+
+set -e
+
+ACTION="$1"
+APP_DIR=/opt/gulogulo
+SERVICE_USER="${GULOGULO_SERVICE_USER:-gulogulo}"
+SERVICE_GROUP="${GULOGULO_SERVICE_GROUP:-$SERVICE_USER}"
+READ_WRITE_PATH="${GULOGULO_SERVICE_READ_WRITE_PATH:-/var/lib/gulogulo}"
+UNIT_PATH=/etc/systemd/system/gulogulo.service
+
+log() { printf '[gulogulo postinst] %s\n' "$1"; }
+fail() { printf '[gulogulo postinst] ERROR: %s\n' "$1" >&2; exit 1; }
+
+case "$ACTION" in
+  configure)
+    ;;
+  abort-upgrade | abort-remove | abort-deconfigure)
+    exit 0
+    ;;
+  *)
+    exit 0
+    ;;
+esac
+
+if [ ! -d "$APP_DIR" ]; then
+  fail "expected staged application directory at $APP_DIR, not found."
+fi
+
+# --- Preconditions ---------------------------------------------------------
+# Same check as the retired pre-install.php: Node.js >= 26 must already be
+# on PATH. This is not an apt Depends: (see DEBIAN/control for why), so it
+# is enforced here instead, aborting configuration with a non-zero exit
+# (dpkg leaves the package in a recoverable "half-configured" state; retry
+# with `dpkg --configure gulogulo` after installing Node.js).
+
+if ! command -v node >/dev/null 2>&1; then
+  fail 'Node.js was not found in PATH. Install Node.js >= 26 (see INSTALL.md) before configuring this package.'
+fi
+
+NODE_VERSION="$(node --version)"
+NODE_MAJOR="$(node -p 'process.versions.node.split(".")[0]')"
+if [ "$NODE_MAJOR" -lt 26 ]; then
+  fail "Node.js >= 26 is required, found $NODE_VERSION."
+fi
+log "OK: Node.js $NODE_VERSION."
+
+# --- Configuration -----------------------------------------------------------
+
+if [ ! -f "$APP_DIR/.env" ]; then
+  if [ ! -f "$APP_DIR/.env.example" ] || ! cp "$APP_DIR/.env.example" "$APP_DIR/.env"; then
+    fail "could not create $APP_DIR/.env from .env.example."
+  fi
+  log '.env created from .env.example - review and edit it before the service is used.'
+  log 'In particular set the PostgreSQL POSTGRES_* variables for the existing database this install will use.'
+else
+  log '.env already exists; leaving it untouched.'
+fi
+
+PORT="$(grep -E '^PORT=' "$APP_DIR/.env" | tail -n1 | cut -d= -f2-)"
+PORT="${PORT:-8080}"
+
+# --- Application dependencies and database migrations -----------------------
+
+log 'Installing production dependencies (npm ci --omit=dev)...'
+if ! (cd "$APP_DIR" && npm ci --omit=dev --no-audit --no-fund); then
+  fail 'npm ci --omit=dev failed; see output above.'
+fi
+
+log 'Applying database migrations (skipped automatically while Postgres is disabled)...'
+if ! (cd "$APP_DIR" && node --env-file=.env run-migrations.mjs); then
+  fail 'database migrations failed; see output above.'
+fi
+
+# --- systemd service ---------------------------------------------------------
+
+NODE_BIN="$(command -v node)"
+
+if ! id "$SERVICE_USER" >/dev/null 2>&1; then
+  useradd --system --no-create-home --shell /usr/sbin/nologin "$SERVICE_USER"
+  log "Created system user '$SERVICE_USER'."
+else
+  log "System user '$SERVICE_USER' already exists."
+fi
+
+sed \
+  -e "s#@INSTALL_DIR@#$APP_DIR#g" \
+  -e "s#@SERVICE_USER@#$SERVICE_USER#g" \
+  -e "s#@SERVICE_GROUP@#$SERVICE_GROUP#g" \
+  -e "s#@NODE_BIN@#$NODE_BIN#g" \
+  -e "s#@READ_WRITE_PATH@#$READ_WRITE_PATH#g" \
+  "$APP_DIR/gulogulo.service.template" > "$UNIT_PATH"
+chmod 0644 "$UNIT_PATH"
+
+systemctl daemon-reload
+systemctl enable --now gulogulo
+log "systemd service installed, enabled, and started ($UNIT_PATH)."
+
+# --- nginx reverse proxy (never touches the real domain config) -------------
+
+PROXY_EXAMPLE="$APP_DIR/gulogulo-proxy.conf.example"
+if [ -f "$PROXY_EXAMPLE" ] && [ "$PORT" != "8080" ]; then
+  sed -i "s#127\\.0\\.0\\.1:8080#127.0.0.1:${PORT}#g" "$PROXY_EXAMPLE"
+  log "Rewrote the upstream port in gulogulo-proxy.conf.example to match PORT=$PORT from .env."
+fi
+log "nginx reverse proxy example: $PROXY_EXAMPLE"
+log 'This file is never applied automatically - see the instructions inside it.'
+
+log 'Install complete.'
+exit 0

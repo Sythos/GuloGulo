@@ -1,0 +1,45 @@
+# SPDX-License-Identifier: MIT
+# SPDX-FileCopyrightText: 2026 Sythos (https://www.sythos.net)
+# Author: Sythos (https://www.sythos.net)
+#
+# systemd unit template for the Plesk/.deb target. postinst renders this
+# into /etc/systemd/system/gulogulo.service (substituting the placeholders
+# below, with defaults matching gulogulo-rpm.service's fixed values -
+# /opt/gulogulo, the "gulogulo" system/group user, /var/lib/gulogulo - but
+# each overridable via a GULOGULO_SERVICE_* env var at install time, unlike
+# the RPM target's install location, which is fixed by packaging
+# convention) and, unconditionally on every install/upgrade, runs
+# `systemctl daemon-reload && systemctl enable --now gulogulo`.
+#
+# Placeholders substituted by postinst: @INSTALL_DIR@, @SERVICE_USER@,
+# @SERVICE_GROUP@, @NODE_BIN@, @READ_WRITE_PATH@
+#
+# Lives under packaging/shared/ (rather than packaging/cpanel/) because it
+# is conceptually the same systemd unit gulogulo-rpm.service describes, just
+# templated for the .deb target's install-time-configurable layout - keeping
+# both next to each other avoids one packaging target reaching into another
+# target's directory for a file it needs.
+
+[Unit]
+Description=Gulo Gulo groupware runtime
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=@SERVICE_USER@
+Group=@SERVICE_GROUP@
+WorkingDirectory=@INSTALL_DIR@
+ExecStart=@NODE_BIN@ --env-file=@INSTALL_DIR@/.env @INSTALL_DIR@/dist/server/src/runtime/index.js
+Restart=on-failure
+RestartSec=5
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+# Adjust to wherever GULOGULO_MAILBOX_ROOT and patch status files actually
+# live for this install; the service needs write access there only.
+ReadWritePaths=@READ_WRITE_PATH@
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

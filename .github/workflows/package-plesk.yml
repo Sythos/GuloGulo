@@ -4,22 +4,29 @@
 
 name: Package Plesk archive
 
-# Unlike package-standalone.yml, this workflow cannot actually install the
-# extension: `plesk bin extension -i gulogulo-<version>-plesk.zip` requires a
-# real Plesk host (the Plesk CLI, the extension catalog database, PHP
-# running under Plesk's own panel user, etc.), none of which the
-# ubuntu-latest runner provides, and there is no official Plesk Docker image
-# suitable for CI here either. What this workflow verifies instead: the ZIP
-# archive builds, has the exact structure Plesk's extension mechanism
-# requires (meta.xml at the archive root, well-formed XML; plib/scripts/
-# with all three lifecycle hooks), and that every PHP lifecycle script is at
-# least syntactically valid (`php -l`) - it does NOT exercise pre-install.php
-# / post-install.php / pre-uninstall.php's actual logic, since that needs
-# root on a real Linux host with systemd (post-install.php enables/starts a
-# systemd unit; nothing here does). All of that - and the plesk_min_version/
-# plesk_max_version values and the assumed REST API endpoints documented in
-# src/platform/plesk/README.md - needs field verification against a real
-# Plesk instance before a production release.
+# This target (packaging/plesk/) no longer builds a Plesk "extension" ZIP -
+# it builds a real Debian `.deb` package (see packaging/plesk/build-plesk-
+# package.ts and INSTALL.md for why the Plesk extension mechanism was
+# retired in favor of an OS-native package). Runs inside a real
+# `debian:trixie` container (not the ubuntu-latest runner the other two
+# package-*.yml workflows use) so the whole pipeline - Node.js install via
+# the NodeSource setup_26.x script, `dpkg-deb --build`, `dpkg -c`/`dpkg-deb
+# -I` inspection, `dpkg --unpack` - runs on the actual target OS this
+# package is meant for, not a stand-in.
+#
+# What this workflow CANNOT do: run this package's postinst to completion.
+# postinst ends with `systemctl daemon-reload && systemctl enable --now
+# gulogulo`, and a plain `debian:trixie` container has no running init
+# system (no PID 1 systemd, no D-Bus) - `systemctl` simply has nothing to
+# talk to. So instead of a full `dpkg -i`/`apt install ./*.deb`, this
+# workflow does the closest safe approximation: `dpkg --unpack` (which
+# really extracts the real payload to /opt/gulogulo and proves the archive
+# is structurally installable) followed by `dpkg --purge` (which exercises
+# prerm/postrm's "package was never configured" no-op paths for real,
+# without ever reaching postinst's systemd calls). The full install -
+# postinst's npm ci / migrations / system user / systemd enable, actually
+# reaching an HTTP-serving process - has NOT been exercised end to end on a
+# real host by this workflow and remains field work; see INSTALL.md.
 
 on:
   push:
@@ -35,20 +42,48 @@ concurrency:
 
 jobs:
   build-and-verify-package:
-    name: Build the Plesk package and verify its structure
+    name: Build the .deb package and verify its structure
     runs-on: ubuntu-latest
+    container: debian:trixie
     timeout-minutes: 20
     steps:
+      # actions/checkout needs git, and this is a bare debian:trixie
+      # container image - neither git nor the NodeSource setup script's own
+      # prerequisites (curl, ca-certificates, gnupg) are present by default.
+      # dpkg-deb itself needs nothing extra (it is part of dpkg, which is
+      # essential and always present); dpkg-dev is installed anyway per
+      # this project's packaging notes, even though `dpkg-deb --build` does
+      # not strictly require it.
+      - name: Install build prerequisites (apt)
+        shell: bash
+        run: |
+          set -euo pipefail
+          apt-get update
+          apt-get install -y --no-install-recommends \
+            git ca-certificates curl gnupg dpkg-dev
+
       - name: Checkout
         uses: actions/checkout@v6
         with:
           persist-credentials: false
 
-      - name: Set up Node.js
-        uses: actions/setup-node@v6
-        with:
-          node-version: latest
-          check-latest: true
+      # Compito 1 research: NodeSource publishes a genuine `setup_26.x` DEB
+      # repo script (https://github.com/nodesource/distributions), which
+      # does not hardcode a Debian codename allowlist - it only checks for
+      # /etc/debian_version and installs its own generic apt source, so it
+      # is expected to work on Trixie even though NodeSource has not
+      # explicitly certified Trixie support. This step is that claim's
+      # actual verification: if setup_26.x stops working on Trixie, this
+      # job fails here rather than that assumption going unchecked.
+      - name: Install Node.js 26.x (NodeSource)
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -fsSL https://deb.nodesource.com/setup_26.x -o /tmp/nodesource_setup.sh
+          bash /tmp/nodesource_setup.sh
+          apt-get install -y nodejs
+          node --version
+          npm --version
 
       - name: Install dependencies
         shell: bash
@@ -61,89 +96,113 @@ jobs:
           npm run build:web
           npm run build:server
 
-      - name: Build the Plesk package
+      - name: Build the .deb package
         shell: bash
         env:
           GULOGULO_SKIP_BUILD: "1"
         run: node --experimental-strip-types packaging/plesk/build-plesk-package.ts
 
-      - name: Extract the ZIP into a clean directory
+      - name: Resolve the built package path
         shell: bash
         run: |
           set -euo pipefail
-          ARCHIVE="$(ls packaging/dist/gulogulo-*-plesk.zip)"
-          EXTRACT_DIR="$RUNNER_TEMP/gulogulo-plesk-extension"
-          mkdir -p "$EXTRACT_DIR"
-          unzip -q "$ARCHIVE" -d "$EXTRACT_DIR"
-          echo "EXTRACT_DIR=$EXTRACT_DIR" >> "$GITHUB_ENV"
-
-          # meta.xml MUST be at the archive root - this is what makes the
-          # ZIP a valid Plesk extension package rather than an arbitrary
-          # archive of the staged application.
-          test -f "$EXTRACT_DIR/meta.xml"
-          test -f "$EXTRACT_DIR/plib/scripts/pre-install.php"
-          test -f "$EXTRACT_DIR/plib/scripts/post-install.php"
-          test -f "$EXTRACT_DIR/plib/scripts/pre-uninstall.php"
-          test -f "$EXTRACT_DIR/plib/app/dist/server/src/runtime/index.js"
-          test -f "$EXTRACT_DIR/plib/app/web/index.html"
-          test -f "$EXTRACT_DIR/plib/app/web/dist/app.js"
-          test -f "$EXTRACT_DIR/plib/app/assets/gulo-gulo-calendar-mail.png"
-          test -f "$EXTRACT_DIR/plib/app/src/core/db/migrations/0001_m2_foundation.sql"
-          test -f "$EXTRACT_DIR/plib/app/.env.example"
-          test -f "$EXTRACT_DIR/plib/app/VERSION"
-          test -f "$EXTRACT_DIR/plib/app/package.json"
-          test -f "$EXTRACT_DIR/plib/app/run-migrations.mjs"
-          test -f "$EXTRACT_DIR/plib/app/gulogulo.service.template"
-          test -f "$EXTRACT_DIR/plib/app/gulogulo-proxy.conf.example"
-
-          # meta.xml must not still contain the unsubstituted @VERSION@
-          # placeholder, and must declare the fields this workflow's
-          # structural checks below assume.
-          if grep -q '@VERSION@' "$EXTRACT_DIR/meta.xml"; then
-            echo "meta.xml still contains an unsubstituted @VERSION@ placeholder." >&2
-            exit 1
-          fi
-          for field in '<id>' '<name>' '<version>' '<release>' '<vendor>' '<url>' '<plesk_min_version>' '<plesk_max_version>' '<os>'; do
-            grep -qF "$field" "$EXTRACT_DIR/meta.xml" || { echo "meta.xml is missing $field" >&2; exit 1; }
-          done
+          DEB="$(ls packaging/dist/gulogulo_*_all.deb)"
+          echo "DEB=$DEB" >> "$GITHUB_ENV"
 
       - name: Verify the package checksum
         shell: bash
         run: |
           set -euo pipefail
           cd packaging/dist
-          ARCHIVE_NAME="$(basename "$(ls gulogulo-*-plesk.zip)")"
+          ARCHIVE_NAME="$(basename "$(ls gulogulo_*_all.deb)")"
           test -f "${ARCHIVE_NAME}.sha256"
           sha256sum -c "${ARCHIVE_NAME}.sha256"
 
-      - name: Verify meta.xml is well-formed XML
+      - name: Inspect package metadata (dpkg-deb -I)
         shell: bash
         run: |
           set -euo pipefail
-          # python3 ships on the ubuntu-latest runner image; its stdlib
-          # xml.etree.ElementTree is a minimal, dependency-free well-
-          # formedness check (this does not validate against a schema -
-          # Plesk does not publish one - only that the XML itself parses).
-          python3 -c "import xml.etree.ElementTree as ET; ET.parse('$EXTRACT_DIR/meta.xml'); print('meta.xml is well-formed XML')"
+          dpkg-deb -I "$DEB"
 
-      - name: Lint the PHP lifecycle scripts (php -l)
-        shell: bash
-        run: |
-          set -euo pipefail
-          if command -v php >/dev/null 2>&1; then
-            echo "php $(php -v | head -n1) found; linting lifecycle scripts."
-            for script in "$EXTRACT_DIR"/plib/scripts/*.php; do
-              php -l "$script"
-            done
-          else
-            echo "::warning::php is not available on this runner - pre-install.php/post-install.php/pre-uninstall.php were NOT syntax-checked here. Run 'php -l' on packaging/plesk/scripts/*.php locally or on a real Plesk host before relying on this package."
+          INFO="$(dpkg-deb -I "$DEB")"
+          echo "$INFO" | grep -qE '^ *Package: gulogulo$'
+          echo "$INFO" | grep -qE '^ *Architecture: all$'
+          echo "$INFO" | grep -qE '^ *Maintainer: Sythos <sythos@gmail\.com>$'
+          echo "$INFO" | grep -qE '^ *Depends: systemd$'
+
+          # The control template's @VERSION@ placeholder must have been
+          # substituted with a real version.
+          if echo "$INFO" | grep -q '@VERSION@'; then
+            echo "DEBIAN/control still contains an unsubstituted @VERSION@ placeholder." >&2
+            exit 1
           fi
 
-      - name: Upload the Plesk package artifact
+      - name: Verify package contents (dpkg -c)
+        shell: bash
+        run: |
+          set -euo pipefail
+          CONTENTS="$(dpkg -c "$DEB")"
+          echo "$CONTENTS"
+
+          for path in \
+            ./opt/gulogulo/dist/server/src/runtime/index.js \
+            ./opt/gulogulo/web/index.html \
+            ./opt/gulogulo/web/dist/app.js \
+            ./opt/gulogulo/assets/gulo-gulo-calendar-mail.png \
+            ./opt/gulogulo/src/core/db/migrations/0001_m2_foundation.sql \
+            ./opt/gulogulo/.env.example \
+            ./opt/gulogulo/VERSION \
+            ./opt/gulogulo/package.json \
+            ./opt/gulogulo/run-migrations.mjs \
+            ./opt/gulogulo/gulogulo.service.template \
+            ./opt/gulogulo/gulogulo-proxy.conf.example \
+          ; do
+            echo "$CONTENTS" | grep -qF " $path" || { echo "Missing from package payload: $path" >&2; exit 1; }
+          done
+
+      - name: Lint the Debian maintainer scripts (sh -n)
+        shell: bash
+        run: |
+          set -euo pipefail
+          CONTROL_DIR="$RUNNER_TEMP/gulogulo-control"
+          mkdir -p "$CONTROL_DIR"
+          dpkg-deb -e "$DEB" "$CONTROL_DIR"
+          test -f "$CONTROL_DIR/postinst"
+          test -f "$CONTROL_DIR/prerm"
+          test -f "$CONTROL_DIR/postrm"
+          for script in postinst prerm postrm; do
+            sh -n "$CONTROL_DIR/$script"
+            echo "$script: syntax OK"
+          done
+
+      - name: Dry-run install (dpkg --unpack, no postinst/systemd)
+        shell: bash
+        run: |
+          set -euo pipefail
+          # `dpkg --unpack` really extracts this package's payload to
+          # /opt/gulogulo using dpkg itself (not just `dpkg -c` listing) -
+          # this is the strongest install proof this container can safely
+          # give, since it stops short of `--configure`, which is what
+          # would run postinst's `systemctl enable --now gulogulo` against
+          # a container with no init system.
+          dpkg --unpack "$DEB"
+          test -f /opt/gulogulo/dist/server/src/runtime/index.js
+          test -f /opt/gulogulo/web/index.html
+          test -f /opt/gulogulo/.env.example
+          dpkg-query -W -f='${Status}\n' gulogulo | grep -qE 'install ok unpacked'
+
+          # Removing an unpacked-but-never-configured package exercises
+          # prerm's/postrm's "nothing to do" branches for real (no systemd
+          # unit and no .env exist yet, since postinst never ran) - a
+          # genuine, safe smoke test of both scripts' guard clauses.
+          dpkg --purge gulogulo
+          test ! -d /opt/gulogulo
+
+      - name: Upload the .deb package artifact
         uses: actions/upload-artifact@v4
         with:
           name: gulogulo-plesk-package
           path: |
-            packaging/dist/gulogulo-*-plesk.zip
-            packaging/dist/gulogulo-*-plesk.zip.sha256
+            packaging/dist/gulogulo_*_all.deb
+            packaging/dist/gulogulo_*_all.deb.sha256
           if-no-files-found: error
