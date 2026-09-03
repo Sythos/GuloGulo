@@ -3,5 +3,3 @@
 // Author: Sythos (https://www.sythos.net)
 
 export * from './compatibility.ts';
-export * from './control-plane.ts';
-export * from './rollout.ts';
