@@ -9,9 +9,10 @@ import { createPostgresCalDavStore } from '../../core/dav/caldav/postgres-caldav
 import { createPostgresCardDavStore } from '../../core/dav/carddav/postgres-carddav-store.ts';
 import { createDatabaseIdentityClient } from './db-identity-client.ts';
 import type { IntegrationConfig, IntegrationLogger, LdapIdentityClient, PostgresStore, SecretResolver } from '../../integrations/types.ts';
-import { createLocalBackupStorage, createLocalMailClients } from '../contract/platform-adapter.ts';
+import { createConfiguredAlertDelivery, createLocalBackupStorage, createLocalMailClients } from '../contract/platform-adapter.ts';
 import type { DavStore, MailClientFactories, PlatformAdapter } from '../contract/platform-adapter.ts';
 import type { BackupStorageAdapter } from '../../core/backup/filesystem-backup-adapter.ts';
+import type { AlertDeliveryAdapter } from '../../core/observability/webhook-alert-adapter.ts';
 import type { SessionStore, WebSession } from '../../web/security/session-manager.ts';
 
 function asRecord(value: unknown): Record<string, unknown> {
@@ -74,6 +75,10 @@ export interface StandaloneAdapterOptions {
  *   client factories against `127.0.0.1` (the host's own Dovecot/Postfix)
  *   with ports from the existing `mail.imapsPort`/`mail.smtpSubmissionPort`
  *   config.
+ * - `createAlertDelivery()` calls `createConfiguredAlertDelivery()` from
+ *   `../contract/platform-adapter.ts`, shared by all three targets: a
+ *   generic webhook delivering `alert-policy.ts`'s evaluated alerts, gated
+ *   and configured by `alerting.*`.
  * - `createSessionStore()` returns the same in-memory `Map` that
  *   `createSessionManager()` in `src/web/security/session-manager.ts` already
  *   uses as its default `store`.
@@ -121,6 +126,14 @@ export function createStandaloneAdapter(options: StandaloneAdapterOptions = {}):
     return createLocalBackupStorage(config, { defaultPath: '/var/lib/gulogulo/backups', logger });
   }
 
+  /**
+   * The generic webhook alert-delivery adapter shared by every target — see
+   * `createConfiguredAlertDelivery()` in `../contract/platform-adapter.ts`.
+   */
+  async function createAlertDelivery(config: IntegrationConfig): Promise<AlertDeliveryAdapter> {
+    return createConfiguredAlertDelivery(config, { resolveSecret, logger });
+  }
+
   async function createSessionStore(): Promise<SessionStore> {
     return new Map<string, WebSession>();
   }
@@ -133,6 +146,7 @@ export function createStandaloneAdapter(options: StandaloneAdapterOptions = {}):
     createDavStore,
     createMailClients,
     createBackupStorage,
+    createAlertDelivery,
     createSessionStore,
   });
 }

@@ -6,11 +6,19 @@ import { createImapClient } from '../../core/mail/imap-client.ts';
 import type { ImapClient, ImapClientLogger } from '../../core/mail/imap-client.ts';
 import { createSmtpClient } from '../../core/mail/smtp-client.ts';
 import type { SmtpClient, SmtpClientLogger, SmtpTlsMode } from '../../core/mail/smtp-client.ts';
-import type { IntegrationConfig, LdapIdentityClient, PostgresStore } from '../../integrations/types.ts';
+import type { IntegrationConfig, LdapIdentityClient, PostgresStore, SecretResolver } from '../../integrations/types.ts';
 import type { PostgresCalDavStore } from '../../core/dav/caldav/postgres-caldav-store.ts';
 import type { PostgresCardDavStore } from '../../core/dav/carddav/postgres-carddav-store.ts';
 import { createFilesystemBackupAdapter } from '../../core/backup/filesystem-backup-adapter.ts';
 import type { BackupAdapterLogger, BackupStorageAdapter } from '../../core/backup/filesystem-backup-adapter.ts';
+import { createDisabledAlertDelivery, createWebhookAlertAdapter } from '../../core/observability/webhook-alert-adapter.ts';
+import type {
+  AlertAdapterLogger,
+  AlertDeliveryAdapter,
+  AlertRecord,
+  AlertDeliveryResult,
+  WebhookPayloadFormat,
+} from '../../core/observability/webhook-alert-adapter.ts';
 import type { SessionStore } from '../../web/security/session-manager.ts';
 
 /** The three packaging/distribution targets defined by ADR-002. */
@@ -135,6 +143,87 @@ export function createLocalBackupStorage(
   });
 }
 
+const SEVERITY_RANK: Record<'warning' | 'critical', number> = Object.freeze({ critical: 0, warning: 1 });
+
+interface AlertingSettingsShape {
+  readonly enabled: boolean;
+  readonly webhookUrlSecretRef: string | null;
+  readonly format: WebhookPayloadFormat;
+  readonly timeoutMs: number | undefined;
+  readonly retryAttempts: number | undefined;
+  readonly minSeverity: 'warning' | 'critical';
+}
+
+function readAlertingSettings(config: IntegrationConfig): AlertingSettingsShape {
+  const root = asMailConfigRecord(config);
+  const contract = asMailConfigRecord(root.contract);
+  const raw = asMailConfigRecord(contract.alerting ?? root.alerting);
+  const format = raw.format;
+  const timeoutMs = raw.timeoutMs;
+  const retryAttempts = raw.retryAttempts;
+  return {
+    enabled: raw.enabled === true,
+    webhookUrlSecretRef: typeof raw.webhookUrlSecretRef === 'string' ? raw.webhookUrlSecretRef : null,
+    format: format === 'slack' || format === 'discord' ? format : 'generic',
+    timeoutMs: typeof timeoutMs === 'number' ? timeoutMs : undefined,
+    retryAttempts: typeof retryAttempts === 'number' ? retryAttempts : undefined,
+    minSeverity: raw.minSeverity === 'critical' ? 'critical' : 'warning',
+  };
+}
+
+/**
+ * Builds the alert-delivery adapter shared by every current target's
+ * `createAlertDelivery()`: a generic HTTP webhook
+ * (`src/core/observability/webhook-alert-adapter.ts`) that delivers what
+ * `src/core/observability/alert-policy.ts` decided to alert on — gated by
+ * `alerting.enabled` and otherwise configured entirely from `alerting.*` in
+ * `src/runtime/config.ts`.
+ *
+ * The webhook URL is a secret reference, not a plain config value (a Slack/
+ * Discord/PagerDuty webhook URL carries its own bearer token in its path),
+ * so it is resolved once here via `resolveSecret` — the same pattern
+ * `createLdapIdentityClient()`/`createCpanelIdentityClient()` already use
+ * for `bindSecretRef`/`apiTokenSecretRef`. Disabled (the default) or
+ * unconfigured returns the same safe no-op shape those adapters return for
+ * `enabled: false`.
+ *
+ * `alerting.minSeverity` doubles as the paging knob: point this same
+ * webhook at Slack with the default `'warning'` for a general channel that
+ * sees both severities, or at a PagerDuty/Opsgenie-compatible webhook URL
+ * with `'critical'` to use the identical mechanism purely for paging — no
+ * second, paging-specific adapter exists or is needed (see
+ * doc/observability.md).
+ */
+export async function createConfiguredAlertDelivery(
+  config: IntegrationConfig,
+  options: { readonly resolveSecret?: SecretResolver; readonly logger?: AlertAdapterLogger } = {},
+): Promise<AlertDeliveryAdapter> {
+  const settings = readAlertingSettings(config);
+  if (!settings.enabled) {
+    return createDisabledAlertDelivery();
+  }
+  if (typeof options.resolveSecret !== 'function' || settings.webhookUrlSecretRef === null) {
+    throw new Error('alerting.webhookUrlSecretRef and a secret resolver are required when alerting.enabled is true');
+  }
+  const webhookUrl = await options.resolveSecret(settings.webhookUrlSecretRef);
+  if (typeof webhookUrl !== 'string' || webhookUrl.length === 0) {
+    throw new Error('alert webhook URL secret resolution failed');
+  }
+  const delivery = createWebhookAlertAdapter({
+    webhookUrl,
+    format: settings.format,
+    timeoutMs: settings.timeoutMs,
+    retryAttempts: settings.retryAttempts,
+    logger: options.logger,
+  });
+  const minRank = SEVERITY_RANK[settings.minSeverity];
+  return Object.freeze({
+    enabled: true as const,
+    deliver: (alerts: readonly AlertRecord[]): Promise<AlertDeliveryResult> =>
+      delivery.deliver(alerts.filter((alert) => SEVERITY_RANK[alert.severity] <= minRank)),
+  });
+}
+
 /**
  * The persistent CalDAV/CardDAV storage backends for this target — see
  * `src/core/dav/caldav/postgres-caldav-store.ts` and
@@ -214,6 +303,22 @@ export interface PlatformAdapter {
    * test double, is not forced to implement it.
    */
   createBackupStorage?(config: IntegrationConfig): Promise<BackupStorageAdapter>;
+
+  /**
+   * Resolves where a threshold breach evaluated by
+   * `src/core/observability/alert-policy.ts` is actually delivered: a
+   * generic HTTP webhook (Slack/Discord/PagerDuty-relay/any JSON endpoint —
+   * `src/core/observability/webhook-alert-adapter.ts`), gated and
+   * configured by `alerting.*` (`src/runtime/config.ts`). Every current
+   * target returns `createConfiguredAlertDelivery()` below.
+   * `alert-policy.ts` itself stays pure — it only decides severity, never
+   * opens a socket; this method, together with `deliverAlertEvaluation()` in
+   * `webhook-alert-adapter.ts`, is the I/O layer that actually delivers what
+   * it decided. Optional for the same reason `createMailClients`/
+   * `createBackupStorage` are: an adapter that predates alert-delivery
+   * wiring, or a test double, is not forced to implement it.
+   */
+  createAlertDelivery?(config: IntegrationConfig): Promise<AlertDeliveryAdapter>;
 
   /** Resolves where/how web sessions are persisted for this target. */
   createSessionStore(): Promise<SessionStore>;

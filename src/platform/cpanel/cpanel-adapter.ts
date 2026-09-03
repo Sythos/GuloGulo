@@ -8,9 +8,10 @@ import { createPostgresStore } from '../../integrations/postgres-store.ts';
 import { createPostgresCalDavStore } from '../../core/dav/caldav/postgres-caldav-store.ts';
 import { createPostgresCardDavStore } from '../../core/dav/carddav/postgres-carddav-store.ts';
 import type { IntegrationConfig, IntegrationLogger, LdapIdentityClient, PostgresStore, SecretResolver } from '../../integrations/types.ts';
-import { createLocalBackupStorage, createLocalMailClients } from '../contract/platform-adapter.ts';
+import { createConfiguredAlertDelivery, createLocalBackupStorage, createLocalMailClients } from '../contract/platform-adapter.ts';
 import type { DavStore, MailClientFactories, PlatformAdapter } from '../contract/platform-adapter.ts';
 import type { BackupStorageAdapter } from '../../core/backup/filesystem-backup-adapter.ts';
+import type { AlertDeliveryAdapter } from '../../core/observability/webhook-alert-adapter.ts';
 import type { SessionStore, WebSession } from '../../web/security/session-manager.ts';
 
 /**
@@ -50,6 +51,9 @@ export interface CpanelAdapterOptions {
  * - `createMailClients()` calls `createLocalMailClients()` from
  *   `../contract/platform-adapter.ts` — see `standalone-adapter.ts` for the
  *   shared 127.0.0.1/configured-port wiring.
+ * - `createAlertDelivery()` calls `createConfiguredAlertDelivery()` from
+ *   `../contract/platform-adapter.ts` — see `standalone-adapter.ts` for the
+ *   shared generic-webhook wiring.
  * - `createSessionStore()` uses the same in-memory `Map` default that
  *   `createSessionManager()` in `src/web/security/session-manager.ts` uses.
  */
@@ -88,6 +92,14 @@ export function createCpanelAdapter(options: CpanelAdapterOptions = {}): Platfor
     return createLocalBackupStorage(config, { defaultPath: '/var/lib/gulogulo/backups', logger });
   }
 
+  /**
+   * The generic webhook alert-delivery adapter shared by every target — see
+   * `createConfiguredAlertDelivery()` in `../contract/platform-adapter.ts`.
+   */
+  async function createAlertDelivery(config: IntegrationConfig): Promise<AlertDeliveryAdapter> {
+    return createConfiguredAlertDelivery(config, { resolveSecret, logger });
+  }
+
   async function createSessionStore(): Promise<SessionStore> {
     return new Map<string, WebSession>();
   }
@@ -100,6 +112,7 @@ export function createCpanelAdapter(options: CpanelAdapterOptions = {}): Platfor
     createDavStore,
     createMailClients,
     createBackupStorage,
+    createAlertDelivery,
     createSessionStore,
   });
 }

@@ -65,6 +65,14 @@ test('configuration defaults are versioned, deterministic, and secret-free', () 
     syncMode: 'pull',
     allowDnsChanges: false,
   });
+  assert.deepEqual(first.alerting, {
+    enabled: false,
+    webhookUrlSecretRef: null,
+    format: 'generic',
+    timeoutMs: 5_000,
+    retryAttempts: 2,
+    minSeverity: 'warning',
+  });
   assert.deepEqual(first, second);
   assert.equal(JSON.stringify(first), JSON.stringify(second));
   assert.equal(JSON.stringify(first).includes('password'), false);
@@ -232,6 +240,18 @@ test('invalid cPanel and Plesk configuration fails closed with clear errors', ()
 
   withConfigFile({ schemaVersion: 1, cpanel: { baseUrl: 'http://cpanel.example.test' } }, (filePath) => {
     assert.throws(() => loadConfiguration({}, { configFilePath: filePath }), /cpanel\.baseUrl must use https/);
+  });
+
+  withConfigFile({ schemaVersion: 1, alerting: { enabled: true } }, (filePath) => {
+    assert.throws(() => loadConfiguration({}, { configFilePath: filePath }), /alerting\.webhookUrlSecretRef is required/);
+  });
+
+  withConfigFile({ schemaVersion: 1, alerting: { enabled: true, webhookUrlSecretRef: 'secret/alert-webhook', format: 'slack', minSeverity: 'critical' } }, (filePath) => {
+    const configuration = loadConfiguration({}, { configFilePath: filePath });
+    assert.equal(configuration.alerting.enabled, true);
+    assert.equal(configuration.alerting.webhookUrlSecretRef, 'secret/alert-webhook');
+    assert.equal(configuration.alerting.format, 'slack');
+    assert.equal(configuration.alerting.minSeverity, 'critical');
   });
 
   withConfigFile({ schemaVersion: 1, plesk: { baseUrl: 'not a url' } }, (filePath) => {

@@ -104,6 +104,29 @@ export interface MailNetworkSettings {
   smtpImplicitTlsPort: number;
 }
 
+/**
+ * The subset of the loaded configuration consumed by
+ * `src/platform/contract/platform-adapter.ts`'s
+ * `createConfiguredAlertDelivery()`: whether/how `src/core/observability/
+ * alert-policy.ts`'s evaluated alerts are delivered to a generic HTTP
+ * webhook (`src/core/observability/webhook-alert-adapter.ts`). The webhook
+ * URL itself is never stored in plain config — like `dsnSecretRef`/
+ * `apiTokenSecretRef`/`apiKeySecretRef`, it is a secret reference resolved
+ * at delivery-adapter construction time, since a Slack/Discord/PagerDuty
+ * webhook URL carries its own bearer token in its path. `minSeverity` is
+ * also the paging knob: the same webhook, pointed at a paging service and
+ * set to `'critical'`, delivers only critical alerts — no separate paging
+ * adapter exists or is needed (see doc/observability.md).
+ */
+export interface AlertingSettings {
+  enabled: boolean;
+  webhookUrlSecretRef: string | null;
+  format: 'generic' | 'slack' | 'discord';
+  timeoutMs: number;
+  retryAttempts: number;
+  minSeverity: 'warning' | 'critical';
+}
+
 /** A deliberately narrow configuration envelope so adapters do not depend on runtime internals. */
 export interface IntegrationConfig {
   readonly contract?: {
@@ -113,6 +136,7 @@ export interface IntegrationConfig {
     readonly cpanel?: Partial<CpanelApiSettings>;
     readonly plesk?: Partial<PleskApiSettings>;
     readonly mail?: Partial<MailNetworkSettings>;
+    readonly alerting?: Partial<AlertingSettings>;
   };
   readonly identity?: Partial<IdentitySettings>;
   readonly ldap?: Partial<LdapSettings>;
@@ -120,6 +144,7 @@ export interface IntegrationConfig {
   readonly cpanel?: Partial<CpanelApiSettings>;
   readonly plesk?: Partial<PleskApiSettings>;
   readonly mail?: Partial<MailNetworkSettings>;
+  readonly alerting?: Partial<AlertingSettings>;
 }
 
 /** A secret resolver never receives or exposes a plaintext secret reference in logs. */

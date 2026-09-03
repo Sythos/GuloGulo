@@ -55,6 +55,7 @@ const TOP_LEVEL_KEYS = new Set([
   'api',
   'upgrade',
   'patching',
+  'alerting',
 ]);
 
 const SECTION_KEYS = Object.freeze({
@@ -135,6 +136,14 @@ const SECTION_KEYS = Object.freeze({
   api: new Set(['readOnly']),
   upgrade: new Set(['strategy']),
   patching: new Set(['mode', 'statusFile']),
+  alerting: new Set([
+    'enabled',
+    'webhookUrlSecretRef',
+    'format',
+    'timeoutMs',
+    'retryAttempts',
+    'minSeverity',
+  ]),
 });
 
 const ENVIRONMENT_VARIABLES = Object.freeze({
@@ -236,6 +245,14 @@ const ENVIRONMENT_VARIABLES = Object.freeze({
   patching: {
     mode: ['GULOGULO_PATCH_MODE'],
     statusFile: ['GULOGULO_PATCH_STATUS_FILE'],
+  },
+  alerting: {
+    enabled: ['GULOGULO_ALERT_WEBHOOK_ENABLED', 'ALERT_WEBHOOK_ENABLED'],
+    webhookUrlSecretRef: ['GULOGULO_ALERT_WEBHOOK_URL_SECRET_REF', 'ALERT_WEBHOOK_URL_SECRET_REF'],
+    format: ['GULOGULO_ALERT_WEBHOOK_FORMAT', 'ALERT_WEBHOOK_FORMAT'],
+    timeoutMs: ['GULOGULO_ALERT_WEBHOOK_TIMEOUT_MS', 'ALERT_WEBHOOK_TIMEOUT_MS'],
+    retryAttempts: ['GULOGULO_ALERT_WEBHOOK_RETRY_ATTEMPTS', 'ALERT_WEBHOOK_RETRY_ATTEMPTS'],
+    minSeverity: ['GULOGULO_ALERT_WEBHOOK_MIN_SEVERITY', 'ALERT_WEBHOOK_MIN_SEVERITY'],
   },
 });
 
@@ -529,6 +546,7 @@ function buildConfiguration(fileConfiguration, environment) {
   const apiFile = readSection(fileConfiguration, 'api');
   const upgradeFile = readSection(fileConfiguration, 'upgrade');
   const patchingFile = readSection(fileConfiguration, 'patching');
+  const alertingFile = readSection(fileConfiguration, 'alerting');
   const projectFile = readSection(fileConfiguration, 'project');
 
   const schemaVersion = fileConfiguration.schemaVersion ?? CONFIG_SCHEMA_VERSION;
@@ -651,6 +669,16 @@ function buildConfiguration(fileConfiguration, environment) {
         'patching.statusFile',
       ),
     },
+    alerting: {
+      enabled: readBoolean(alertingFile.enabled ?? false, 'alerting.enabled'),
+      webhookUrlSecretRef: alertingFile.webhookUrlSecretRef === undefined
+        ? null
+        : readSecretReference(alertingFile.webhookUrlSecretRef, 'alerting.webhookUrlSecretRef'),
+      format: readEnum(alertingFile.format ?? 'generic', 'alerting.format', ['generic', 'slack', 'discord']),
+      timeoutMs: readInteger(alertingFile.timeoutMs ?? 5_000, 'alerting.timeoutMs', 1, 120_000),
+      retryAttempts: readInteger(alertingFile.retryAttempts ?? 2, 'alerting.retryAttempts', 0, 5),
+      minSeverity: readEnum(alertingFile.minSeverity ?? 'warning', 'alerting.minSeverity', ['warning', 'critical']),
+    },
   };
 
   applyEnvironmentValue(config, 'schemaVersion', environment, ENVIRONMENT_VARIABLES.schemaVersion, (value, name) =>
@@ -677,6 +705,7 @@ function buildConfiguration(fileConfiguration, environment) {
     ['api', config.api, ENVIRONMENT_VARIABLES.api],
     ['upgrade', config.upgrade, ENVIRONMENT_VARIABLES.upgrade],
     ['patching', config.patching, ENVIRONMENT_VARIABLES.patching],
+    ['alerting', config.alerting, ENVIRONMENT_VARIABLES.alerting],
   ];
 
   for (const [sectionName, target, variables] of environmentSections) {
@@ -800,6 +829,16 @@ function buildConfiguration(fileConfiguration, environment) {
     if (sectionName === 'patching') {
       applyEnvironmentValue(target, 'mode', environment, variables.mode, (value, name) => readEnvironmentEnum(value, name, ['build_and_operator']));
       applyEnvironmentValue(target, 'statusFile', environment, variables.statusFile, readPatchStatusFile);
+      continue;
+    }
+
+    if (sectionName === 'alerting') {
+      applyEnvironmentValue(target, 'enabled', environment, variables.enabled, readEnvironmentBoolean);
+      applyEnvironmentValue(target, 'webhookUrlSecretRef', environment, variables.webhookUrlSecretRef, readEnvironmentOptionalSecretReference);
+      applyEnvironmentValue(target, 'format', environment, variables.format, (value, name) => readEnvironmentEnum(value, name, ['generic', 'slack', 'discord']));
+      applyEnvironmentValue(target, 'timeoutMs', environment, variables.timeoutMs, (value, name) => readEnvironmentInteger(value, name, 1, 120_000));
+      applyEnvironmentValue(target, 'retryAttempts', environment, variables.retryAttempts, (value, name) => readEnvironmentInteger(value, name, 0, 5));
+      applyEnvironmentValue(target, 'minSeverity', environment, variables.minSeverity, (value, name) => readEnvironmentEnum(value, name, ['warning', 'critical']));
     }
   }
 
@@ -841,6 +880,10 @@ function buildConfiguration(fileConfiguration, environment) {
 
   if (config.plesk.enabled && config.plesk.apiKeySecretRef === null) {
     throw configurationError('plesk.apiKeySecretRef is required when plesk.enabled is true');
+  }
+
+  if (config.alerting.enabled && config.alerting.webhookUrlSecretRef === null) {
+    throw configurationError('alerting.webhookUrlSecretRef is required when alerting.enabled is true');
   }
 
   config.controlPanel = createControlPanelConfig(config.controlPanel);
