@@ -62,7 +62,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          dnf install -y \
+          dnf install -y --allowerasing \
             git tar gzip curl ca-certificates \
             rpm-build systemd-rpm-macros systemd shadow-utils cpio
 
