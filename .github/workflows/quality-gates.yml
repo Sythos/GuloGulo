@@ -447,6 +447,8 @@ jobs:
           npm run typecheck:server
           node --experimental-strip-types src/core/mail/mail-scanners.test.ts
           node --experimental-strip-types src/core/mail/imap-idle.test.ts
+          node --experimental-strip-types src/core/mail/imap-idle-adapter.test.ts
+          node --experimental-strip-types src/core/mail/smtp-queue-adapter.test.ts
           node --experimental-strip-types src/core/mail/mail-core.test.ts
           node --experimental-strip-types src/core/mail/scanner-signatures.test.ts
 

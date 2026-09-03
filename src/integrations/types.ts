@@ -90,6 +90,20 @@ export interface PleskApiSettings {
   timeoutMs: number;
 }
 
+/**
+ * The subset of the loaded configuration consumed by
+ * `src/platform/contract/platform-adapter.ts`'s `createLocalMailClients()` to
+ * reach the local Dovecot/Postfix installation: only the ports, already
+ * configurable via `mail.imapsPort`/`mail.smtpSubmissionPort` in
+ * `src/runtime/config.ts`. Additive to the existing `IntegrationConfig`
+ * contract — no existing field changes shape.
+ */
+export interface MailNetworkSettings {
+  imapsPort: number;
+  smtpSubmissionPort: number;
+  smtpImplicitTlsPort: number;
+}
+
 /** A deliberately narrow configuration envelope so adapters do not depend on runtime internals. */
 export interface IntegrationConfig {
   readonly contract?: {
@@ -98,12 +112,14 @@ export interface IntegrationConfig {
     readonly postgres?: Partial<PostgresSettings>;
     readonly cpanel?: Partial<CpanelApiSettings>;
     readonly plesk?: Partial<PleskApiSettings>;
+    readonly mail?: Partial<MailNetworkSettings>;
   };
   readonly identity?: Partial<IdentitySettings>;
   readonly ldap?: Partial<LdapSettings>;
   readonly postgres?: Partial<PostgresSettings>;
   readonly cpanel?: Partial<CpanelApiSettings>;
   readonly plesk?: Partial<PleskApiSettings>;
+  readonly mail?: Partial<MailNetworkSettings>;
 }
 
 /** A secret resolver never receives or exposes a plaintext secret reference in logs. */
