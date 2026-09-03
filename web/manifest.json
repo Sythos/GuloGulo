@@ -14,5 +14,8 @@
   "author": "Sythos (https://www.sythos.net)",
   "spdxLicenseIdentifier": "MIT",
   "spdxFileCopyrightText": "2026 Sythos (https://www.sythos.net)",
-  "icons": []
+  "icons": [
+    { "src": "/web/icons/favicon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "/web/icons/favicon-512.png", "sizes": "512x512", "type": "image/png" }
+  ]
 }

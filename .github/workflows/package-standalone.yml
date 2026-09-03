@@ -63,6 +63,7 @@ jobs:
           test -f "$INSTALL_DIR/dist/server/src/runtime/index.js"
           test -f "$INSTALL_DIR/web/index.html"
           test -f "$INSTALL_DIR/web/dist/app.js"
+          test -f "$INSTALL_DIR/web/icons/favicon-32.png"
           test -f "$INSTALL_DIR/assets/gulo-gulo-calendar-mail.png"
           test -f "$INSTALL_DIR/src/core/db/migrations/0001_m2_foundation.sql"
           test -f "$INSTALL_DIR/.env.example"

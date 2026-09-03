@@ -203,6 +203,7 @@ export async function stageCommonApplicationFiles(options: {
   await stageFile(repoRoot, 'web/styles.css', 'web/styles.css', stagingRoot);
   await stageFile(repoRoot, 'web/manifest.json', 'web/manifest.json', stagingRoot);
   await stageFile(repoRoot, 'web/dist', 'web/dist', stagingRoot);
+  await stageFile(repoRoot, 'web/icons', 'web/icons', stagingRoot);
 
   log('Staging static assets (assets/)...');
   await stageFile(repoRoot, 'assets', 'assets', stagingRoot);

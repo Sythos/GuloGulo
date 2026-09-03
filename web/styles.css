@@ -267,6 +267,11 @@ a {
   letter-spacing: 0.08em;
 }
 
+img.brand-mark {
+  object-fit: cover;
+  overflow: hidden;
+}
+
 .eyebrow,
 .section-label,
 .meta-label {

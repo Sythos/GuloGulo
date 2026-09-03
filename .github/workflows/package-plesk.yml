@@ -131,6 +131,7 @@ jobs:
             dist/server/src/runtime/index.js \
             web/index.html \
             web/dist/app.js \
+            web/icons/favicon-32.png \
             assets/gulo-gulo-calendar-mail.png \
             src/core/db/migrations/0001_m2_foundation.sql \
             .env.example \
