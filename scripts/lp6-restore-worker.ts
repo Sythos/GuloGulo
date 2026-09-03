@@ -82,7 +82,7 @@ const sourcePreserved = sourceArchiveDigest === sha256Hex({
 });
 if (!sourcePreserved) throw new Error('LP6 failed restore changed the source archive.');
 
-let current = new Date('2026-08-26T00:00:00.000Z');
+const current = new Date('2026-08-26T00:00:00.000Z');
 const retention = createRetentionStore({ now: () => current });
 retention.markDeleted({
   tenantId: 'acme', userId: 'alice', itemId: 'lp6-retention-object', resourceType: 'backup',

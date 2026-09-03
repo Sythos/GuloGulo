@@ -62,7 +62,7 @@ function readSettings(config: unknown): PleskApiSettings {
   return {
     enabled: raw.enabled === true,
     baseUrl: typeof raw.baseUrl === 'string' ? raw.baseUrl : '',
-    apiKeySecretRef: raw.apiKeySecretRef === null || typeof raw.apiKeySecretRef === 'string' ? (raw.apiKeySecretRef as string | null ?? null) : null,
+    apiKeySecretRef: raw.apiKeySecretRef === null || typeof raw.apiKeySecretRef === 'string' ? (raw.apiKeySecretRef ?? null) : null,
     timeoutMs: Number.isSafeInteger(raw.timeoutMs) ? raw.timeoutMs as number : DEFAULT_TIMEOUT_MS,
   };
 }

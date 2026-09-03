@@ -38,7 +38,7 @@ test('sessions use opaque identifiers and secure host-only cookie attributes', (
 test('cookie authentication rejects tampering, oversized headers, and duplicates', () => {
   const security = createWebSecurity({ randomBytesFn: createDeterministicRandomBytes() });
   const { setCookie } = security.createAuthenticatedSession(createIdentity());
-  const cookie = setCookie.split(';', 1)[0]!;
+  const cookie = setCookie.split(';', 1)[0];
   const sessionId = cookie.slice(cookie.indexOf('=') + 1);
   assert.equal(security.authenticate(`${cookie}; __Host-gulogulo-session=${'A'.repeat(43)}`), null);
   assert.equal(security.authenticate(`__Host-gulogulo-session=${sessionId.slice(0, -1)}A`), null);

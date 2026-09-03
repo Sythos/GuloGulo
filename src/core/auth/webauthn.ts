@@ -59,13 +59,6 @@ function assertUserActor({ tenantId, userId, actorId = userId, role = 'user' }) 
   return { tenantId, userId, actorId, role };
 }
 
-function assertChallenge(value) {
-  if (typeof value !== 'string' || !CHALLENGE_PATTERN.test(value)) {
-    throw authError('challenge is invalid', 'CHALLENGE_INVALID');
-  }
-  return value;
-}
-
 function assertCredentialId(value) {
   if (typeof value !== 'string' || !CREDENTIAL_ID_PATTERN.test(value)) {
     throw authError('credentialId is invalid', 'CREDENTIAL_INVALID');

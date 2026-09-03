@@ -312,7 +312,7 @@ export function createPostgresStore({
         ...tenantRow,
         gross_quota_bytes: Number(asBigInt(tenantRow.gross_quota_bytes, 'gross_quota_bytes')),
         allocated_quota_bytes: Number(asBigInt(allocation.rows[0]?.allocated ?? 0, 'allocated_quota_bytes')),
-      } as TenantSnapshot;
+      };
     });
   }
 

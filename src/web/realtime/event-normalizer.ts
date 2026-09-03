@@ -74,14 +74,17 @@ export function normalizeRealtimeEvent(input: unknown, { source, tenantId, userI
   if (eventUser !== canonicalUserId) throw realtimeError('event user does not match the subscription', 'USER_MISMATCH');
   const typeValue = payload.type ?? (source === 'imap-idle' ? 'mail.changed' : payload.event);
   if (typeof typeValue !== 'string' || !EVENT_TYPES.has(typeValue as RealtimeEventType)) throw realtimeError('event type is unsupported', 'INVALID_EVENT');
-  const sequence = payload.sequence === undefined ? null : payload.sequence;
-  if (sequence !== null && (!Number.isSafeInteger(sequence) || (sequence as number) < 1)) throw realtimeError('event sequence is invalid', 'INVALID_EVENT');
+  const rawSequence = payload.sequence;
+  if (rawSequence !== undefined && (typeof rawSequence !== 'number' || !Number.isSafeInteger(rawSequence) || rawSequence < 1)) {
+    throw realtimeError('event sequence is invalid', 'INVALID_EVENT');
+  }
+  const sequence: number | null = rawSequence === undefined ? null : rawSequence;
   const occurredAt = validDate(payload.occurredAt, clock);
   const eventId = token(payload.eventId ?? payload.id, 'eventId', { required: false }) ?? `${source}:${canonicalTenantId}:${canonicalUserId ?? 'tenant'}:${sequence ?? occurredAt}`;
   const resource = token(payload.resource ?? payload.mailbox ?? payload.resourceId, 'resource', { required: false });
   return Object.freeze({
     version: 1, eventId, source, type: typeValue as RealtimeEventType, tenantId: canonicalTenantId, userId: canonicalUserId,
-    resource, sequence: sequence as number | null, occurredAt, data: safeEventData(payload.data ?? payload.details ?? payload),
+    resource, sequence, occurredAt, data: safeEventData(payload.data ?? payload.details ?? payload),
   });
 }
 
@@ -127,7 +130,7 @@ export function createEventCoalescer({ windowMs = 250, maxWaitMs = 2_000, clock 
     if (!event?.eventId) throw realtimeError('normalized event is required', 'INVALID_EVENT');
     if (seen.has(event.eventId)) return Object.freeze({ accepted: false, reason: 'duplicate' as const, pending: pending.size });
     seen.add(event.eventId);
-    if (seen.size > 2048) { const oldest = seen.values().next().value as string | undefined; if (oldest) seen.delete(oldest); }
+    if (seen.size > 2048) { const oldest = seen.values().next().value; if (oldest) seen.delete(oldest); }
     const key = `${event.tenantId}/${event.userId ?? '-'}/${event.type}/${event.resource ?? '-'}`;
     const previous = pending.get(key);
     pending.set(key, Object.freeze(previous ? { ...event, coalescedCount: (previous.coalescedCount ?? 1) + 1, firstEventId: previous.firstEventId ?? previous.eventId, sequence: event.sequence ?? previous.sequence } : { ...event, coalescedCount: 1, firstEventId: event.eventId }));

@@ -24,7 +24,6 @@ export const ABUSE_DIMENSIONS = Object.freeze(['tenant', 'ip', 'session']);
 export const ABUSE_SUBJECT_TYPES = Object.freeze(['tenant', 'ip', 'session', 'user']);
 
 const CHANNEL_SET = new Set(ABUSE_CHANNELS);
-const DIMENSION_SET = new Set(ABUSE_DIMENSIONS);
 const SUBJECT_TYPE_SET = new Set(ABUSE_SUBJECT_TYPES);
 const ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._:@/-]{0,127}$/u;
 const HOST_REFERENCE_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,253}$/u;
@@ -91,13 +90,6 @@ function assertChannel(channel) {
     throw abuseError('channel is unsupported', 'INVALID_CHANNEL');
   }
   return channel;
-}
-
-function assertDimension(dimension) {
-  if (typeof dimension !== 'string' || !DIMENSION_SET.has(dimension)) {
-    throw abuseError('dimension is unsupported', 'INVALID_DIMENSION');
-  }
-  return dimension;
 }
 
 function assertSubjectType(subjectType) {

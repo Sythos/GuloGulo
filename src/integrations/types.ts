@@ -262,9 +262,9 @@ export interface PostgresPoolOptions {
 
 export type PostgresPoolConstructor = new (options: PostgresPoolOptions) => PostgresPoolLike;
 
-export interface MigrationClient extends PostgresClientLike {}
+export type MigrationClient = PostgresClientLike;
 
-export interface MigrationLogger extends IntegrationLogger {}
+export type MigrationLogger = IntegrationLogger;
 
 export interface MigrationRecord {
   readonly version: string;

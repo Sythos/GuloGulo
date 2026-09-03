@@ -34,7 +34,7 @@ interface TestMailQueue extends MailQueueLike {
 }
 
 function createTestQueue(options: { readonly retryBaseMs?: number; readonly maxAttempts?: number } = {}): TestMailQueue {
-  return createMailQueue(options) as unknown as TestMailQueue;
+  return createMailQueue(options);
 }
 
 type Behavior = 'accept' | 'reject-recipient-permanent' | 'reject-recipient-temporary' | 'reject-data-temporary';

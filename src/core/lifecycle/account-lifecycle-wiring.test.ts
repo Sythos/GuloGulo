@@ -74,7 +74,7 @@ test('completePurge also runs a scoped retention purge batch when a retentionSto
   const result = await wiring.completePurge({ ...scope, confirmation: 'PURGE:alice', operationId: 'purge-002' });
 
   assert.ok(result.retentionPurge);
-  assert.equal(result.retentionPurge!.purged, 1);
+  assert.equal(result.retentionPurge.purged, 1);
   assert.equal(retentionStore.getItem({ tenantId: 'acme', userId: 'alice', itemId: 'message-001' }).state, 'purged');
 });
 

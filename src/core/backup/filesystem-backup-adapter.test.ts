@@ -88,7 +88,7 @@ test('writeArchive refuses to write outside the archive directory even if a path
   const escaping = { ...manifest, entries: [{ ...manifest.entries[0], path: '../escape.eml' }] };
 
   await assert.rejects(
-    () => adapter.writeArchive({ manifest: escaping as typeof manifest, entries: [{ path: '../escape.eml', content: 'hello mail' }] }),
+    () => adapter.writeArchive({ manifest: escaping, entries: [{ path: '../escape.eml', content: 'hello mail' }] }),
     /is not declared in the manifest|escapes its storage directory/,
   );
 });
@@ -109,7 +109,7 @@ test('encrypted metadata round-trips through disk storage and decrypts back to t
 
   const storedEnvelope = await adapter.readEncryptedMetadata({ tenantId: 'acme', userId: 'alice', archiveId: 'archive-004' });
   assert.ok(storedEnvelope);
-  assert.deepEqual(decryptArchiveMetadata(storedEnvelope!, { key }), metadata);
+  assert.deepEqual(decryptArchiveMetadata(storedEnvelope, { key }), metadata);
 });
 
 test('readEncryptedMetadata returns null when no envelope was written', async (t) => {

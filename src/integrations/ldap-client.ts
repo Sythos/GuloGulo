@@ -16,7 +16,6 @@ import type {
   LdapIdentityClient,
   LdapLookupRequest,
   LdapSearchEntry,
-  LdapSearchResult,
   LdapSettings,
   SecretResolver,
   TenantIdentity,
@@ -212,7 +211,7 @@ export function createLdapIdentityClient({
         filter,
         attributes: ['uid', 'mail', 'displayName', 'cn', 'active'],
       });
-      const entries: readonly LdapSearchEntry[] = (result as LdapSearchResult).searchEntries ?? [];
+      const entries: readonly LdapSearchEntry[] = (result).searchEntries ?? [];
       if (entries.length > 1) throw ldapError('LDAP returned multiple identities', 'AMBIGUOUS_IDENTITY');
       if (entries.length === 0) return null;
       const entry = entries[0];

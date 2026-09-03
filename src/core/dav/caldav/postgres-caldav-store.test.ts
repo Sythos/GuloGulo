@@ -50,6 +50,7 @@ class FakeClient implements PostgresClientLike {
       const [tenantId, actorUserId] = values as string[];
       const matches = this.collections
         .filter((c) => c.tenant_id === tenantId && (c.owner_user_id === actorUserId || c.acl_delegate_user_id === actorUserId))
+        // eslint-disable-next-line @typescript-eslint/restrict-template-expressions -- fake store rows are untyped test fixtures, always plain strings here
         .sort((a, b) => `${a.owner_user_id}/${a.collection_id}`.localeCompare(`${b.owner_user_id}/${b.collection_id}`));
       return { rowCount: matches.length, rows: matches.map((row) => ({ ...row })) as unknown as Row[] };
     }

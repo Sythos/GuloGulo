@@ -103,6 +103,7 @@ function normalizeHost(value: DiscoveryValue, field = 'host'): string {
     throw discoveryError(`${field} is invalid`, 'INVALID_HOST');
   }
   const candidate = value.trim().toLowerCase().replace(/\.$/u, '');
+  // eslint-disable-next-line no-control-regex -- deliberately rejecting control characters, not a stray escape
   if (candidate.length === 0 || /[\u0000-\u0020\u007f]/u.test(candidate) || candidate.includes('/')
     || candidate.includes('\\') || candidate.includes('@') || candidate.includes('%')
     || candidate.includes('://')) {

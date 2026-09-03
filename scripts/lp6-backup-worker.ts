@@ -73,7 +73,7 @@ try {
     })),
   });
   const verification = verifyArchiveManifest(manifest, source.entries);
-  if (!verification.complete) throw new Error('new LP6 archive verification did not complete.');
+  if (!verification.complete) throw new Error('new LP6 archive verification did not complete.', { cause: error });
   const objectives = createRecoveryObjectives({ rpoMinutes: 15, rtoMinutes: 60, retentionDays: 28 });
   const envelope = encryptArchiveMetadata({
     archiveId: manifest.archiveId,

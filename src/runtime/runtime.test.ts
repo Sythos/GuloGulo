@@ -65,7 +65,7 @@ function headerString(headers: IncomingHttpHeaders, name: string): string {
 function firstSetCookie(headers: IncomingHttpHeaders): string {
   const values = headers['set-cookie'];
   assert.ok(Array.isArray(values) && values.length > 0);
-  return values[0]!;
+  return values[0];
 }
 
 function requestJson(runtime: TestRuntime, path: string, { method = 'GET', headers = {}, body }: { method?: string; headers?: OutgoingHttpHeaders; body?: unknown } = {}): Promise<JsonResponse> {
@@ -275,7 +275,7 @@ test('authenticated API is tenant/user scoped and logout requires a valid CSRF t
     assert.equal(login.body.user.userId, 'alice');
     assert.equal(Object.hasOwn(login.body.user, 'sessionId'), false);
     assert.equal(Object.hasOwn(login.body, 'password'), false);
-    const cookie = firstSetCookie(login.headers).split(';', 1)[0]!;
+    const cookie = firstSetCookie(login.headers).split(';', 1)[0];
 
     const mail = await requestJson(runtime, '/api/mail/messages', { headers: { cookie } });
     assert.equal(mail.statusCode, 200);
@@ -468,7 +468,7 @@ test('expired API sessions become unauthenticated and are cleared', async () => 
   await startServer(runtime);
   try {
     const login = await requestJson(runtime, '/api/session/login', { method: 'POST', body: { email: 'alice@acme.example', password: 'test-only-password' } });
-    const cookie = firstSetCookie(login.headers).split(';', 1)[0]!;
+    const cookie = firstSetCookie(login.headers).split(';', 1)[0];
     now += 1_000;
     const expired = await requestJson(runtime, '/api/session', { headers: { cookie } });
     assert.equal(expired.statusCode, 200);

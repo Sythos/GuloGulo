@@ -245,11 +245,11 @@ test('putContact is idempotent: an unchanged vCard does not bump the revision or
   if (!store.enabled) throw new Error('store unexpectedly disabled');
   await store.createAddressBook(alice, { addressBookId: 'personal', displayName: 'Personal' });
   const created = await store.createContact(alice, { addressBookId: 'personal', href: 'alice-1.vcf', ifNoneMatch: '*', vCard: aliceCard() });
-  const revisionAfterCreate = fakeClient.addressBooks[0]!.revision;
+  const revisionAfterCreate = fakeClient.addressBooks[0].revision;
   const changesAfterCreate = fakeClient.changes.length;
   const resubmitted = await store.putContact(alice, { addressBookId: 'personal', href: 'alice-1.vcf', ifMatch: created.etag, vCard: aliceCard() });
   assert.equal(resubmitted.etag, created.etag);
-  assert.equal(fakeClient.addressBooks[0]!.revision, revisionAfterCreate);
+  assert.equal(fakeClient.addressBooks[0].revision, revisionAfterCreate);
   assert.equal(fakeClient.changes.length, changesAfterCreate);
 });
 

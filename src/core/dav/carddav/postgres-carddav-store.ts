@@ -221,7 +221,7 @@ export function createPostgresCardDavStore({
       'UPDATE dav_address_books SET revision = revision + 1, updated_at = now() WHERE tenant_id = $1 AND user_id = $2 AND address_book_id = $3 RETURNING revision',
       [tenantId, userId, addressBookId],
     );
-    const revision = Number(updated.rows[0]!.revision);
+    const revision = Number(updated.rows[0].revision);
     await client.query(
       'INSERT INTO dav_contact_changes (tenant_id, user_id, address_book_id, revision, href, uid, etag, operation) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)',
       [tenantId, userId, addressBookId, revision, href, uid, etag, operation],
@@ -242,7 +242,7 @@ export function createPostgresCardDavStore({
        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11) RETURNING *`,
       [scope.tenantId, scope.userId, addressBookId, href, parsed.uid, parsed.fullName, parsed.canonical, etag, parsed.mediaType, Buffer.byteLength(parsed.canonical, 'utf8'), revision],
     );
-    return publicContactRow(inserted.rows[0]!);
+    return publicContactRow(inserted.rows[0]);
   }
 
   async function createAddressBook(scopeInput: DavValue, { addressBookId, displayName, description = '', color = null }: DavRecord = {}): Promise<Readonly<DavRecord>> {
@@ -260,7 +260,7 @@ export function createPostgresCardDavStore({
         'INSERT INTO dav_address_books (tenant_id, user_id, address_book_id, href, display_name, description, color) VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *',
         [scope.tenantId, scope.userId, abId, href, normalizedDisplayName, normalizedDescription, normalizedColor],
       );
-      return publicAddressBookRow(inserted.rows[0]!);
+      return publicAddressBookRow(inserted.rows[0]);
     });
   }
 
@@ -380,7 +380,7 @@ export function createPostgresCardDavStore({
          WHERE tenant_id = $7 AND user_id = $8 AND address_book_id = $9 AND href = $10 RETURNING *`,
         [parsed.fullName, parsed.canonical, candidateEtag, parsed.mediaType, Buffer.byteLength(parsed.canonical, 'utf8'), revision, scope.tenantId, scope.userId, abId, href],
       );
-      return publicContactRow(updated.rows[0]!);
+      return publicContactRow(updated.rows[0]);
     });
   }
 

@@ -56,7 +56,7 @@ function connectSocket(host, port, { secure = false } = {}) {
     const socket = secure
       ? tls.connect({ host, port, servername: host, ca: tlsCa, rejectUnauthorized: true })
       : net.createConnection({ host, port });
-    const onError = (error) => {
+    const onError = (error: Error) => {
       socket.destroy();
       reject(error);
     };

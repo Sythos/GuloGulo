@@ -30,14 +30,23 @@
     "test:platform": "npm run typecheck:server && node --experimental-strip-types --test src/platform/contract/*.test.ts src/platform/standalone/*.test.ts src/platform/cpanel/*.test.ts src/platform/plesk/*.test.ts",
     "test:m2:postgres": "node --experimental-strip-types src/integrations/postgres.integration.test.ts",
     "typecheck:lp9": "tsc --project tsconfig.lp9.json --noEmit",
-    "test:lp9": "npm run typecheck:lp9 && node --experimental-strip-types scripts/lp9-source-audit.test.ts && node --experimental-strip-types scripts/lp9-release-audit.test.ts && node --experimental-strip-types scripts/lp9-source-audit.ts && node --experimental-strip-types scripts/lp9-release-audit.ts"
+    "test:lp9": "npm run typecheck:lp9 && node --experimental-strip-types scripts/lp9-source-audit.test.ts && node --experimental-strip-types scripts/lp9-release-audit.test.ts && node --experimental-strip-types scripts/lp9-source-audit.ts && node --experimental-strip-types scripts/lp9-release-audit.ts",
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix"
   },
   "dependencies": {
     "ldapts": "9.0.0",
     "pg": "8.23.0"
   },
   "devDependencies": {
+    "@eslint/js": "10.0.1",
     "@types/node": "26.2.0",
-    "typescript": "7.0.2"
+    "@typescript/native": "npm:typescript@7.0.2",
+    "eslint": "10.9.1",
+    "eslint-plugin-no-unsanitized": "4.1.5",
+    "eslint-plugin-security": "4.0.1",
+    "globals": "17.12.0",
+    "typescript": "npm:@typescript/typescript6@6.0.2",
+    "typescript-eslint": "8.69.0"
   }
 }

@@ -11,7 +11,6 @@ import { fileURLToPath } from 'node:url';
 
 import type {
   MigrationClient,
-  MigrationLogger,
   MigrationRunResult,
   MigrationRunner,
   MigrationRunnerOptions,

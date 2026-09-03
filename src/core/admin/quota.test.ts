@@ -9,7 +9,6 @@ import test from 'node:test';
 import { createQuotaLedger } from './quota.ts';
 
 const alice = Object.freeze({ tenantId: 'acme', domain: 'acme.example', actorId: 'alice', userId: 'alice', role: 'user' });
-const bob = Object.freeze({ tenantId: 'acme', domain: 'acme.example', actorId: 'bob', userId: 'bob', role: 'user' });
 const master = Object.freeze({ tenantId: 'acme', domain: 'acme.example', actorId: 'master', role: 'tenant_master' });
 const provider = Object.freeze({ tenantId: 'acme', domain: 'acme.example', actorId: 'provider', role: 'provider' });
 const otherTenant = Object.freeze({ tenantId: 'other', domain: 'other.example', actorId: 'master', role: 'tenant_master' });

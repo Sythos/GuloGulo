@@ -286,7 +286,7 @@ export function createFilesystemBackupAdapter(options: FilesystemBackupAdapterOp
 
   async function deleteAccountArchives(input: { readonly tenantId: string; readonly userId: string }): Promise<{ readonly deletedArchiveIds: readonly string[] }> {
     const dir = accountDirectory(input.tenantId, input.userId);
-    let deletedArchiveIds: string[] = [];
+    let deletedArchiveIds: string[];
     try {
       deletedArchiveIds = await readdir(dir);
     } catch {

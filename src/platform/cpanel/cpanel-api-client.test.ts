@@ -13,9 +13,9 @@ interface FakeCall {
 }
 
 function fakeFetch(handler: (call: FakeCall) => { status: number; body: string } | 'abort' | 'network-error'): typeof fetch {
-  return (async (input: unknown, init?: unknown) => {
+  return async (input: unknown, init?: unknown) => {
     const url = input instanceof URL ? input : new URL(String(input));
-    const outcome = handler({ url, init: (init ?? {}) as FakeCall['init'] });
+    const outcome = handler({ url, init: (init ?? {}) });
     if (outcome === 'network-error') {
       throw new Error('connection refused');
     }
@@ -29,7 +29,7 @@ function fakeFetch(handler: (call: FakeCall) => { status: number; body: string }
       status: outcome.status,
       text: async () => outcome.body,
     } as unknown as Response;
-  }) as unknown as typeof fetch;
+  };
 }
 
 test('callUapi builds the expected URL, auth header, and query params, then parses JSON', async () => {

@@ -220,12 +220,12 @@ function validateVCardText(value: DavValue): Readonly<DavRecord> {
     throw cardDavError('vCard contains a NUL character', 'VCARD_INVALID', 400);
   }
   const lines = unfoldVCardLines(value);
-  if (lines[0]!.toUpperCase() !== 'BEGIN:VCARD' || lines.at(-1)!.toUpperCase() !== 'END:VCARD') {
+  if (lines[0].toUpperCase() !== 'BEGIN:VCARD' || lines.at(-1)!.toUpperCase() !== 'END:VCARD') {
     throw cardDavError('vCard must contain one BEGIN:VCARD and one END:VCARD', 'VCARD_INVALID', 400);
   }
 
   const properties = lines.map(parseVCardProperty);
-  if (properties[0]!.name !== 'BEGIN' || properties.at(-1)!.name !== 'END') {
+  if (properties[0].name !== 'BEGIN' || properties.at(-1)!.name !== 'END') {
     throw cardDavError('vCard boundaries are invalid', 'VCARD_INVALID', 400);
   }
   const beginCount = properties.filter((property) => property.name === 'BEGIN').length;
@@ -603,7 +603,7 @@ export class CardDavStore {
    * user export endpoint may call getContact() after authorization.
    */
   exportAddressBookMetadata({ scope: scopeInput, addressBookId: addressBookIdInput }: DavRecord = {}): Readonly<DavRecord> {
-    const { scope, addressBookId, state } = this.#getState(scopeInput, addressBookIdInput);
+    const { scope, state } = this.#getState(scopeInput, addressBookIdInput);
     const addressBook = publicAddressBook(state, scope);
     return freezeObject({
       schemaVersion: CARD_DAV_SCHEMA_VERSION,

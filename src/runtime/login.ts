@@ -180,7 +180,7 @@ export function createProvisionedLoginAuthenticator({
       logger.warn?.('login_tenant_context_invalid', { error: errorDetails(error) });
       return null;
     }
-    let authenticated = false;
+    let authenticated: boolean;
     try {
       authenticated = await client.authenticate({ tenantContext, username: parsed.username, password });
     } catch (error) {
@@ -189,7 +189,7 @@ export function createProvisionedLoginAuthenticator({
     }
     if (!authenticated) return null;
 
-    let identity: TenantIdentity | null = null;
+    let identity: TenantIdentity | null;
     try {
       identity = await client.lookupUser({ tenantContext, username: parsed.username });
     } catch (error) {

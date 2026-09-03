@@ -144,6 +144,7 @@ function canonicalLineEndings(icalText: DavValue): { lines: string[]; canonical:
   if (lines.at(-1) === '') lines.pop();
   if (lines.length > MAX_ICALENDAR_LINES) fail('iCalendar contains too many lines', 'ICALENDAR_TOO_LARGE', 413);
   if (lines.some((line) => line.length > MAX_ICALENDAR_LINE_LENGTH)) fail('iCalendar line exceeds the maximum length', 'ICALENDAR_TOO_LARGE', 413);
+  // eslint-disable-next-line no-control-regex -- deliberately rejecting control characters, not a stray escape
   if (lines.some((line) => /[\u0000\u0001-\u0008\u000B\u000C\u000E-\u001F\u007F]/u.test(line))) {
     fail('iCalendar contains a control character', 'INVALID_ICALENDAR', 422);
   }
@@ -291,13 +292,12 @@ function calendarMetadata(root: DavRecord): Readonly<DavRecord> {
   if (dtEnd && duration) fail('DTEND and DURATION cannot both be present', 'INVALID_ICALENDAR', 422);
   if (duration && !/^[-+]?P(?:\d+W|(?:\d+D)?(?:T(?:\d+H)?(?:\d+M)?(?:\d+(?:\.\d+)?S)?)?)$/u.test(duration.value)) fail('DURATION is invalid', 'INVALID_ICALENDAR', 422);
 
-  const timeZoneIds = new Set();
+  const timeZoneIds = new Set<string>();
   const timeZoneDefinitions = new Set();
   for (const component of [root, ...root.children, ...root.children.flatMap((child: DavRecord) => child.children)]) {
     for (const property of component.properties) {
       if (property.parameters.TZID) {
-        requiredPattern(property.parameters.TZID, TZID_PATTERN, 'TZID', 'INVALID_TIMEZONE');
-        timeZoneIds.add(property.parameters.TZID);
+        timeZoneIds.add(requiredPattern(property.parameters.TZID, TZID_PATTERN, 'TZID', 'INVALID_TIMEZONE'));
       }
     }
     if (component.name === 'VTIMEZONE') {

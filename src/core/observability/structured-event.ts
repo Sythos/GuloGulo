@@ -69,10 +69,6 @@ function normalizeDetails(details) {
   return normalized;
 }
 
-function byteLength(value) {
-  return Buffer.byteLength(JSON.stringify(value), 'utf8');
-}
-
 function freezeEvent(event) {
   return Object.freeze({
     ...event,

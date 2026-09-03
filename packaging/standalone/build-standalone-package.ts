@@ -22,7 +22,7 @@
  * target-specific operator scripts are staged here.
  */
 
-import { chmod, cp, mkdir, mkdtemp, rm } from 'node:fs/promises';
+import { chmod, cp, mkdir, mkdtemp } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';

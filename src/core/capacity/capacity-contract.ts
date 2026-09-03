@@ -89,7 +89,7 @@ export function percentile(samples: readonly number[], percentileValue: number):
   if (!Number.isInteger(percentileValue) || percentileValue < 1 || percentileValue > 100) throw new RangeError('percentile must be an integer between 1 and 100');
   if (samples.length === 0 || samples.some((value) => !isFiniteNonNegative(value))) throw new TypeError('samples must contain finite non-negative numbers');
   const sorted = [...samples].sort((left, right) => left - right);
-  return sorted[Math.ceil((percentileValue / 100) * sorted.length) - 1]!;
+  return sorted[Math.ceil((percentileValue / 100) * sorted.length) - 1];
 }
 
 export function createCapacityMeasurement(input: CapacityMeasurement): Readonly<CapacityMeasurement> {

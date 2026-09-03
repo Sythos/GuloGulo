@@ -55,7 +55,7 @@ function readSettings(config: unknown): CpanelApiSettings {
     enabled: raw.enabled === true,
     baseUrl: typeof raw.baseUrl === 'string' ? raw.baseUrl : '',
     username: typeof raw.username === 'string' ? raw.username : '',
-    apiTokenSecretRef: raw.apiTokenSecretRef === null || typeof raw.apiTokenSecretRef === 'string' ? (raw.apiTokenSecretRef as string | null ?? null) : null,
+    apiTokenSecretRef: raw.apiTokenSecretRef === null || typeof raw.apiTokenSecretRef === 'string' ? (raw.apiTokenSecretRef ?? null) : null,
     timeoutMs: Number.isSafeInteger(raw.timeoutMs) ? raw.timeoutMs as number : DEFAULT_TIMEOUT_MS,
   };
 }
@@ -69,7 +69,7 @@ function errorDetails(error: unknown): { name: string; code: string } {
 }
 
 function asUapiResult(raw: unknown): UapiResult {
-  return raw !== null && typeof raw === 'object' ? raw as UapiResult : {};
+  return raw !== null && typeof raw === 'object' ? raw : {};
 }
 
 /**

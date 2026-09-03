@@ -24,7 +24,7 @@ function asInput(context: unknown): TenantContextInput {
   if (context === null || typeof context !== 'object') {
     throw contextError('a tenant context is required');
   }
-  return context as TenantContextInput;
+  return context;
 }
 
 export function createTenantContext({ tenantId, domain, actorId = null, role = 'user' }: TenantContextInput = {}): TenantContext {

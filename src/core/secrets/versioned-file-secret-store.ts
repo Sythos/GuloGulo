@@ -204,7 +204,7 @@ function parseState(serialized: string, reference: string): ActiveStateFile {
     reference,
     activeVersion,
     previousVersion,
-    rollbackUntil: record.rollbackUntil as string | null,
+    rollbackUntil: record.rollbackUntil,
     updatedAt: record.updatedAt,
   });
 }

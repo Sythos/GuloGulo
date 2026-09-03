@@ -356,7 +356,7 @@ async function login(runtime: TestRuntime): Promise<string> {
   assert.equal(response.statusCode, 200);
   const setCookie = response.headers['set-cookie'];
   assert.ok(Array.isArray(setCookie) && setCookie.length > 0);
-  return setCookie[0]!.split(';', 1)[0]!;
+  return setCookie[0].split(';', 1)[0];
 }
 
 function event({ summary = 'Team meeting', uid = 'event-1@example.test' }: { summary?: string; uid?: string } = {}) {
@@ -465,7 +465,7 @@ test('CalDAV: REPORT sync-collection exposes created/updated objects and deletio
     assert.equal(initialSync.statusCode, 207);
     const initialTokenMatch = /<D:sync-token>([^<]*)<\/D:sync-token>/u.exec(initialSync.body);
     assert.ok(initialTokenMatch);
-    const initialToken = initialTokenMatch![1]!;
+    const initialToken = initialTokenMatch[1];
 
     const created = await rawRequest(runtime, '/dav/calendars/acme/alice/personal/event-1.ics', {
       method: 'PUT', headers: { cookie, 'if-none-match': '*', 'content-type': 'text/calendar' }, body: event(),
@@ -480,7 +480,7 @@ test('CalDAV: REPORT sync-collection exposes created/updated objects and deletio
     assert.match(incrementalSync.body, /event-1\.ics/u);
     assert.doesNotMatch(incrementalSync.body, /404 Not Found/u);
     const nextTokenMatch = /<D:sync-token>([^<]*)<\/D:sync-token>/u.exec(incrementalSync.body);
-    const nextToken = nextTokenMatch![1]!;
+    const nextToken = nextTokenMatch![1];
 
     await rawRequest(runtime, '/dav/calendars/acme/alice/personal/event-1.ics', { method: 'DELETE', headers: { cookie, 'if-match': created.headers.etag as string } });
 

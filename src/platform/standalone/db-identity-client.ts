@@ -155,7 +155,7 @@ export function createDatabaseIdentityClient({
     authenticate,
     healthCheck: async () => {
       const status = await enabledStore.healthCheck();
-      return status as { status: 'ok' };
+      return status;
     },
     close: () => enabledStore.close(),
   };

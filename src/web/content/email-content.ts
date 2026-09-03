@@ -33,18 +33,19 @@ function decodeHtmlEntities(value: string): string {
 
 function parseTag(token: string): ParsedTag | null {
   const match = token.match(/^<\s*(\/?)\s*([A-Za-z][A-Za-z0-9:-]*)([\s\S]*?)>$/u);
-  return match ? { closing: match[1] === '/', name: match[2]!.toLowerCase(), attributes: match[3]!.replace(/\/\s*$/u, '') } : null;
+  return match ? { closing: match[1] === '/', name: match[2].toLowerCase(), attributes: match[3].replace(/\/\s*$/u, '') } : null;
 }
 
 function parseAttributes(source: string): ParsedAttribute[] {
   const attributes: ParsedAttribute[] = [];
   const pattern = /([A-Za-z_:][A-Za-z0-9_.:-]*)(?:\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'=<>`]+)))?/gu;
-  for (const match of source.matchAll(pattern)) attributes.push({ name: match[1]!.toLowerCase(), value: match[2] ?? match[3] ?? match[4] ?? '' });
+  for (const match of source.matchAll(pattern)) attributes.push({ name: match[1].toLowerCase(), value: match[2] ?? match[3] ?? match[4] ?? '' });
   return attributes;
 }
 
 function safeUrl(rawValue: string, options: { kind: 'image' | 'link'; allowRemoteImages: boolean; allowHttpLinks: boolean }): { allowed: true; value: string } | { allowed: false; reason: string } {
   const value = decodeHtmlEntities(rawValue.trim());
+  // eslint-disable-next-line no-control-regex -- deliberately rejecting control characters, not a stray escape
   if (value.length === 0 || /[\u0000-\u001f\u007f]/u.test(value)) return { allowed: false, reason: 'empty-or-control-character' };
   if (options.kind === 'image' && value.toLowerCase().startsWith('cid:')) return { allowed: true, value };
   let parsed: URL;
@@ -83,6 +84,7 @@ function sanitizeAttributes(tag: string, attributes: ParsedAttribute[], options:
     if (name === 'rel' && tag === 'a') continue;
     if (name === 'class') { const safe = safeClass(value); if (safe) output.push(['class', safe]); continue; }
     if (name === 'id' && /^[A-Za-z][A-Za-z0-9_-]{0,63}$/u.test(value)) { output.push(['id', value]); continue; }
+  // eslint-disable-next-line no-control-regex -- deliberately rejecting control characters, not a stray escape
     if (['title', 'dir', 'lang', 'role', 'scope'].includes(name)) { if (value.length <= 256 && !/[\u0000-\u001f\u007f]/u.test(value)) output.push([name, value]); continue; }
     if (['width', 'height', 'colspan', 'rowspan'].includes(name)) { const safe = safeDimension(value); if (safe) output.push([name, safe]); continue; }
     if (name === 'loading' && tag === 'img' && (value === 'lazy' || value === 'eager')) { output.push(['loading', value]); continue; }

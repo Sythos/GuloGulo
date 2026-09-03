@@ -227,7 +227,7 @@ export function createPostgresCalDavStore({
       'UPDATE dav_calendar_collections SET revision = revision + 1, updated_at = now() WHERE tenant_id = $1 AND owner_user_id = $2 AND collection_id = $3 RETURNING revision',
       [tenantId, ownerUserId, collectionId],
     );
-    const revision = Number(updated.rows[0]!.revision);
+    const revision = Number(updated.rows[0].revision);
     await client.query(
       'INSERT INTO dav_calendar_changes (tenant_id, owner_user_id, collection_id, revision, object_id, uid, etag, deleted) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)',
       [tenantId, ownerUserId, collectionId, revision, objectId, uid, etag, deleted],
@@ -262,7 +262,7 @@ export function createPostgresCalDavStore({
          RETURNING *`,
         [actor.tenantId, owner, slug, displayName.trim(), description, timezone, color === null ? null : String(color).toUpperCase(), href],
       );
-      return publicCollectionRow(inserted.rows[0]!, actor);
+      return publicCollectionRow(inserted.rows[0], actor);
     });
   }
 
@@ -304,7 +304,7 @@ export function createPostgresCalDavStore({
         'UPDATE dav_calendar_collections SET acl_delegate_user_id = $1, acl_permissions = $2, updated_at = now() WHERE tenant_id = $3 AND owner_user_id = $4 AND collection_id = $5 RETURNING *',
         [delegate, unique, actor.tenantId, row.owner_user_id, row.collection_id],
       );
-      return publicCollectionRow(updated.rows[0]!, actor);
+      return publicCollectionRow(updated.rows[0], actor);
     });
   }
 
@@ -318,7 +318,7 @@ export function createPostgresCalDavStore({
         'UPDATE dav_calendar_collections SET acl_delegate_user_id = NULL, acl_permissions = NULL, updated_at = now() WHERE tenant_id = $1 AND owner_user_id = $2 AND collection_id = $3 RETURNING *',
         [actor.tenantId, row.owner_user_id, row.collection_id],
       );
-      return publicCollectionRow(updated.rows[0]!, actor);
+      return publicCollectionRow(updated.rows[0], actor);
     });
   }
 
@@ -358,7 +358,7 @@ export function createPostgresCalDavStore({
         [actor.tenantId, row.owner_user_id, row.collection_id, id, metadata.uid, etag, metadata.canonicalText],
       );
       await bumpRevision(client, actor.tenantId, row.owner_user_id, row.collection_id, { objectId: id, uid: metadata.uid, etag, deleted: false });
-      return publicObjectRow(row.href, inserted.rows[0]!, metadata);
+      return publicObjectRow(row.href, inserted.rows[0], metadata);
     });
   }
 
@@ -401,7 +401,7 @@ export function createPostgresCalDavStore({
         [etag, metadata.canonicalText, actor.tenantId, row.owner_user_id, row.collection_id, id],
       );
       await bumpRevision(client, actor.tenantId, row.owner_user_id, row.collection_id, { objectId: id, uid: metadata.uid, etag, deleted: false });
-      return publicObjectRow(row.href, updated.rows[0]!, metadata);
+      return publicObjectRow(row.href, updated.rows[0], metadata);
     });
   }
 

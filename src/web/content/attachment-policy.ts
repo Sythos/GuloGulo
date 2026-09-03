@@ -31,10 +31,10 @@ function isReservedIpv4(value: string): boolean {
   const octets = parseIpv4(value);
   if (!octets) return false;
   const [a, b, c] = octets;
-  return a === 0 || a === 10 || a === 127 || (a === 100 && b! >= 64 && b! <= 127) || (a === 169 && b === 254)
-    || (a === 172 && b! >= 16 && b! <= 31) || (a === 192 && b === 0 && c === 0) || (a === 192 && b === 0 && c === 2)
+  return a === 0 || a === 10 || a === 127 || (a === 100 && b >= 64 && b <= 127) || (a === 169 && b === 254)
+    || (a === 172 && b >= 16 && b <= 31) || (a === 192 && b === 0 && c === 0) || (a === 192 && b === 0 && c === 2)
     || (a === 192 && b === 168) || (a === 198 && (b === 18 || b === 19 || b === 51)) || (a === 203 && b === 0 && c === 113)
-    || a! >= 224;
+    || a >= 224;
 }
 
 function isReservedIpv6(value: string): boolean {
@@ -80,7 +80,7 @@ export function validateAttachmentUrl(rawUrl: unknown, { allowHttp = false, allo
   return Object.freeze({ url: url.toString(), protocol: url.protocol, hostname, port, redirect: 'error' as const, credentials: 'omit' as const });
 }
 
-export async function resolveAndValidateAttachmentUrl(rawUrl: unknown, { lookup = dns.lookup as unknown as LookupFunction, ...options }: AttachmentUrlOptions & { lookup?: LookupFunction } = {}) {
+export async function resolveAndValidateAttachmentUrl(rawUrl: unknown, { lookup = dns.lookup, ...options }: AttachmentUrlOptions & { lookup?: LookupFunction } = {}) {
   const validated = validateAttachmentUrl(rawUrl, options);
   if (isIP(validated.hostname) !== 0) return Object.freeze({ ...validated, addresses: Object.freeze([validated.hostname]) });
   let answers: readonly LookupAnswer[];
@@ -92,6 +92,7 @@ export async function resolveAndValidateAttachmentUrl(rawUrl: unknown, { lookup 
 
 export function sanitizeAttachmentFilename(filename: unknown, { fallback = 'attachment', maxLength = 255 }: { fallback?: string; maxLength?: number } = {}): string {
   const value = typeof filename === 'string' ? filename.normalize('NFKC') : '';
+  // eslint-disable-next-line no-control-regex -- deliberately rejecting control characters, not a stray escape
   const cleaned = value.replace(/[\u0000-\u001f\u007f]/gu, '').replace(/[\\/:*?"<>|]/gu, '_').replace(/^\.+/u, '').trim();
   return cleaned.slice(0, maxLength) || fallback;
 }
@@ -100,12 +101,12 @@ export interface AttachmentMetadata { filename?: unknown; contentType?: unknown;
 
 export function validateAttachmentMetadata({ filename, contentType = 'application/octet-stream', sizeBytes, sha256 = null }: AttachmentMetadata = {}, { maxBytes = 25 * 1024 * 1024, allowedContentTypes = null }: { maxBytes?: number; allowedContentTypes?: readonly string[] | null } = {}) {
   if (!Number.isSafeInteger(sizeBytes) || (sizeBytes as number) < 0 || (sizeBytes as number) > maxBytes) throw attachmentError('attachment size exceeds policy', 'ATTACHMENT_TOO_LARGE');
-  const normalizedType = String(contentType).split(';', 1)[0]!.trim().toLowerCase();
+  const normalizedType = String(contentType).split(';', 1)[0].trim().toLowerCase();
   if (!/^[\w!#$&^_.+-]+\/[\w!#$&^_.+-]+$/u.test(normalizedType)) throw attachmentError('content type is invalid', 'INVALID_CONTENT_TYPE');
   if (EXECUTABLE_TYPES.has(normalizedType)) throw attachmentError('executable content is not accepted as a safe attachment', 'EXECUTABLE_CONTENT_BLOCKED');
   if (allowedContentTypes && !allowedContentTypes.map((item) => item.toLowerCase()).includes(normalizedType)) throw attachmentError('content type is not allowed', 'CONTENT_TYPE_NOT_ALLOWED');
-  if (sha256 !== null && !/^[a-f0-9]{64}$/iu.test(String(sha256))) throw attachmentError('sha256 is invalid', 'INVALID_DIGEST');
-  return Object.freeze({ filename: sanitizeAttachmentFilename(filename), contentType: normalizedType, sizeBytes: sizeBytes as number, sha256: sha256 === null ? null : String(sha256).toLowerCase(), disposition: 'attachment' as const, render: 'download' as const });
+  if (sha256 !== null && (typeof sha256 !== 'string' || !/^[a-f0-9]{64}$/iu.test(sha256))) throw attachmentError('sha256 is invalid', 'INVALID_DIGEST');
+  return Object.freeze({ filename: sanitizeAttachmentFilename(filename), contentType: normalizedType, sizeBytes: sizeBytes as number, sha256: sha256 === null ? null : sha256.toLowerCase(), disposition: 'attachment' as const, render: 'download' as const });
 }
 
 export { attachmentError };

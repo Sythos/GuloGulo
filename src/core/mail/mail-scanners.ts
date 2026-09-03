@@ -40,8 +40,9 @@ export interface MailScannerLogger {
   readonly warn?: (event: string, details?: Record<string, unknown>) => void;
 }
 
-export type RspamdScan = (message: MailScanMetadata) => unknown | Promise<unknown>;
-export type ClamAvScan = (message: MailScanMetadata) => unknown | Promise<unknown>;
+// Sync or async is fine here; the caller always awaits the result either way.
+export type RspamdScan = (message: MailScanMetadata) => unknown;
+export type ClamAvScan = (message: MailScanMetadata) => unknown;
 
 export interface RspamdScannerOptions {
   readonly scan?: RspamdScan;

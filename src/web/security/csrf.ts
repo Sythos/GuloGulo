@@ -90,7 +90,7 @@ export function createCsrfManager(options: CsrfManagerOptions = {}) {
     const bucket = tokensBySession.get(session.sessionId) ?? new Map<string, TokenRecord>();
     removeExpired(bucket, now);
     while (bucket.size >= maxOutstandingTokens) {
-      const oldestKey = bucket.keys().next().value as string | undefined;
+      const oldestKey = bucket.keys().next().value;
       if (oldestKey === undefined) break;
       bucket.delete(oldestKey);
     }

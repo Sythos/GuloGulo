@@ -230,6 +230,7 @@ function sanitiseMessageHtml(html, documentRef = globalThis.document) {
   }
 
   const template = documentRef.createElement('template');
+  // eslint-disable-next-line no-unsanitized/property -- parses into a detached, inert template; the walker below strips dangerous nodes/attributes before anything reaches the live DOM
   template.innerHTML = asString(html);
   const walker = documentRef.createTreeWalker(template.content, 1);
   const nodes = [];
@@ -602,7 +603,7 @@ function createWebApplication(documentRef = globalThis.document, windowRef = glo
       preview.className = 'message-preview';
       preview.textContent = asString(message.preview);
       button.append(sender, date, subject, preview);
-      button.addEventListener('click', () => selectMessage(message));
+      button.addEventListener('click', () => void selectMessage(message));
       item.append(button);
       list.append(item);
     }

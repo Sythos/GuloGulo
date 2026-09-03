@@ -65,7 +65,7 @@ export function createCpanelAdapter(options: CpanelAdapterOptions = {}): Platfor
     const config = environment === undefined
       ? loadRuntimeConfig(undefined, configOptions)
       : loadRuntimeConfig(environment, configOptions);
-    return config as unknown as IntegrationConfig;
+    return config;
   }
 
   async function createIdentityClient(config: IntegrationConfig): Promise<LdapIdentityClient> {

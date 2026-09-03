@@ -159,7 +159,7 @@ export function createQuotaLedger({ tenantId, grossQuotaBytes, initialUsers = []
    * tenant-scoped protocol adapter operation, not an administrative mutation.
    */
   function reserve(context, { userId, sizeBytes = 0 } = {}) {
-    const canonical = assertSameTenant(context);
+    assertSameTenant(context);
     const target = requireKnownUser(userId);
     const size = assertBytes(sizeBytes, 'sizeBytes');
     const currentUsage = usage.get(target) ?? 0;
@@ -176,7 +176,7 @@ export function createQuotaLedger({ tenantId, grossQuotaBytes, initialUsers = []
   }
 
   function release(context, reservationId) {
-    const canonical = assertSameTenant(context);
+    assertSameTenant(context);
     if (typeof reservationId !== 'string' || !/^quota-[0-9]{8}$/u.test(reservationId)) {
       throw quotaError('reservationId is invalid', 'INVALID_RESERVATION', 400);
     }

@@ -17,7 +17,8 @@ import { CSRF_HEADER_NAME, createWebSecurity } from '../web/security/index.ts';
 import type { SessionIdentity, WebSecurity, WebSession } from '../web/security/index.ts';
 import type { DavStore } from '../platform/contract/platform-adapter.ts';
 
-type RuntimeConfig = ReturnType<typeof loadConfig> & Record<string, any>;
+// eslint-disable-next-line @typescript-eslint/no-redundant-type-constituents -- loadConfig's inferred return already carries `any` from config.ts's tracked @ts-nocheck waiver, not from the Record here
+type RuntimeConfig = ReturnType<typeof loadConfig> & Record<string, unknown>;
 type RuntimeLogger = ReturnType<typeof createLogger>;
 type RequestDetails = Readonly<{ request_id: string; correlation_id: string }>;
 type ApiResourceName = 'mail' | 'calendar' | 'contacts' | 'discovery';
@@ -899,7 +900,7 @@ function deriveFixturePassword(value: unknown): Promise<Buffer> {
         reject(error);
         return;
       }
-      resolve(derivedKey as Buffer);
+      resolve(derivedKey);
     });
   });
 }
@@ -1009,7 +1010,7 @@ export function createRuntimeServer({
     server: undefined as unknown as Server,
   };
 
-  runtime.server = createHttpServer(async (request, response) => {
+  const handleRequest = async (request: IncomingMessage, response: ServerResponse): Promise<void> => {
     const path = requestPath(request);
     const method = request.method ?? 'GET';
     const requestDetails = requestContext(request);
@@ -1385,6 +1386,13 @@ export function createRuntimeServer({
         reason: 'route_not_found',
       }),
     );
+  };
+
+  runtime.server = createHttpServer((request, response) => {
+    handleRequest(request, response).catch((error: unknown) => {
+      runtime.logger.error('request_handler_unhandled_rejection', { error });
+      if (!response.writableEnded) response.destroy();
+    });
   });
 
   runtime.server.on('clientError', (error, socket) => {

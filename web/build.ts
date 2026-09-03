@@ -21,7 +21,11 @@ if (!source.includes('/* @gulogulo-browser-source */')) {
 
 await mkdir(resolve(webDirectory, 'dist'), { recursive: true });
 
-const compilerPath = resolve(webDirectory, '..', 'node_modules', 'typescript', 'bin', 'tsc');
+// The `typescript` devDependency is aliased to a TS 6.x-API compatibility
+// shim so typescript-eslint (which doesn't yet support TS 7's compiler API)
+// can run; the real TS 7 compiler lives under the `@typescript/native` alias
+// instead. See package.json's devDependencies for both.
+const compilerPath = resolve(webDirectory, '..', 'node_modules', '@typescript', 'native', 'bin', 'tsc');
 await new Promise<void>((resolvePromise, reject) => {
   const compiler = spawn(process.execPath, [compilerPath, '--project', resolve(webDirectory, '..', 'tsconfig.json')], {
     stdio: 'inherit',
