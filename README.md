@@ -220,8 +220,12 @@ the checked contracts belongs in [INSTALL.md](INSTALL.md).
   remain backlog, documented in each adapter's README;
 - [x] wire the CPANEL_API_*/PLESK_API_* settings from .env.example into
   runtime/config.ts's loader (same file/env pattern as ldap/postgres);
-- [ ] provider-backed authenticated login/session wiring to the real LDAP
-  adapter;
+- [x] provider-backed authenticated login/session wiring (src/runtime/login.ts)
+  that resolves the configured packaging target and calls its real
+  PlatformAdapter identity client — LDAP or DB-backed local_users for
+  standalone, UAPI for cPanel, REST for Plesk — instead of the fixture
+  authenticator; field verification against real backends belongs in
+  INSTALL.md;
 - [ ] production Postfix/Dovecot mail adapters, persistent DAV backend, and
   complete HTTP/WebDAV method and XML-report integration;
 - [ ] durable external backup, restore, account-deletion execution, and
@@ -350,7 +354,7 @@ gulogulo/
 │   ├── integrations/ (TypeScript LDAP, PostgreSQL, tenant, migration, and optional Plesk/cPanel adapters)
 │   ├── platform/
 │   │   ├── contract/ (PlatformAdapter interface)
-│   │   ├── standalone/ (LDAP + PostgreSQL adapter)
+│   │   ├── standalone/ (LDAP or DB-backed local_users identity + PostgreSQL adapter)
 │   │   ├── cpanel/ (UAPI identity client + adapter)
 │   │   └── plesk/ (REST identity client + adapter)
 │   ├── runtime/ (TypeScript HTTP runtime and observability)

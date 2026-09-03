@@ -6,10 +6,18 @@ SPDX-FileCopyrightText: 2026 Sythos (https://www.sythos.net)
 Author: Sythos (https://www.sythos.net)
 -->
 
-M2 adds the first real external-service contracts. LDAP remains the identity
-source and PostgreSQL remains the application-state source. Gulo Gulo never
-stores a local shadow password database and never sends credentials to the
-browser.
+M2 adds the first real external-service contracts. LDAP is the default
+identity source and PostgreSQL remains the application-state source. Gulo
+Gulo never sends credentials to the browser.
+
+The standalone target (`src/platform/standalone/`) additionally supports a
+PostgreSQL-backed `local_users` table as an explicit, opt-in alternative to
+LDAP (`identity.source = 'database'`, see "Database-backed identity" below) —
+for lighter single/few-tenant installs that would rather not stand up an
+external directory. LDAP stays the default: an operator who never sets
+`identity.source` keeps the LDAP-only behavior described below unchanged.
+cPanel and Plesk are unaffected — they always use their own panel API and
+never fall back to a local password store.
 
 ## LDAP
 
@@ -39,6 +47,36 @@ only identity attributes (`uid`, `mail`, `displayName`, `cn`, and `active`),
 and rejects ambiguous results. Password authentication binds a short-lived
 client as the resolved user DN. A failure always returns an authentication
 failure; it is never converted into a local fallback login.
+
+## Database-backed identity (standalone only)
+
+Enable the DB-backed identity source instead of LDAP with:
+
+```text
+IDENTITY_SOURCE=database
+POSTGRES_ENABLED=true
+```
+
+`src/runtime/config.ts` rejects `IDENTITY_SOURCE=database` unless
+`POSTGRES_ENABLED=true` — a local-users table with no database to live in is
+a configuration error, not a silent fallback.
+
+Users live in the `local_users` table
+(`src/core/db/migrations/0002_standalone_local_identity.sql`): one row per
+tenant-scoped username, with the same forced row-level security as every
+other tenant-scoped table (`gulogulo.tenant_id`, set per transaction).
+Password verification reuses `createPasswordHasher()`
+(`src/core/auth/password-hashing.ts` — versioned scrypt, the same hasher used
+elsewhere in the project) instead of a second hashing scheme.
+`src/platform/standalone/db-identity-client.ts` builds the actual
+`local_users` connection by reusing `createPostgresStore()`
+(`withTenantTransaction()`), not a separate pool.
+
+This repository does not yet ship an admin flow to create/rotate
+`local_users` rows; provisioning one today means inserting a row with
+`createPasswordHasher().hash(password)` as `password_hash` directly, e.g.
+through `psql` or a one-off script. A proper admin UI/API for local user
+management is tracked as follow-up work, not implemented by this change.
 
 ## PostgreSQL
 

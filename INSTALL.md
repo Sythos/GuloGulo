@@ -154,7 +154,16 @@ sha256sum -c gulogulo-<version>-standalone.tar.gz.sha256
   `GULOGULO_POSTGRES_DSN` environment variable before running migrations for
   real.
 - LDAP — optional. Disabled by default (`LDAP_ENABLED=false`); without it,
-  there is no working authentication path on this target (see Section 5).
+  there is no working authentication path on this target (see Section 5),
+  unless the DB-backed alternative below is used instead.
+- Identity source — `IDENTITY_SOURCE=ldap` (default) or
+  `IDENTITY_SOURCE=database`. The `database` option stores users directly in
+  PostgreSQL (`local_users` table) instead of an external LDAP directory —
+  simpler for a single/few-tenant install that would rather not stand up a
+  directory service. Requires `POSTGRES_ENABLED=true`; see
+  `doc/identity-and-postgres.md` for the table, the migration, and the
+  current lack of an admin UI to provision users (insert rows directly for
+  now).
 
 ### Uninstall (`uninstall.sh [--non-interactive] [--yes]`)
 
@@ -529,9 +538,15 @@ identity), and the nginx reverse-proxy wiring.
   generic, safe way to verify an arbitrary mail account's password from the
   outside. Rather than build against an undocumented, unverifiable endpoint,
   `authenticate()` on both the `cpanel` and `plesk` identity adapters
-  **always returns `false`** and logs why. **LDAP (standalone target only) is
-  the only identity source that actually authenticates users today.** Real
-  cPanel/Plesk login is future work; the most likely paths, per
+  **always returns `false`** and logs why. **LDAP and the DB-backed
+  `local_users` table (standalone target only, `IDENTITY_SOURCE=ldap` or
+  `database`) are the only identity sources that actually authenticate users
+  today.** `src/runtime/login.ts` resolves the configured target
+  (`GULOGULO_PLATFORM`) and calls its real identity client for every
+  `POST /api/session/login` outside `GULOGULO_FIXTURE_MODE=true` — including
+  for cPanel/Plesk, where that real client is the fail-closed one above, so a
+  login attempt is genuinely rejected by the adapter, not by a fixed stub.
+  Real cPanel/Plesk password login is future work; the most likely paths, per
   `src/platform/cpanel/README.md` and `src/platform/plesk/README.md`, are a
   direct IMAP/POP3 bind against the local mail server, or a dedicated
   panel plugin/extension.
@@ -618,6 +633,24 @@ removed or replaced below; see ADR-002 for why.
   results, and never falls back to a local password store. Verify the real
   CA, bind account permissions, directory indexes, user lookup, password
   bind, timeout, retry, and outage behavior.
+- [x] **DONE — DB-backed identity boundary (standalone, opt-in).** The
+  `identity.source = 'database'` alternative
+  (`src/platform/standalone/db-identity-client.ts`) stores users in a
+  tenant-scoped, forced-RLS `local_users` table
+  (`src/core/db/migrations/0002_standalone_local_identity.sql`) and reuses
+  the existing versioned scrypt hasher
+  (`src/core/auth/password-hashing.ts`) instead of a second scheme; config
+  validation rejects it unless PostgreSQL is enabled. Verify the real
+  migration, the operator's own row-provisioning process (no admin UI exists
+  yet — see `doc/identity-and-postgres.md`), and RLS behavior in the field.
+- [x] **DONE — provider-backed login/session wiring.**
+  `src/runtime/login.ts` resolves the configured packaging target
+  (`GULOGULO_PLATFORM`) and calls its real `PlatformAdapter`'s identity
+  client for every login outside fixture mode, replacing the previous
+  fixed-reject stub; `GULOGULO_FIXTURE_MODE=true` is unchanged. Tested against
+  fake LDAP/PostgreSQL transports and the real fail-closed cPanel adapter.
+  Verify against a real LDAP directory, a real PostgreSQL `local_users` table,
+  and (once implemented) real cPanel/Plesk authentication.
 - [x] **DONE — PostgreSQL security boundary.** The adapter supports verified
   TLS, bounded pools and retries, advisory-locked checksummed migrations,
   forced tenant RLS, transaction tenant context, and fail-closed dependency
@@ -763,11 +796,14 @@ removed or replaced below; see ADR-002 for why.
 - [x] **DONE — ADRs, documentation, license, and artifact governance.**
   ADR-001 and ADR-002, MIT/SPDX attribution, and the documentation inventory
   are present. Verify owner approvals and release retention.
-- [ ] **OPEN CODE — provider-backed browser login and session wiring.** The
-  HTTP shell and fixture authenticator are implemented, but the default
-  runtime does not yet wire the real LDAP adapter (standalone) into the
-  authenticated login/session path, and cPanel/Plesk authentication remains
-  fail-closed as described above. This remains repository work.
+- [x] **DONE — provider-backed browser login and session wiring.** The HTTP
+  shell, fixture authenticator, and `src/runtime/login.ts` now wire the real
+  `PlatformAdapter`/identity client (LDAP or DB-backed for standalone, UAPI
+  for cPanel, REST for Plesk) into the authenticated login/session path for
+  every run outside `GULOGULO_FIXTURE_MODE=true`. cPanel/Plesk authentication
+  is still fail-closed by design (Section 5), but a login attempt against
+  them now genuinely reaches and is rejected by that real adapter, not a
+  fixed stub. Verify against real LDAP/PostgreSQL/cPanel/Plesk backends.
 
 ## Runbook definitions
 
@@ -918,7 +954,10 @@ release evidence system as sanitized records.
 - Verify the selected secret store, least-privilege access, rotation, revoke,
   restart, and recovery behavior.
 - Verify external LDAP TLS, bind privilege, directory filters, user login,
-  timeout/retry, and outage behavior (standalone identity).
+  timeout/retry, and outage behavior (standalone identity); or, if
+  `IDENTITY_SOURCE=database` is used instead, verify the `local_users`
+  migration, row provisioning process, and RLS behavior against a real
+  PostgreSQL service.
 - Verify PostgreSQL TLS, role grants, RLS, migrations, backups, restore, and
   connection limits on every target.
 - Verify external volume/directory creation, encryption, snapshots, ownership,
@@ -986,8 +1025,10 @@ as tester work:
   are fail-closed today);
 - [ ] wiring `CPANEL_API_*` and Plesk API settings into
   `src/runtime/config.ts` so those integrations can actually be enabled;
-- [ ] provider-backed authenticated login/session wiring that calls the real
-  LDAP adapter instead of the fixture authenticator (standalone);
+- [ ] an admin UI/API to create, rotate, and deactivate `local_users` rows for
+  the DB-backed identity option (today's workaround is inserting rows
+  directly with `createPasswordHasher().hash(password)`, see
+  `doc/identity-and-postgres.md`);
 - [ ] production Postfix/Dovecot mail adapters, persistent DAV backend, and
   complete HTTP/WebDAV method and XML-report integration;
 - [ ] durable external backup, restore, account-deletion execution, and
