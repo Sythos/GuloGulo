@@ -289,9 +289,8 @@ the checked contracts belongs in [INSTALL.md](INSTALL.md).
   (a CLI entry point and systemd timer/service now exist too — see
   `doc/lifecycle-backup-dr.md`); still outstanding: a **remote/external**
   storage adapter (this local one is fast same-host recovery, explicitly
-  not disaster recovery), a **persistent** retention store (today's is
-  in-memory, so the scheduled worker is a safe no-op), and wiring
-  `src/core/lifecycle/**` into the build/packaging scripts;
+  not disaster recovery), and a **persistent** retention store (today's is
+  in-memory, so the scheduled worker is a safe no-op);
 - [ ] deployed log collector, alert-delivery, and paging adapters (the ACME/DNS
   client that used to be paired with this item was removed architecturally -
   cPanel/Plesk own certificate issuance via their AutoSSL/Let's Encrypt
