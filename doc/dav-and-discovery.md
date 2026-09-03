@@ -24,7 +24,8 @@ do not give the master a back door into a user's content.
 | DAV storage migration | `src/core/db/migrations/0003_dav_storage.sql` | `dav_calendar_collections`/`dav_calendar_objects`/`dav_calendar_changes`, `dav_address_books`/`dav_contacts`/`dav_contact_changes`, tenant-forced RLS |
 | Discovery | `src/core/dav/discovery/index.ts` | tenant-bound `.well-known` resources, mail autoconfig, service endpoints, safe manual overrides |
 | HTTP well-known | `src/runtime/server.ts` | optional, explicitly injected discovery contract for GET/HEAD resources |
-| Platform wiring | `src/platform/contract/platform-adapter.ts` (`createDavStore()`), and the standalone/cPanel/Plesk adapters | resolves the PostgreSQL-backed CalDAV/CardDAV stores for each packaging target |
+| HTTP DAV surface | `src/runtime/server.ts` (`handleDavRoute()`), tested by `src/runtime/dav-runtime.test.ts` | `PROPFIND`/`GET`/`PUT`/`DELETE`/`REPORT` under `/dav/calendars/*`/`/dav/contacts/*`, session-authenticated, calling `runtime.davStore` |
+| Platform wiring | `src/platform/contract/platform-adapter.ts` (`createDavStore()`), and the standalone/cPanel/Plesk adapters; resolved into the running server by `src/runtime/index.ts` | resolves the PostgreSQL-backed CalDAV/CardDAV stores for each packaging target |
 | Browser surface | `web/index.html`, `web/src/app.ts` | read-only Calendar and Contacts views, discovery status, and manual-fallback messaging |
 
 `caldav-contract.ts` and `carddav-store.ts` stay deterministic, synchronous,
@@ -114,10 +115,13 @@ The contract maps naturally to the usual DAV method set:
 | `PUT` | create/update object | create uses `If-None-Match: *`; update requires `If-Match` |
 | `DELETE` | delete object/empty collection | object deletion requires `If-Match`; non-empty collections are not dropped silently |
 
-The current runtime intentionally exposes only the optional `.well-known`
-resources. A protocol adapter must authenticate the request, create the user
-scope, apply the table above, and then call the store. It must not call a store
-with a role elevated from an HTTP header or a path segment.
+`src/runtime/server.ts`'s `handleDavRoute()` is that protocol adapter — see
+"HTTP surface" further down for its exact URL structure, method coverage,
+and authentication/authorization rules. It authenticates the request from
+the same session cookie as `/api/*`, builds the actor/scope from that
+session, applies (a minimal, documented subset of) the table above, and
+calls the store; it never calls a store with a role elevated from an HTTP
+header or a path segment.
 
 ### iCalendar input
 
@@ -253,10 +257,122 @@ wires this into all three packaging targets
 each building its own pool from the same PostgreSQL connection settings
 `createDataStore()` already uses.
 
-**Status: DONE (code + tests against a fake pool) / VERIFY BEFORE USE
-(a real PostgreSQL instance, and a real CalDAV/CardDAV client speaking
-through the still-outstanding HTTP/WebDAV method and XML-report adapter).**
-No HTTP DAV surface calls either the in-memory or the PostgreSQL store yet.
+**Status: DONE (code + tests against a fake pool, including the HTTP surface
+below) / VERIFY BEFORE USE (a real PostgreSQL instance, and a real
+CalDAV/CardDAV client).** See "HTTP surface" below for what now actually
+calls the PostgreSQL store.
+
+## HTTP surface
+
+`src/runtime/server.ts` routes a minimal, interoperable WebDAV method/report
+subset directly to `runtime.davStore` (`PlatformAdapter.createDavStore()`,
+injected — see "Wiring" below). It does **not** implement the full RFC
+4791/6352 method set: there is no `MKCOL`/`MKCALENDAR`, `PROPPATCH`, `COPY`,
+`MOVE`, `LOCK`/`UNLOCK`, or `ACL` over HTTP. A calendar or address book must
+already exist — created directly against the contract or PostgreSQL adapter
+above, e.g. during provisioning — before a client can address it here.
+
+### URL structure
+
+Reuses exactly the href convention `postgres-caldav-store.ts` already builds
+server-side (`createCalendarCollection()`'s `href`), and mirrors it for
+CardDAV (which has no fixed HTTP convention of its own — its stored `href`
+metadata field, `/addressbooks/{id}/`, is internal bookkeeping the router
+does not use for addressing):
+
+- Calendar collection: `/dav/calendars/{tenantId}/{ownerUserId}/{collectionId}/`
+- Calendar object: `/dav/calendars/{tenantId}/{ownerUserId}/{collectionId}/{objectId}`
+- Address book collection: `/dav/contacts/{tenantId}/{userId}/{addressBookId}/`
+- Contact object: `/dav/contacts/{tenantId}/{userId}/{addressBookId}/{href}` (`href` already ends in `.vcf`)
+
+Both share the `/dav/` base path `.well-known/caldav`/`.well-known/carddav`
+already redirect to (`src/core/dav/discovery/index.ts`'s `defaultPath: '/dav/'`
+for both services) — this router is what that redirect now actually lands on.
+
+There is deliberately no calendar-home-set/principal discovery: a client
+must already know its `{tenantId}/{ownerUserId}/{collectionId}` (or
+`{tenantId}/{userId}/{addressBookId}`) triple. Real clients normally
+discover that by `PROPFIND`-ing the principal URL and then the
+`calendar-home-set`/`addressbook-home-set` property; neither is implemented,
+so this is real, outstanding interoperability work (see the VERIFY BEFORE
+USE note at the end of this document).
+
+### Methods
+
+| Method | Level | What it does | What it deliberately does not do |
+| --- | --- | --- | --- |
+| `PROPFIND` | collection (Depth 0/1) | `207 Multi-Status` with `resourcetype`, `displayname`, `getlastmodified`, `sync-token` for the collection, plus one entry per object at Depth 1 (`getetag`, `getcontenttype`, empty `resourcetype`) | ignores the requested `<D:prop>` selection and always returns this fixed set; `Depth: infinity` is rejected with `403` |
+| `PROPFIND` | object (Depth 0) | `207` with that object's `getetag`/`getcontenttype` | same fixed-property-set limitation |
+| `GET`/`HEAD` | object | the raw `text/calendar`/`text/vcard` body with an `ETag` header | no `GET` on a collection (there is nothing meaningful to serve; `404`) |
+| `PUT` | object | creates (`If-None-Match: *`, or no conditional header for CalDAV — CardDAV always requires `If-None-Match: *` to create, matching `carddav-store.ts`) or updates (`If-Match`, mapped straight to the contract's own conditional semantics) | no unconditional overwrite of an existing object without `If-Match` (`428`) |
+| `DELETE` | object | deletes one calendar object/contact, `If-Match` required (`428` if missing, `412` if stale) | — |
+| `DELETE` | collection | deletes an empty calendar collection (`409` if it still has objects) or an address book (cascades, matching `carddav-store.ts`'s own no-not-empty-guard) | — |
+| `REPORT` | collection | `calendar-query`/`addressbook-query` (full collection snapshot — no date-range or property filtering) and `sync-collection` (incremental changes plus `404 Not Found` tombstones for deletions, terminated with a fresh `<D:sync-token>`) | no `calendar-multiget`/`addressbook-multiget`; no `<C:calendar-data>`/`<CARD:address-data>` embedded in query results (fetch the body with `GET`) |
+
+Any other method (`MKCOL`, `PROPPATCH`, `COPY`, `MOVE`, `LOCK`, `ACL`, ...)
+answers `501 Not Implemented` rather than being silently ignored, per the
+existing fail-closed style of this codebase. An unrecognized `REPORT` body
+also answers `501`. Every contract/store error (`CalDavError`/`CardDavError`,
+already carrying the right `status`/`code` — see the "Conditional rules"
+table above) is caught once, centrally, and mapped straight through to the
+matching HTTP status; nothing here re-derives status codes from error
+messages.
+
+### Authentication and authorization
+
+DAV routes authenticate with the exact same cookie session as every other
+`/api/*` route (`runtime.webSecurity.authenticate()`); there is no separate
+DAV credential path, Basic/Digest auth, or app-password mechanism. An
+unauthenticated request gets `401`, identical to `/api/mail/messages` etc.
+
+Authorization never trusts the URL: the authenticated session's `tenantId`
+must equal the URL's `tenantId` segment (checked by the router itself,
+before any store call — a mismatch is `403`, and the store is never even
+queried), and every store call is made with an actor/scope built from the
+*session* (`{tenantId, domain, userId, role}`), never from the URL. CardDAV
+has no delegate/sharing concept in this codebase, so its URL's `userId`
+segment must equal the session's `userId` (checked the same way, `403` on
+mismatch); CalDAV's `ownerUserId` segment may legitimately differ from the
+session user for a delegated calendar — `resolveCollectionRow()`'s own
+owner-vs-delegate ACL check decides that (`403 ACL_DENIED` if the session
+user has neither ownership nor a delegate grant), not the router.
+
+`PUT`/`DELETE`/`REPORT` do **not** require the `X-CSRF-Token` header that
+`POST /api/session/logout` uses: a real DAV client (Apple Calendar,
+Thunderbird, DAVx5, ...) cannot obtain or send that double-submit token, so
+this surface relies on the session cookie's own `SameSite=Lax`/`Strict`
+attribute (`src/web/security/session-manager.ts`) as its cross-site request
+forgery mitigation instead. This is a deliberate, documented trade-off.
+
+### Wiring
+
+`runtime.davStore` (`{ caldav, carddav }`, the same shape
+`PlatformAdapter.createDavStore()` already returns) is an injected,
+optional `createRuntimeServer()` option; when omitted, every `/dav/*`
+request answers `503 DAV_STORE_UNAVAILABLE` instead of touching anything.
+`src/runtime/index.ts`'s `main()` resolves it the same way it already
+resolves the login authenticator — `resolvePlatformTarget()` picks the
+`GULOGULO_PLATFORM` target, `createPlatformAdapterForTarget()` builds the
+matching adapter, `adapter.createDavStore(config)` returns the pair — and a
+resolution failure (misconfigured/unreachable PostgreSQL) is caught, logged,
+and leaves `/dav/*` at `503` instead of crashing server startup.
+
+### Tests
+
+`src/runtime/dav-runtime.test.ts` drives the full HTTP surface end to end —
+real HTTP requests over a loopback socket, real
+`createPostgresCalDavStore()`/`createPostgresCardDavStore()` adapters, and
+the same fake-pool pattern as `postgres-caldav-store.test.ts`/
+`postgres-carddav-store.test.ts` (not the in-memory contract doubles, and
+not a real PostgreSQL instance). It covers: `PUT` create with
+`If-None-Match: *` and its `412` conflict on retry; `GET` reading the body
+and `ETag` back; conditional `PUT` update (`412` on a stale `If-Match`,
+`204` + a new `ETag` on success); `PROPFIND` at Depth 0 and 1; `REPORT
+calendar-query`; `REPORT sync-collection` across create/update/delete with
+tombstones; conditional `DELETE`; a cross-tenant CalDAV URL (`403`, store
+never reached); a cross-user CardDAV URL (`403`); an unsupported method
+(`501`); and an unauthenticated request (`401`) — plus the equivalent
+CardDAV `PUT`/`GET`/`DELETE`/`REPORT sync-collection` cycle.
 
 ## Sync tokens and conditional writes
 
@@ -346,6 +462,7 @@ node --experimental-strip-types src/core/dav/carddav/postgres-carddav-store.test
 node --experimental-strip-types src/core/dav/discovery/index.test.ts
 node --experimental-strip-types --test src/platform/standalone/*.test.ts src/platform/cpanel/*.test.ts src/platform/plesk/*.test.ts
 node dist/server/src/runtime/runtime.test.js
+node dist/server/src/runtime/dav-runtime.test.js
 npm run build:web
 node --experimental-strip-types web/test/web-shell.test.ts
 ```
@@ -354,8 +471,10 @@ The `postgres-*-store.test.ts` files exercise the PostgreSQL adapters against
 a fake pool (same `FakePool`/`FakeClient` pattern as
 `src/integrations/postgres-store.test.ts`), including a test that asserts the
 PostgreSQL-computed ETag is byte-identical to what the in-memory contract
-computes for the same input — there is no real PostgreSQL instance or real
-DAV client in this test suite.
+computes for the same input. `src/runtime/dav-runtime.test.ts` exercises the
+HTTP surface on top of that same fake-pool pattern, over real loopback HTTP
+requests. There is no real PostgreSQL instance or real DAV client anywhere
+in this test suite.
 
 `npm test` includes all of the above contract tests. The GitHub quality gate
 (`.github/workflows/quality-gates.yml`) also checks the explicit repository
@@ -375,11 +494,25 @@ still need:
    code/tests (`postgres-caldav-store.ts`/`postgres-carddav-store.ts`
    above); verification against a real PostgreSQL instance is still
    outstanding;
-2. an authenticated HTTP adapter for the full DAV method set and XML reports
-   (nothing calls either storage backend yet);
-3. real LDAP/session integration for DAV authentication;
-4. Apple, Thunderbird, Evolution, and mobile-client interoperability tests;
-5. quota reservation/rollback and rate limits around DAV uploads and reports;
+2. ~~an authenticated HTTP adapter for the minimal DAV method set and XML
+   reports~~ — done in code/tests (see "HTTP surface" above); `MKCOL`/
+   `MKCALENDAR`, `PROPPATCH`, `COPY`/`MOVE`, `LOCK`/`UNLOCK`, `ACL`, and
+   calendar-home-set/principal discovery remain unimplemented, and
+   verification against a real PostgreSQL instance is still outstanding;
+3. ~~real session integration for DAV authentication~~ — done: `/dav/*`
+   authenticates with the same cookie session as `/api/*` (see "HTTP
+   surface" above); real LDAP/DB-backed login itself is covered by
+   `src/runtime/login.ts` (`doc/identity-and-postgres.md`), unrelated to
+   this DAV-specific wiring;
+4. Apple, Thunderbird, Evolution, and mobile-client interoperability tests
+   — the HTTP method/report subset implemented here has not been rehearsed
+   against any real client, and several things a real client commonly
+   expects are known-missing: calendar-home-set/principal discovery,
+   `calendar-multiget`/`addressbook-multiget`, and `<C:calendar-data>`/
+   `<CARD:address-data>` embedded in query results;
+5. quota reservation/rollback and rate limits around DAV uploads and reports
+   (the shared `dav` abuse-rate-limit channel now covers `/dav/*` requests
+   too, but there is still no per-object-size quota accounting);
 6. restore/token-invalidation tests on the external DAV volume.
 
 Shared mailboxes and resource calendars remain future considerations, as

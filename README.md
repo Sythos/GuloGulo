@@ -269,9 +269,17 @@ the checked contracts belongs in [INSTALL.md](INSTALL.md).
   drift; tested against a fake pool (see `doc/dav-and-discovery.md`) —
   verification against a real PostgreSQL instance and real CalDAV/CardDAV
   clients is still outstanding;
-- [ ] complete HTTP/WebDAV method and XML-report integration (the protocol
-  adapter that authenticates a request, applies the method table in
-  `doc/dav-and-discovery.md`, and calls the storage backend above);
+- [x] HTTP/WebDAV method and XML-report integration: `src/runtime/server.ts`
+  now routes `PROPFIND`/`GET`/`PUT`/`DELETE`/`REPORT` under
+  `/dav/calendars/{tenantId}/{ownerUserId}/{collectionId}/...` and
+  `/dav/contacts/{tenantId}/{userId}/{addressBookId}/...` to the real
+  `PlatformAdapter.createDavStore()` Postgres-backed stores, authenticated by
+  the same session cookie as `/api/*` (see `doc/dav-and-discovery.md` for the
+  method-by-method coverage); tested end to end against a fake pool
+  (`src/runtime/dav-runtime.test.ts`) — verification against a real
+  PostgreSQL instance and a real CalDAV/CardDAV client (Apple Calendar,
+  Thunderbird, DAVx5, ...) is still outstanding, and calendar/address-book
+  *creation* (`MKCOL`/`MKCALENDAR`) is still not exposed over HTTP;
 - [x] local filesystem backup adapter and account-deletion/purge wiring:
   `src/core/backup/filesystem-backup-adapter.ts` really writes
   manifests/archives/encrypted metadata to disk, `createBackupStorage()` on
