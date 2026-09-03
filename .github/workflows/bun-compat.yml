@@ -149,21 +149,11 @@ jobs:
         continue-on-error: true
         run: |
           set -uo pipefail
-          # Every *.test.ts that npm test actually exercises today, run under
-          # bun test instead of node --experimental-strip-types. Built with an
-          # explicit find, not `bun test .`'s own directory discovery, because
-          # that broader auto-discovery also picks up
-          # scripts/sbom-release-audit.test.ts - a file npm test never
-          # references (grep package.json - no hit) and which fails
-          # identically under Node: it hardcodes a path to
-          # .github/workflows/container-release.yml, a workflow deliberately
-          # removed from this repo when the GHCR/container release lane was
-          # retired. That is dead code to clean up on main, not a Bun issue,
-          # so it is excluded here to keep this probe's signal accurate.
-          # postgres.integration.test.ts self-skips without
-          # GULOGULO_M2_POSTGRES_DSN, same as it does in every other CI
-          # workflow today.
-          mapfile -t TEST_FILES < <(find . -path ./node_modules -prune -o -name '*.test.ts' -print | grep -v '/scripts/sbom-release-audit.test.ts$' | sort)
+          # Every *.test.ts in the repo, run under bun test instead of node
+          # --experimental-strip-types. postgres.integration.test.ts
+          # self-skips without GULOGULO_M2_POSTGRES_DSN, same as it does in
+          # every other CI workflow today.
+          mapfile -t TEST_FILES < <(find . -path ./node_modules -prune -o -name '*.test.ts' -print | sort)
           echo "Running ${#TEST_FILES[@]} test files under bun test"
           bun test "${TEST_FILES[@]}" 2>&1 | tee bun-full-suite.log
           FULL_EXIT="${PIPESTATUS[0]}"
