@@ -41,8 +41,8 @@ emits `web/dist/app.js`; `dist/` is ignored by Git and is rebuilt in CI and by
 each packaging build (`packaging/{standalone,cpanel,plesk}/build-*-package.ts`,
 via the shared `packaging/shared/stage-application.ts`). The browser asset is
 compiled during packaging, before the package is installed, so the installed
-package never needs development dependencies on the target host; `install.sh`
-(or the Plesk PHP hooks) runs `npm ci --omit=dev` directly. The source is
+package never needs development dependencies on the target host; every
+target's `install.sh` runs `npm ci --omit=dev` directly. The source is
 intentionally JavaScript-compatible while API types settle, so
 the initial file has a narrowly documented `@ts-nocheck` marker. That marker is
 not a licence to skip API design: shared request and response types are a

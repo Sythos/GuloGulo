@@ -129,5 +129,11 @@ a host-side script.
 LDAP and PostgreSQL outages are visible to the dependency health contract and
 fail closed for authentication and administrative writes. No password, DSN,
 message body, or mailbox content is included in an error or audit reference.
-The M2 unit tests use deterministic fake clients; CI additionally runs a
-disposable PostgreSQL integration test when the service image is available.
+The M2 unit tests use deterministic fake clients. A real-PostgreSQL
+integration test also exists (`src/integrations/postgres.integration.test.ts`)
+and runs when `GULOGULO_M2_POSTGRES_DSN` is set, but no current CI workflow
+sets it — the disposable-database service that used to provide it belonged
+to the retired Docker-Compose CI model, and has not been readapted to the
+package-based workflows. The test itself still passes locally against a real
+PostgreSQL instance; wiring it back into CI is open follow-up work, not a
+code gap.

@@ -36,7 +36,7 @@ compiled runtime with:
 node dist/server/src/runtime/index.js
 ```
 
-The image therefore does not need the TypeScript compiler at runtime.
+The installed package therefore does not need the TypeScript compiler at runtime.
 
 ## Compiler boundary
 

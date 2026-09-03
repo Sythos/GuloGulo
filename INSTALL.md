@@ -19,7 +19,7 @@ configured or exercised the item in the field. The field work belongs here and
 in the release evidence record.
 
 Gulo Gulo's distribution model is defined by
-[ADR-002](../ADR-002-gulogulo-packaging-and-distribution-targets.md), which
+[ADR-002](doc/adr/ADR-002-gulogulo-packaging-and-distribution-targets.md), which
 superseded the Docker/OCI-native model of ADR-001. Read ADR-002 first if you
 need the rationale; this document only covers the practical hand-off.
 

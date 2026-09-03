@@ -173,9 +173,13 @@ and the delivery adapter are.
 There is no separate application-level "log collector" and none was built
 for this milestone. Services already write one JSON object per line to
 stdout/stderr (see "Structured logs" above), and in the non-container
-deployment model every current target (`standalone`/`cpanel`/`plesk`) runs
-as a systemd-managed process — systemd/journald already captures that
-stream automatically (`journalctl -u gulogulo`), and `journald`'s own
+deployment model both the `cpanel` and `plesk` targets install and enable a
+dedicated `gulogulo.service` systemd unit as part of `install.sh` (the
+`standalone` target only stages `gulogulo.service.example` for the operator
+to copy in manually, and otherwise leaves process supervision — systemd,
+pm2, or a manual foreground process — up to them). Wherever systemd does
+manage the process, journald already captures that stream automatically
+(`journalctl -u gulogulo`), and `journald`'s own
 `SystemMaxUse`/`SystemMaxFileSize`/retention settings (configurable host
 policy, or via `createLogRotationPolicy({mode: 'journald', ...})` in
 `src/core/observability/log-policy.ts`, which already validates a bounded

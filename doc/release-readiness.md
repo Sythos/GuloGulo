@@ -25,11 +25,11 @@ The M10 gate covers five evidence domains:
 
 | Domain | What is checked in this checkout | What still needs an external rehearsal |
 |---|---|---|
-| Security | tenant/RBAC boundaries, session and CSRF contracts, MFA primitives, HTML sanitization, abuse limits, secret-free audit events, and the SBOM/digest release workflow | provider secret rotation, real TLS/LDAP/DB configuration, vulnerability disposition, registry policy, and clean-consumer release verification |
+| Security | tenant/RBAC boundaries, session and CSRF contracts, MFA primitives, HTML sanitization, abuse limits, secret-free audit events, and the SHA256 checksum sidecar/aggregate for each package | provider secret rotation, real TLS/LDAP/DB configuration, vulnerability disposition, and package signing (GPG/minisign not built yet — see "Artifact provenance" below) |
 | Data | quota allocation, 28-day purge, backup authorization, encrypted archive shape, idempotent lifecycle operations | an actual restore, deletion runbook execution, external-volume snapshots, measured RPO/RTO |
 | Interoperability | SMTP/IMAP/IDLE, Sieve, DAV object semantics, discovery, ICS/vCard, and timezone contracts | vendor client matrix and real protocol endpoints |
 | Operations | health, metrics, logging, alerts, queue visibility, each target's per-package in-place upgrade script, and the shared read-only scanner-signature boundary | host-side scanner feed publication, a real upgrade/rollback rehearsal on each of the three packaging targets, and incident tabletop |
-| Governance | role and delegation policy, default-deny master access, optional Plesk/cPanel tenant-tool boundary, read-only API/MCP, ADRs, documentation inventory, and GitHub Artifact Attestations/SBOM workflow for trusted releases | owner approval of the deployment and disaster-recovery runbooks plus any provider-specific panel adapter |
+| Governance | role and delegation policy, default-deny master access, optional Plesk/cPanel tenant-tool boundary, read-only API/MCP, ADRs, and documentation inventory | owner approval of the deployment and disaster-recovery runbooks, package signing/attestation (see "Artifact provenance" below), and any provider-specific panel adapter |
 
 The source of truth for the checklist remains Section 30 of `GULOGULO.md`.
 The repository copy is deliberately an evidence boundary, not a second product
@@ -64,9 +64,11 @@ current package workflows (`.github/workflows/package-{standalone,cpanel,
 plesk}.yml`) produce an SBOM or a signed attestation today. The current, real
 CI gates for a release are `.github/workflows/quality-gates.yml` (repository
 entry points, MIT/SPDX headers, and the full test suite) plus the three
-packaging workflows, which build and — for standalone only — actually install
-and boot the package; see `../INSTALL.md` for the exact verification
-depth of each target.
+packaging workflows, each of which builds, actually installs
+(`install.sh --non-interactive`), and boots the package, polling
+`/health/ready` and `/` — on cPanel and Plesk the systemd
+enable/start step is stubbed since their CI containers have no init system;
+see `../INSTALL.md` for the exact verification depth of each target.
 
 ## Running the gate
 
@@ -186,11 +188,14 @@ provider approval remains an auditable, separate operation.
 The current HTML5/TypeScript shell is deliberately honest about its stage. It
 uses secure-cookie and CSRF contracts, renders mail/calendar/contact views,
 and refuses to treat realtime metadata or message HTML as trusted application
-content. The complete authenticated `/login` route and its provider LDAP
-adapter are not faked by the release audit. When that route is wired, it must
-keep the Gulo Gulo artwork at the left of the login layout, scale it to
-128×128, and keep the form on the right as recorded in the canonical artwork
-memory.
+content. The authenticated `/login` route is wired to the real, provider-
+backed identity client (`src/runtime/login.ts` resolves the configured
+`GULOGULO_PLATFORM` target and calls its `PlatformAdapter` — LDAP or
+DB-backed for standalone, UAPI for cPanel, REST for Plesk) for every login
+outside `GULOGULO_FIXTURE_MODE=true`; this is not faked by the release audit.
+That route keeps the Gulo Gulo artwork at the left of the login layout,
+scaled to 128×128, with the form on the right, as recorded in the canonical
+artwork memory.
 
 ## External-evidence checklist
 
@@ -201,9 +206,13 @@ The detailed hand-off procedure and the account-deletion, backup/restore,
 scanner, migration, rollback, and incident/DR runbooks are collected in
 [INSTALL.md](../INSTALL.md).
 
-1. Package build evidence per target: the standalone install-and-boot proof
-   from `package-standalone.yml`, and the cPanel/Plesk dry-run/structural
-   package checks (see `../INSTALL.md`).
+1. Package build evidence per target: each of `package-standalone.yml`,
+   `package-cpanel.yml`, and `package-plesk.yml` builds, installs
+   non-interactively, boots the compiled server, and polls
+   `/health/ready`/`/`; on cPanel/Plesk the systemd enable/start step is
+   stubbed (no init system in the CI container) — real field evidence for
+   that part, and for the Apache/nginx reverse-proxy wiring, is still
+   outstanding (see `../INSTALL.md`).
 2. TLS/ACME issuance, renewal, expiry alert, LDAP bind, and PostgreSQL backup
    evidence.
 3. Postfix, Rspamd, ClamAV, Dovecot, Sieve, CalDAV, CardDAV, and autodiscovery

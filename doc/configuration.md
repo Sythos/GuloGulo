@@ -47,6 +47,7 @@ The defaults keep the empty scaffold useful without external services:
 host: 0.0.0.0
 port: 8080
 environment: development
+identity source: ldap (standalone may switch to database)
 LDAP: disabled
 PostgreSQL: disabled
 upstream Plesk/cPanel tenant tool: disabled
@@ -62,7 +63,11 @@ trash retention: 28 days
 API/MCP: read-only
 upgrade strategy: in_place
 patching mode: build_and_operator
+alerting: disabled
 ```
+
+See [Identity and PostgreSQL](identity-and-postgres.md) for `identity.source`
+and [Runtime and observability](observability.md) for `alerting.*`.
 
 The parser rejects attempts to enable catch-all, user forwarding, or a
 write-capable API. Enabling LDAP requires `ldap.bindDn`, `ldap.bindSecretRef`,
@@ -103,7 +108,7 @@ integration](control-panel-integration.md) for the binding and field runbook.
 
 ## External scanner signature volume
 
-Rspamd and ClamAV definition data is intentionally not stored in the image.
+Rspamd and ClamAV definition data is intentionally not stored in the package.
 `GULOGULO_SCANNER_SIGNATURE_ROOT`,
 `GULOGULO_SCANNER_SIGNATURE_MAX_AGE_SECONDS`, and
 `GULOGULO_LP3_SCANNER_SIGNATURES_VOLUME` describe the provider-owned shared
@@ -124,7 +129,7 @@ placeholders. Copy it for local work, but never commit a populated `.env` file.
 
 ## Build metadata
 
-Set these values from the image or deployment pipeline:
+Set these values from the package build or deployment pipeline:
 
 ```powershell
 $env:GULOGULO_VERSION = '0.1.5'
@@ -145,5 +150,5 @@ npm run build:server
 node dist/server/src/core/foundation/config.test.js
 ```
 
-For a normal package run, use `npm test`. The CI image executes the same script
-with the lockfile installed by `npm ci`.
+For a normal package run, use `npm test`. CI executes the same script with the
+lockfile installed by `npm ci`.
