@@ -34,6 +34,9 @@
     "src/core/capacity/**/*.ts",
     "src/core/secrets/**/*.ts",
     "src/core/upgrade/**/*.ts",
+    "src/core/backup/**/*.ts",
+    "src/core/lifecycle/**/*.ts",
+    "src/core/release/**/*.ts",
     "src/core/dav/**/*.ts",
     "src/web/**/*.ts",
     "src/platform/**/*.ts"
