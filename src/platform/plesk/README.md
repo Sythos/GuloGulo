@@ -4,5 +4,78 @@ SPDX-FileCopyrightText: 2026 Sythos (https://www.sythos.net)
 Author: Sythos (https://www.sythos.net)
 -->
 
-Implementazione dell'adapter Plesk — pianificata per la milestone PK4.
-Vedi ADR-002 e `src/platform/contract/` per il contratto da implementare.
+Adapter `plesk` (ADR-002): il terzo target di distribuzione, per un
+operatore che ospita Gulo Gulo su un server Plesk. Implementa
+`PlatformAdapter` (`src/platform/contract/platform-adapter.ts`) come sottile
+layer di wiring, sullo stesso modello degli adapter `standalone`
+(`src/platform/standalone/`) e `cpanel` (`src/platform/cpanel/`), con
+un'unica differenza sostanziale: l'identità utente non passa da LDAP, perché
+Plesk gestisce i propri account email autonomamente tramite la sua REST API
+moderna (`/api/v2/*`, in ascolto tipicamente su `:8443`).
+
+## Cosa implementa oggi
+
+- **Client API iniettabile** (`plesk-api-client.ts`): `createPleskApiClient()`
+  parla con la REST API locale di Plesk (`https://127.0.0.1:8443/api/v2/
+  <path>`) via `fetch` nativo di Node, autenticato con header
+  `X-API-Key: <chiave>`. Gestisce timeout configurabile, errore su risposta
+  non-2xx, corpo vuoto (risolto a `null` invece di fallire) ed errore su
+  corpo JSON malformato; la chiave API non compare mai in un messaggio
+  d'errore o in un log. L'intera interazione HTTP passa dall'interfaccia
+  `PleskApiClientLike` (`request(method, path, body?)`), così ogni
+  consumatore (a partire dall'identity client) può ricevere un fake iniettato
+  nei test invece di dipendere dal comportamento HTTP reale.
+- **Identità via REST API** (`plesk-identity-client.ts`):
+  `createPleskIdentityClient()` ritorna la stessa shape `LdapIdentityClient`
+  già usata per standalone e cPanel (`lookupUser`, `authenticate`,
+  `healthCheck`, `close`) implementata sopra `PleskApiClientLike`.
+  `lookupUser()` chiama `GET /api/v2/domains` per risolvere il dominio del
+  tenant, poi `GET /api/v2/domains/{id}/mail-accounts` per cercare l'account
+  email corrispondente e lo mappa in `TenantIdentity`. `healthCheck()` usa
+  `GET /api/v2/server` come probe di raggiungibilità a basso impatto.
+- **Dati**: `createDataStore()` riusa `createPostgresStore()` esistente — la
+  stessa scelta pragmatica già fatta per standalone e cPanel. Il motore
+  MySQL/MariaDB tipico di Plesk promesso da ADR-002 resta backlog: un host
+  Plesk con PostgreSQL abilitato funziona oggi.
+- **Sessioni**: `createSessionStore()` usa lo stesso store in-memory di
+  default degli altri due target.
+- **Configurazione**: `PleskApiSettings` (`src/integrations/types.ts`,
+  aggiunto in modo additivo a `IntegrationConfig`, stesso pattern di
+  `CpanelApiSettings`) — `baseUrl`, `apiKeySecretRef`, `timeoutMs`. Il
+  caricamento di questi valori da un file di configurazione reale non è
+  ancora cablato in `src/runtime/config.ts` (che oggi conosce solo
+  `ldap`/`postgres`/`controlPanel`): finché non lo sarà, l'integrazione
+  Plesk resta disabilitata di default, in modo sicuro.
+
+## Endpoint REST assunti, da validare sul campo
+
+Non è stato possibile verificare questi dettagli contro un'istanza Plesk
+reale. Solo `GET /api/v2/domains` è confermato dalla ricerca fatta a monte
+di questo task; il resto è l'ipotesi più ragionevole sulla forma della REST
+API, documentata inline nel codice (`plesk-identity-client.ts`) e da
+confermare prima di un uso in produzione:
+
+- `GET /api/v2/domains/{id}/mail-accounts` per elencare gli account email di
+  un dominio — potrebbe invece essere una collezione top-level tipo
+  `/api/v2/mail-accounts?domain=...`, o avere un path diverso.
+- `GET /api/v2/server` come probe di raggiungibilità — qualunque altro
+  endpoint `/api/v2/*` read-only e stabile andrebbe bene allo stesso scopo.
+
+## Limitazione nota: `authenticate()`
+
+La REST API di Plesk non espone un endpoint generico e sicuro per verificare
+la password di un account email arbitrario dall'esterno — le risorse
+dominio/mail-account gestiscono gli account, non li autenticano. Piuttosto
+che inventare un endpoint non documentato e non verificabile contro un Plesk
+reale, `authenticate()` fallisce **sempre e in modo esplicito**: ritorna
+`false` (fail-closed) e logga il motivo — stessa scelta già fatta per
+l'adapter cPanel, per coerenza. La verifica password reale per gli account
+email Plesk è pianificata per una milestone successiva, con due strade più
+probabili: un login IMAP/POP3 diretto contro il server mail locale (pattern
+già disponibile in questo progetto per i percorsi di autenticazione basati
+su LDAP), oppure un'estensione Plesk dedicata.
+
+## Cosa manca
+
+Il packaging per questo target (installer, unit systemd, reverse proxy) è
+pianificato per il prossimo task di questa stessa milestone, non incluso qui.

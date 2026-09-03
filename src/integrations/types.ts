@@ -65,16 +65,31 @@ export interface CpanelApiSettings {
   timeoutMs: number;
 }
 
+/**
+ * The subset of the loaded configuration consumed by the Plesk identity
+ * adapter (`src/platform/plesk/`): where to reach the local Plesk REST API
+ * (`/api/v2/*`) and which API key identifies Gulo Gulo to it. Additive to the
+ * existing `IntegrationConfig` contract — no existing field changes shape.
+ */
+export interface PleskApiSettings {
+  enabled: boolean;
+  baseUrl: string;
+  apiKeySecretRef: string | null;
+  timeoutMs: number;
+}
+
 /** A deliberately narrow configuration envelope so adapters do not depend on runtime internals. */
 export interface IntegrationConfig {
   readonly contract?: {
     readonly ldap?: Partial<LdapSettings>;
     readonly postgres?: Partial<PostgresSettings>;
     readonly cpanel?: Partial<CpanelApiSettings>;
+    readonly plesk?: Partial<PleskApiSettings>;
   };
   readonly ldap?: Partial<LdapSettings>;
   readonly postgres?: Partial<PostgresSettings>;
   readonly cpanel?: Partial<CpanelApiSettings>;
+  readonly plesk?: Partial<PleskApiSettings>;
 }
 
 /** A secret resolver never receives or exposes a plaintext secret reference in logs. */
