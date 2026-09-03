@@ -33,6 +33,8 @@ import {
   requireWebAndServerBuildOutput,
   runNpmScript,
   stageCommonApplicationFiles,
+  updateChecksumsAggregate,
+  writeChecksumFile,
 } from '../shared/stage-application.ts';
 
 const scriptDirectory = dirname(fileURLToPath(import.meta.url));
@@ -73,7 +75,11 @@ async function main(): Promise<void> {
       await chmod(join(stagingRoot, executable), 0o755);
     }
 
-    await createTarball({ stagingParent, archiveBaseName, outputDirectory, version, log });
+    const archivePath = await createTarball({ stagingParent, archiveBaseName, outputDirectory, version, log });
+
+    const checksum = await writeChecksumFile(archivePath);
+    log(`  sha256:  ${checksum}`);
+    await updateChecksumsAggregate(outputDirectory);
   } finally {
     await cleanupStagingParent(stagingParent);
   }

@@ -73,6 +73,15 @@ jobs:
           test -f "$INSTALL_DIR/run-migrations.mjs"
           test -f "$INSTALL_DIR/gulogulo.service.example"
 
+      - name: Verify the package checksum
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd packaging/dist
+          TARBALL="$(basename "$(ls gulogulo-*-standalone.tar.gz)")"
+          test -f "${TARBALL}.sha256"
+          sha256sum -c "${TARBALL}.sha256"
+
       - name: Run the installer non-interactively
         shell: bash
         env:
@@ -126,5 +135,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: gulogulo-standalone-package
-          path: packaging/dist/gulogulo-*-standalone.tar.gz
+          path: |
+            packaging/dist/gulogulo-*-standalone.tar.gz
+            packaging/dist/gulogulo-*-standalone.tar.gz.sha256
           if-no-files-found: error

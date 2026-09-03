@@ -52,7 +52,7 @@ test('configuration defaults are versioned, deterministic, and secret-free', () 
   assert.equal(first.mail.queueMaxAttempts, 5);
   assert.equal(first.retention.trashDays, 28);
   assert.equal(first.api.readOnly, true);
-  assert.equal(first.upgrade.strategy, 'blue_green');
+  assert.equal(first.upgrade.strategy, 'in_place');
   assert.equal(first.patching.mode, 'build_and_operator');
   assert.equal(first.patching.statusFile, '/var/lib/gulogulo/patch/status.json');
   assert.deepEqual(first.controlPanel, {
@@ -135,6 +135,115 @@ test('optional upstream Plesk or cPanel configuration is loaded and remains read
 
   withConfigFile({ schemaVersion: 1, controlPanel: { allowDnsChanges: true } }, (filePath) => {
     assert.throws(() => loadConfiguration({}, { configFilePath: filePath }), /allowDnsChanges is permanently false/);
+  });
+});
+
+test('cPanel and Plesk API settings default to disabled and are read from the environment', () => {
+  const defaults = loadConfiguration({}, { configFilePath: null });
+
+  assert.deepEqual(defaults.cpanel, {
+    enabled: false,
+    baseUrl: 'https://cpanel.example.invalid:2083',
+    username: '',
+    apiTokenSecretRef: null,
+    timeoutMs: 5_000,
+  });
+  assert.deepEqual(defaults.plesk, {
+    enabled: false,
+    baseUrl: 'https://plesk.example.invalid:8443',
+    apiKeySecretRef: null,
+    timeoutMs: 5_000,
+  });
+
+  const configuration = loadConfiguration(
+    {
+      CPANEL_API_ENABLED: 'true',
+      CPANEL_API_BASE_URL: 'https://cpanel.example.test:2083',
+      CPANEL_API_USERNAME: 'gulogulo',
+      CPANEL_API_TOKEN_SECRET_REF: 'cpanel-token',
+      CPANEL_API_TIMEOUT_MS: '4000',
+      PLESK_API_ENABLED: 'true',
+      PLESK_API_BASE_URL: 'https://plesk.example.test:8443',
+      PLESK_API_KEY_SECRET_REF: 'plesk-key',
+      PLESK_API_TIMEOUT_MS: '4500',
+    },
+    { configFilePath: null },
+  );
+
+  assert.deepEqual(configuration.cpanel, {
+    enabled: true,
+    baseUrl: 'https://cpanel.example.test:2083',
+    username: 'gulogulo',
+    apiTokenSecretRef: 'cpanel-token',
+    timeoutMs: 4_000,
+  });
+  assert.deepEqual(configuration.plesk, {
+    enabled: true,
+    baseUrl: 'https://plesk.example.test:8443',
+    apiKeySecretRef: 'plesk-key',
+    timeoutMs: 4_500,
+  });
+});
+
+test('cPanel and Plesk API settings can be loaded from a configuration file', () => {
+  withConfigFile(
+    {
+      schemaVersion: 1,
+      cpanel: {
+        enabled: true,
+        baseUrl: 'https://cpanel.example.test:2083',
+        username: 'gulogulo',
+        apiTokenSecretRef: 'cpanel-token',
+        timeoutMs: 6_000,
+      },
+      plesk: {
+        enabled: true,
+        baseUrl: 'https://plesk.example.test:8443',
+        apiKeySecretRef: 'plesk-key',
+        timeoutMs: 6_500,
+      },
+    },
+    (filePath) => {
+      const configuration = loadConfiguration({}, { configFilePath: filePath });
+
+      assert.equal(configuration.cpanel.enabled, true);
+      assert.equal(configuration.cpanel.username, 'gulogulo');
+      assert.equal(configuration.cpanel.apiTokenSecretRef, 'cpanel-token');
+      assert.equal(configuration.cpanel.timeoutMs, 6_000);
+      assert.equal(configuration.plesk.enabled, true);
+      assert.equal(configuration.plesk.apiKeySecretRef, 'plesk-key');
+      assert.equal(configuration.plesk.timeoutMs, 6_500);
+    },
+  );
+});
+
+test('invalid cPanel and Plesk configuration fails closed with clear errors', () => {
+  withConfigFile({ schemaVersion: 1, cpanel: { enabled: true } }, (filePath) => {
+    assert.throws(() => loadConfiguration({}, { configFilePath: filePath }), /cpanel\.username is required/);
+  });
+
+  withConfigFile({ schemaVersion: 1, cpanel: { enabled: true, username: 'gulogulo' } }, (filePath) => {
+    assert.throws(() => loadConfiguration({}, { configFilePath: filePath }), /cpanel\.apiTokenSecretRef is required/);
+  });
+
+  withConfigFile({ schemaVersion: 1, plesk: { enabled: true } }, (filePath) => {
+    assert.throws(() => loadConfiguration({}, { configFilePath: filePath }), /plesk\.apiKeySecretRef is required/);
+  });
+
+  withConfigFile({ schemaVersion: 1, cpanel: { baseUrl: 'http://cpanel.example.test' } }, (filePath) => {
+    assert.throws(() => loadConfiguration({}, { configFilePath: filePath }), /cpanel\.baseUrl must use https/);
+  });
+
+  withConfigFile({ schemaVersion: 1, plesk: { baseUrl: 'not a url' } }, (filePath) => {
+    assert.throws(() => loadConfiguration({}, { configFilePath: filePath }), /plesk\.baseUrl must be a valid HTTPS URL/);
+  });
+
+  withConfigFile({ schemaVersion: 1, cpanel: { unknownSetting: true } }, (filePath) => {
+    assert.throws(() => loadConfiguration({}, { configFilePath: filePath }), /cpanel\.unknownSetting is unknown/);
+  });
+
+  withConfigFile({ schemaVersion: 1, cpanel: { apiToken: 'plaintext-not-allowed' } }, (filePath) => {
+    assert.throws(() => loadConfiguration({}, { configFilePath: filePath }), /cpanel\.apiToken is not allowed/);
   });
 });
 

@@ -62,6 +62,8 @@ import {
   requireWebAndServerBuildOutput,
   runNpmScript,
   stageCommonApplicationFiles,
+  updateChecksumsAggregate,
+  writeChecksumFile,
 } from '../shared/stage-application.ts';
 
 const scriptDirectory = dirname(fileURLToPath(import.meta.url));
@@ -133,6 +135,10 @@ async function main(): Promise<void> {
     const archivePath = join(outputDirectory, `${archiveBaseName}.zip`);
     await createZipArchive({ sourceRoot: stagingRoot, archivePath, log });
     log(`  version: ${version}`);
+
+    const checksum = await writeChecksumFile(archivePath);
+    log(`  sha256:  ${checksum}`);
+    await updateChecksumsAggregate(outputDirectory);
   } finally {
     await cleanupStagingParent(stagingParent);
   }

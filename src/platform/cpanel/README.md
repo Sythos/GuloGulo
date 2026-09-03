@@ -38,10 +38,11 @@ email autonomamente.
   default dello standalone.
 - **Configurazione**: `CpanelApiSettings` (`src/integrations/types.ts`,
   aggiunto in modo additivo a `IntegrationConfig`) — `baseUrl`, `username`,
-  `apiTokenSecretRef`, `timeoutMs`. Il caricamento di questi valori da un file
-  di configurazione reale non è ancora cablato in `src/runtime/config.ts` (che
-  oggi conosce solo `ldap`/`postgres`/`controlPanel`): finché non lo sarà,
-  l'integrazione cPanel resta disabilitata di default, in modo sicuro.
+  `apiTokenSecretRef`, `timeoutMs`. Il caricamento di questi valori da file di
+  configurazione ed env (`CPANEL_API_*`, vedi `.env.example`) è cablato in
+  `src/runtime/config.ts`, con lo stesso meccanismo e la stessa validazione
+  già usati per `ldap`/`postgres`/`controlPanel`: resta disabilitata di
+  default finché `cpanel.enabled`/`CPANEL_API_ENABLED` non è impostato.
 
 ## Limitazione nota: `authenticate()`
 

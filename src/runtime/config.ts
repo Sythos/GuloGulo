@@ -32,7 +32,8 @@ const MAILBOX_PATH_PATTERN = /^\/[A-Za-z0-9._/-]{1,255}$/;
 const SECRET_REFERENCE_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._/-]{0,127}$/;
 const CONTROL_PANEL_REFERENCE_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$/;
 const DISTINGUISHED_NAME_PATTERN = /^[\x20-\x7E]{1,512}$/;
-const SECRET_KEY_PATTERN = /(password|passphrase|token|private[_-]?key|credential(?!secretref)|authorization|cookie|api[_-]?key|secret(?!ref)|(^|[_-])dsn($|[_-]))/i;
+const SECRET_KEY_PATTERN = /(password|passphrase|token(?!secretref)|private[_-]?key|credential(?!secretref)|authorization|cookie|api[_-]?key(?!secretref)|secret(?!ref)|(^|[_-])dsn($|[_-]))/i;
+const CPANEL_USERNAME_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/;
 const MAX_CONFIGURATION_FILE_BYTES = 1024 * 1024;
 
 const TOP_LEVEL_KEYS = new Set([
@@ -45,6 +46,8 @@ const TOP_LEVEL_KEYS = new Set([
   'ldap',
   'postgres',
   'controlPanel',
+  'cpanel',
+  'plesk',
   'mail',
   'certificates',
   'webAuth',
@@ -91,6 +94,19 @@ const SECTION_KEYS = Object.freeze({
     'webhookSecretRef',
     'syncMode',
     'allowDnsChanges',
+  ]),
+  cpanel: new Set([
+    'enabled',
+    'baseUrl',
+    'username',
+    'apiTokenSecretRef',
+    'timeoutMs',
+  ]),
+  plesk: new Set([
+    'enabled',
+    'baseUrl',
+    'apiKeySecretRef',
+    'timeoutMs',
   ]),
   mail: new Set([
     'imapIdle',
@@ -165,6 +181,19 @@ const ENVIRONMENT_VARIABLES = Object.freeze({
     credentialSecretRef: ['GULOGULO_CONTROL_PANEL_CREDENTIAL_SECRET_REF', 'CONTROL_PANEL_CREDENTIAL_SECRET_REF'],
     webhookSecretRef: ['GULOGULO_CONTROL_PANEL_WEBHOOK_SECRET_REF', 'CONTROL_PANEL_WEBHOOK_SECRET_REF'],
     syncMode: ['GULOGULO_CONTROL_PANEL_SYNC_MODE', 'CONTROL_PANEL_SYNC_MODE'],
+  },
+  cpanel: {
+    enabled: ['GULOGULO_CPANEL_API_ENABLED', 'CPANEL_API_ENABLED'],
+    baseUrl: ['GULOGULO_CPANEL_API_BASE_URL', 'CPANEL_API_BASE_URL'],
+    username: ['GULOGULO_CPANEL_API_USERNAME', 'CPANEL_API_USERNAME'],
+    apiTokenSecretRef: ['GULOGULO_CPANEL_API_TOKEN_SECRET_REF', 'CPANEL_API_TOKEN_SECRET_REF'],
+    timeoutMs: ['GULOGULO_CPANEL_API_TIMEOUT_MS', 'CPANEL_API_TIMEOUT_MS'],
+  },
+  plesk: {
+    enabled: ['GULOGULO_PLESK_API_ENABLED', 'PLESK_API_ENABLED'],
+    baseUrl: ['GULOGULO_PLESK_API_BASE_URL', 'PLESK_API_BASE_URL'],
+    apiKeySecretRef: ['GULOGULO_PLESK_API_KEY_SECRET_REF', 'PLESK_API_KEY_SECRET_REF'],
+    timeoutMs: ['GULOGULO_PLESK_API_TIMEOUT_MS', 'PLESK_API_TIMEOUT_MS'],
   },
   mail: {
     imapIdle: ['GULOGULO_MAIL_IMAP_IDLE', 'MAIL_IMAP_IDLE'],
@@ -324,6 +353,34 @@ function readSecretReference(value, name) {
   return readString(value, name, SECRET_REFERENCE_PATTERN);
 }
 
+function readHttpsUrl(value, name) {
+  const url = readString(value, name);
+  let parsed;
+  try {
+    parsed = new URL(url);
+  } catch {
+    throw configurationError(`${name} must be a valid HTTPS URL`);
+  }
+
+  if (parsed.protocol !== 'https:' || parsed.username || parsed.password || parsed.search || parsed.hash) {
+    throw configurationError(`${name} must use https:// without embedded credentials, query, or fragment`);
+  }
+
+  return url;
+}
+
+function readUsername(value, name) {
+  return readString(value, name, CPANEL_USERNAME_PATTERN);
+}
+
+function readEnvironmentOptionalUsername(value, name) {
+  if (value === '') {
+    return '';
+  }
+
+  return readUsername(value, name);
+}
+
 function readEnvironmentOptionalSecretReference(value, name) {
   if (value === '') {
     return null;
@@ -464,6 +521,8 @@ function buildConfiguration(fileConfiguration, environment) {
   const ldapFile = readSection(fileConfiguration, 'ldap');
   const postgresFile = readSection(fileConfiguration, 'postgres');
   const controlPanelFile = readSection(fileConfiguration, 'controlPanel');
+  const cpanelFile = readSection(fileConfiguration, 'cpanel');
+  const pleskFile = readSection(fileConfiguration, 'plesk');
   const mailFile = readSection(fileConfiguration, 'mail');
   const certificatesFile = readSection(fileConfiguration, 'certificates');
   const webAuthFile = readSection(fileConfiguration, 'webAuth');
@@ -531,6 +590,19 @@ function buildConfiguration(fileConfiguration, environment) {
       syncMode: controlPanelFile.syncMode ?? 'pull',
       allowDnsChanges: controlPanelFile.allowDnsChanges ?? false,
     },
+    cpanel: {
+      enabled: readBoolean(cpanelFile.enabled ?? false, 'cpanel.enabled'),
+      baseUrl: readHttpsUrl(cpanelFile.baseUrl ?? 'https://cpanel.example.invalid:2083', 'cpanel.baseUrl'),
+      username: cpanelFile.username === undefined ? '' : readUsername(cpanelFile.username, 'cpanel.username'),
+      apiTokenSecretRef: cpanelFile.apiTokenSecretRef === undefined ? null : readSecretReference(cpanelFile.apiTokenSecretRef, 'cpanel.apiTokenSecretRef'),
+      timeoutMs: readInteger(cpanelFile.timeoutMs ?? 5_000, 'cpanel.timeoutMs', 1, 120_000),
+    },
+    plesk: {
+      enabled: readBoolean(pleskFile.enabled ?? false, 'plesk.enabled'),
+      baseUrl: readHttpsUrl(pleskFile.baseUrl ?? 'https://plesk.example.invalid:8443', 'plesk.baseUrl'),
+      apiKeySecretRef: pleskFile.apiKeySecretRef === undefined ? null : readSecretReference(pleskFile.apiKeySecretRef, 'plesk.apiKeySecretRef'),
+      timeoutMs: readInteger(pleskFile.timeoutMs ?? 5_000, 'plesk.timeoutMs', 1, 120_000),
+    },
     mail: {
       imapIdle: readBoolean(mailFile.imapIdle ?? true, 'mail.imapIdle'),
       pop3sEnabled: readBoolean(mailFile.pop3sEnabled ?? false, 'mail.pop3sEnabled'),
@@ -568,7 +640,7 @@ function buildConfiguration(fileConfiguration, environment) {
       readOnly: readBoolean(apiFile.readOnly ?? true, 'api.readOnly'),
     },
     upgrade: {
-      strategy: readEnum(upgradeFile.strategy ?? 'blue_green', 'upgrade.strategy', ['blue_green']),
+      strategy: readEnum(upgradeFile.strategy ?? 'in_place', 'upgrade.strategy', ['in_place']),
     },
     patching: {
       mode: readEnum(
@@ -598,6 +670,8 @@ function buildConfiguration(fileConfiguration, environment) {
     ['ldap', config.ldap, ENVIRONMENT_VARIABLES.ldap],
     ['postgres', config.postgres, ENVIRONMENT_VARIABLES.postgres],
     ['controlPanel', config.controlPanel, ENVIRONMENT_VARIABLES.controlPanel],
+    ['cpanel', config.cpanel, ENVIRONMENT_VARIABLES.cpanel],
+    ['plesk', config.plesk, ENVIRONMENT_VARIABLES.plesk],
     ['mail', config.mail, ENVIRONMENT_VARIABLES.mail],
     ['certificates', config.certificates, ENVIRONMENT_VARIABLES.certificates],
     ['webAuth', config.webAuth, ENVIRONMENT_VARIABLES.webAuth],
@@ -658,6 +732,23 @@ function buildConfiguration(fileConfiguration, environment) {
       continue;
     }
 
+    if (sectionName === 'cpanel') {
+      applyEnvironmentValue(target, 'enabled', environment, variables.enabled, readEnvironmentBoolean);
+      applyEnvironmentValue(target, 'baseUrl', environment, variables.baseUrl, readHttpsUrl);
+      applyEnvironmentValue(target, 'username', environment, variables.username, readEnvironmentOptionalUsername);
+      applyEnvironmentValue(target, 'apiTokenSecretRef', environment, variables.apiTokenSecretRef, readEnvironmentOptionalSecretReference);
+      applyEnvironmentValue(target, 'timeoutMs', environment, variables.timeoutMs, (value, name) => readEnvironmentInteger(value, name, 1, 120_000));
+      continue;
+    }
+
+    if (sectionName === 'plesk') {
+      applyEnvironmentValue(target, 'enabled', environment, variables.enabled, readEnvironmentBoolean);
+      applyEnvironmentValue(target, 'baseUrl', environment, variables.baseUrl, readHttpsUrl);
+      applyEnvironmentValue(target, 'apiKeySecretRef', environment, variables.apiKeySecretRef, readEnvironmentOptionalSecretReference);
+      applyEnvironmentValue(target, 'timeoutMs', environment, variables.timeoutMs, (value, name) => readEnvironmentInteger(value, name, 1, 120_000));
+      continue;
+    }
+
     if (sectionName === 'mail') {
       applyEnvironmentValue(target, 'imapIdle', environment, variables.imapIdle, readEnvironmentBoolean);
       applyEnvironmentValue(target, 'pop3sEnabled', environment, variables.pop3sEnabled, readEnvironmentBoolean);
@@ -705,7 +796,7 @@ function buildConfiguration(fileConfiguration, environment) {
     }
 
     if (sectionName === 'upgrade') {
-      applyEnvironmentValue(target, 'strategy', environment, variables.strategy, (value, name) => readEnvironmentEnum(value, name, ['blue_green']));
+      applyEnvironmentValue(target, 'strategy', environment, variables.strategy, (value, name) => readEnvironmentEnum(value, name, ['in_place']));
       continue;
     }
 
@@ -737,6 +828,18 @@ function buildConfiguration(fileConfiguration, environment) {
 
   if (config.postgres.enabled && config.postgres.dsnSecretRef === null) {
     throw configurationError('postgres.dsnSecretRef is required when postgres.enabled is true');
+  }
+
+  if (config.cpanel.enabled && config.cpanel.username === '') {
+    throw configurationError('cpanel.username is required when cpanel.enabled is true');
+  }
+
+  if (config.cpanel.enabled && config.cpanel.apiTokenSecretRef === null) {
+    throw configurationError('cpanel.apiTokenSecretRef is required when cpanel.enabled is true');
+  }
+
+  if (config.plesk.enabled && config.plesk.apiKeySecretRef === null) {
+    throw configurationError('plesk.apiKeySecretRef is required when plesk.enabled is true');
   }
 
   config.controlPanel = createControlPanelConfig(config.controlPanel);

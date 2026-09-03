@@ -42,10 +42,11 @@ moderna (`/api/v2/*`, in ascolto tipicamente su `:8443`).
 - **Configurazione**: `PleskApiSettings` (`src/integrations/types.ts`,
   aggiunto in modo additivo a `IntegrationConfig`, stesso pattern di
   `CpanelApiSettings`) — `baseUrl`, `apiKeySecretRef`, `timeoutMs`. Il
-  caricamento di questi valori da un file di configurazione reale non è
-  ancora cablato in `src/runtime/config.ts` (che oggi conosce solo
-  `ldap`/`postgres`/`controlPanel`): finché non lo sarà, l'integrazione
-  Plesk resta disabilitata di default, in modo sicuro.
+  caricamento di questi valori da file di configurazione ed env
+  (`PLESK_API_*`, vedi `.env.example`) è cablato in `src/runtime/config.ts`,
+  con lo stesso meccanismo e la stessa validazione già usati per
+  `ldap`/`postgres`/`controlPanel`: resta disabilitata di default finché
+  `plesk.enabled`/`PLESK_API_ENABLED` non è impostato.
 
 ## Endpoint REST assunti, da validare sul campo
 

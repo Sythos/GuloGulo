@@ -107,6 +107,15 @@ jobs:
             grep -qF "$field" "$EXTRACT_DIR/meta.xml" || { echo "meta.xml is missing $field" >&2; exit 1; }
           done
 
+      - name: Verify the package checksum
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd packaging/dist
+          ARCHIVE_NAME="$(basename "$(ls gulogulo-*-plesk.zip)")"
+          test -f "${ARCHIVE_NAME}.sha256"
+          sha256sum -c "${ARCHIVE_NAME}.sha256"
+
       - name: Verify meta.xml is well-formed XML
         shell: bash
         run: |
@@ -134,5 +143,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: gulogulo-plesk-package
-          path: packaging/dist/gulogulo-*-plesk.zip
+          path: |
+            packaging/dist/gulogulo-*-plesk.zip
+            packaging/dist/gulogulo-*-plesk.zip.sha256
           if-no-files-found: error

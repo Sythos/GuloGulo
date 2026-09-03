@@ -6,7 +6,7 @@ Author: Sythos (https://www.sythos.net)
 
 # Gulo Gulo
 
-> **ℹ️ Nota.** Il vecchio modello di distribuzione container/Docker è stato rimosso — vedi [ADR-002](../ADR-002-gulogulo-packaging-and-distribution-targets.md). Le checklist sotto sono state aggiornate al nuovo modello a 3 pacchetti; alcune voci restano deliberatamente non spuntate dove il lavoro di packaging non ha ancora un equivalente del vecchio meccanismo container (es. firma/checksum dei pacchetti).
+> **ℹ️ Nota.** Il vecchio modello di distribuzione container/Docker è stato rimosso — vedi [ADR-002](doc/adr/ADR-002-gulogulo-packaging-and-distribution-targets.md). Le checklist sotto sono state aggiornate al nuovo modello a 3 pacchetti; alcune voci restano deliberatamente non spuntate dove il lavoro di packaging non ha ancora un equivalente del vecchio meccanismo container (es. firma/checksum dei pacchetti).
 
 [![Issues](https://img.shields.io/github/issues/Sythos/GuloGulo?label=issues)](https://github.com/Sythos/GuloGulo/issues)
 [![Last commit](https://img.shields.io/github/last-commit/Sythos/GuloGulo?label=last%20commit)](https://github.com/Sythos/GuloGulo/commits/main/)
@@ -23,7 +23,7 @@ Author: Sythos (https://www.sythos.net)
 
 Gulo Gulo is a mail-first, tenant-isolated groupware platform, distributed as
 cPanel, Plesk, and standalone packages built from the same TypeScript core
-(see [ADR-002](../ADR-002-gulogulo-packaging-and-distribution-targets.md)).
+(see [ADR-002](doc/adr/ADR-002-gulogulo-packaging-and-distribution-targets.md)).
 The guiding animal is the wolverine (*Gulo gulo*). Human-facing text uses
 **Gulo Gulo**; file names, paths, package names, and other machine-facing
 identifiers use **gulogulo** without spaces.
@@ -40,7 +40,7 @@ reconciliation kept as a separate backlog item.
 ## Quickstart
 
 Full instructions, requirements, and known gaps for each target are in
-[READ_BEFORE_USE.md](doc/READ_BEFORE_USE.md) - this is the short version.
+[INSTALL.md](INSTALL.md) - this is the short version.
 
 **Standalone** (any Linux host, Node.js 26+):
 
@@ -69,7 +69,7 @@ plesk bin extension -i packaging/dist/gulogulo-<version>-plesk.zip
 Only the standalone archive has a real end-to-end install-and-health-check
 rehearsal today (in CI, on a clean runner). The cPanel and Plesk packages
 build and their structure is verified, but installing them on a real host is
-still field work - see the honesty notes in READ_BEFORE_USE.md before relying
+still field work - see the honesty notes in INSTALL.md before relying
 on either in production.
 
 ## Production readiness checklist
@@ -78,7 +78,7 @@ This is the implementation checklist derived from section 30 of the
 authoritative specification. A check mark means that the repository contains
 the relevant code, contract, or runbook and its repository gate passes.
 Deployment and field evidence do not keep an implementation item open: they are
-tracked in [READ_BEFORE_USE.md](doc/READ_BEFORE_USE.md) and the release evidence
+tracked in [INSTALL.md](INSTALL.md) and the release evidence
 record. An unchecked item means that repository code or release automation is
 still missing.
 
@@ -99,7 +99,7 @@ still missing.
 - [ ] package checksum/signing and consumer-verification gate for the cPanel,
   Plesk, and standalone archives; the container-era SBOM/image-attestation
   workflow was retired with the container model (see
-  [ADR-002](../ADR-002-gulogulo-packaging-and-distribution-targets.md)) and
+  [ADR-002](doc/adr/ADR-002-gulogulo-packaging-and-distribution-targets.md)) and
   has no packaging-target equivalent yet.
 
 ### Data
@@ -112,7 +112,7 @@ still missing.
 - [x] restore tested;
 - [x] purge idempotent;
 - [x] account deletion runbook defined; provider approval and rehearsal are
-  tracked in READ_BEFORE_USE.md.
+  tracked in INSTALL.md.
 
 ### Interoperability
 
@@ -139,7 +139,7 @@ still missing.
 - [x] tenant-bound DAV ETags and sync tokens;
 - [x] cPanel, Plesk, and standalone packages build and their structure is
   verified in CI; only the standalone archive has a real install-and-health-
-  check rehearsal today, tracked in [READ_BEFORE_USE.md](doc/READ_BEFORE_USE.md);
+  check rehearsal today, tracked in [INSTALL.md](INSTALL.md);
 - [x] provenance and release permissions are granted only by version-tag pushes
   or trusted manual callers, while pull-request validation remains read-only;
 - [x] log rotation;
@@ -149,17 +149,17 @@ still missing.
 - [x] fail-closed disposable patch helper and sanitized read-only patch status;
 - [x] externally managed Rspamd/ClamAV definition updates through a shared
   read-only signature volume with freshness, atomic activation, and rollback
-  metadata; provider updater execution is tracked in READ_BEFORE_USE.md;
+  metadata; provider updater execution is tracked in INSTALL.md;
 - [x] provider-only migration contract, compatibility window, and rollback state machine;
 - [x] in-place upgrade scripts for all three packaging targets (backup,
   replace, migrate, restart); field rehearsal on cPanel/Plesk is tracked in
-  READ_BEFORE_USE.md;
+  INSTALL.md;
 - [x] in-place upgrade and rollback runbook defined; live rehearsal is
-  tracked in READ_BEFORE_USE.md;
+  tracked in INSTALL.md;
 - [x] RPO/RTO contract defined; measured objectives and approval are tracked
-  in READ_BEFORE_USE.md;
+  in INSTALL.md;
 - [x] incident and DR runbooks defined; tabletop and deployment evidence are
-  tracked in READ_BEFORE_USE.md.
+  tracked in INSTALL.md.
 
 ### Governance
 
@@ -172,14 +172,14 @@ still missing.
 - [x] optional upstream Plesk/cPanel tenant-tool contract with safe binding and
   read-only capabilities;
 - [x] deployment documentation is complete for the packaging hand-off in
-  [READ_BEFORE_USE.md](doc/READ_BEFORE_USE.md); field verification on real
+  [INSTALL.md](INSTALL.md); field verification on real
   cPanel and Plesk hosts remains an external release responsibility.
 
 ## Repository implementation backlog
 
 The production checklist above is intentionally about repository work. These
 are the only remaining unchecked implementation items; field verification for
-the checked contracts belongs in [READ_BEFORE_USE.md](doc/READ_BEFORE_USE.md).
+the checked contracts belongs in [INSTALL.md](INSTALL.md).
 
 - [x] provider-neutral secret-store contract and managed versioned-file rotation;
 - [ ] package checksum/signing and consumer verification workflow for the
@@ -189,8 +189,8 @@ the checked contracts belongs in [READ_BEFORE_USE.md](doc/READ_BEFORE_USE.md).
   data via the existing PostgreSQL store, packaging pipeline for both) - real
   password authentication for cPanel/Plesk mailboxes and MySQL/MariaDB support
   remain backlog, documented in each adapter's README;
-- [ ] wire the CPANEL_API_*/PLESK_API_* settings added to .env.example into
-  runtime/config.ts's loader (currently declared but not read at runtime);
+- [x] wire the CPANEL_API_*/PLESK_API_* settings from .env.example into
+  runtime/config.ts's loader (same file/env pattern as ldap/postgres);
 - [ ] provider-backed authenticated login/session wiring to the real LDAP
   adapter;
 - [ ] production Postfix/Dovecot mail adapters, persistent DAV backend, and
@@ -223,7 +223,6 @@ gulogulo/
 │   └── schema.v1.json
 ├── doc/
 │   ├── README.md
-│   ├── READ_BEFORE_USE.md
 │   ├── api-and-mcp.md
 │   ├── acme-abuse-deployment.md
 │   ├── control-panel-integration.md
@@ -231,11 +230,9 @@ gulogulo/
 │   ├── dav-and-discovery.md
 │   ├── identity-and-postgres.md
 │   ├── lifecycle-backup-dr.md
-│   ├── local-proof-scope.md
 │   ├── mail-core.md
 │   ├── rbac-admin-mfa.md
 │   ├── release-readiness.md
-│   ├── sbom-release-plan.md
 │   ├── scanner-signature-volume.md
 │   ├── server-typescript.md
 │   ├── observability.md
@@ -318,11 +315,7 @@ gulogulo/
 │   │   ├── secrets/ (typed provider-neutral secret-store, rotation, and versioned-file adapters)
 │   │   └── upgrade/
 │   │       ├── compatibility.ts
-│   │       ├── control-plane.ts
 │   │       ├── index.ts
-│   │       ├── rehearsal.ts
-│   │       ├── rehearsal.test.ts
-│   │       ├── rollout.ts
 │   │       └── upgrade-contract.test.ts
 │   ├── integrations/ (TypeScript LDAP, PostgreSQL, tenant, migration, and optional Plesk/cPanel adapters)
 │   ├── platform/
@@ -349,6 +342,7 @@ gulogulo/
 │   └── test/
 │       └── web-shell.test.ts
 ├── .env.example
+├── INSTALL.md
 ├── LICENSE
 ├── README.md
 ├── package-lock.json

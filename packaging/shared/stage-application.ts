@@ -23,8 +23,10 @@
  */
 
 import { spawnSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
+import { createReadStream } from 'node:fs';
 import { cp, mkdir, readFile, readdir, rm, stat, writeFile } from 'node:fs/promises';
-import { dirname, join, relative } from 'node:path';
+import { basename, dirname, join, relative } from 'node:path';
 import { crc32, deflateRawSync } from 'node:zlib';
 
 export function humanFileSize(bytes: number): string {
@@ -37,6 +39,70 @@ export function humanFileSize(bytes: number): string {
     unitIndex += 1;
   }
   return `${value.toFixed(1)} ${units[unitIndex]}`;
+}
+
+/**
+ * Computes the SHA256 of `archivePath` by streaming it (never loading the
+ * whole file into memory), writes a `<archivePath>.sha256` sidecar file in
+ * the standard `sha256sum`-compatible format (`<hash>  <filename>\n`, two
+ * spaces, filename only - no directory component), and returns the hex
+ * digest. Callers use the returned digest to log it alongside the rest of a
+ * build's summary.
+ */
+export async function writeChecksumFile(archivePath: string): Promise<string> {
+  const hash = createHash('sha256');
+  await new Promise<void>((resolveDigest, reject) => {
+    const stream = createReadStream(archivePath);
+    stream.on('error', reject);
+    stream.on('data', (chunk) => hash.update(chunk));
+    stream.on('end', () => resolveDigest());
+  });
+  const digest = hash.digest('hex');
+
+  const checksumPath = `${archivePath}.sha256`;
+  await writeFile(checksumPath, `${digest}  ${basename(archivePath)}\n`, 'utf8');
+
+  return digest;
+}
+
+/**
+ * Rebuilds `<outputDirectory>/checksums.txt`, one `sha256sum`-format line per
+ * `.tar.gz`/`.zip` package currently sitting in `outputDirectory` (not just
+ * the package a given build script just produced - every prior package left
+ * over from earlier runs too). Reuses each package's own `<archive>.sha256`
+ * sidecar (written by `writeChecksumFile`) when present instead of re-hashing
+ * the archive; falls back to computing it if the sidecar is missing. Lines
+ * are sorted by filename, one per archive, so re-running a build that
+ * replaces an existing archive updates its line in place rather than
+ * duplicating it.
+ */
+export async function updateChecksumsAggregate(outputDirectory: string): Promise<string> {
+  const entries = await readdir(outputDirectory, { withFileTypes: true });
+  const archiveNames = entries
+    .filter((entry) => entry.isFile() && (entry.name.endsWith('.tar.gz') || entry.name.endsWith('.zip')))
+    .map((entry) => entry.name)
+    .sort((a, b) => a.localeCompare(b));
+
+  const lines: string[] = [];
+  for (const archiveName of archiveNames) {
+    const archivePath = join(outputDirectory, archiveName);
+    const checksumPath = `${archivePath}.sha256`;
+
+    let digest: string | undefined;
+    if (await fileExists(checksumPath)) {
+      const sidecar = await readFile(checksumPath, 'utf8');
+      const match = /^([0-9a-f]{64}) {2}/.exec(sidecar);
+      digest = match?.[1];
+    }
+    digest ??= await writeChecksumFile(archivePath);
+
+    lines.push(`${digest}  ${archiveName}\n`);
+  }
+
+  const checksumsPath = join(outputDirectory, 'checksums.txt');
+  await writeFile(checksumsPath, lines.join(''), 'utf8');
+
+  return checksumsPath;
 }
 
 export function runNpmScript(repoRoot: string, scriptName: string, log: (message: string) => void): void {

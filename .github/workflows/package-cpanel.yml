@@ -86,6 +86,15 @@ jobs:
           test -f "$INSTALL_DIR/gulogulo-appconfig.conf.example"
           grep -q '^CPANEL_API_ENABLED=' "$INSTALL_DIR/.env.example"
 
+      - name: Verify the package checksum
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd packaging/dist
+          TARBALL="$(basename "$(ls gulogulo-*-cpanel.tar.gz)")"
+          test -f "${TARBALL}.sha256"
+          sha256sum -c "${TARBALL}.sha256"
+
       - name: Dry-run the installer non-interactively
         shell: bash
         run: |
@@ -112,5 +121,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: gulogulo-cpanel-package
-          path: packaging/dist/gulogulo-*-cpanel.tar.gz
+          path: |
+            packaging/dist/gulogulo-*-cpanel.tar.gz
+            packaging/dist/gulogulo-*-cpanel.tar.gz.sha256
           if-no-files-found: error
