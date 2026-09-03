@@ -272,8 +272,18 @@ the checked contracts belongs in [INSTALL.md](INSTALL.md).
 - [ ] complete HTTP/WebDAV method and XML-report integration (the protocol
   adapter that authenticates a request, applies the method table in
   `doc/dav-and-discovery.md`, and calls the storage backend above);
-- [ ] durable external backup, restore, account-deletion execution, and
-  scheduled retention workers;
+- [x] local filesystem backup adapter and account-deletion/purge wiring:
+  `src/core/backup/filesystem-backup-adapter.ts` really writes
+  manifests/archives/encrypted metadata to disk, `createBackupStorage()` on
+  every `PlatformAdapter` returns it with a `/var/lib/gulogulo/backups`
+  default, and `src/core/lifecycle/account-lifecycle-wiring.ts` connects
+  account-purge transitions to it plus `retention.ts`'s `runPurgeBatch()`
+  (a CLI entry point and systemd timer/service now exist too — see
+  `doc/lifecycle-backup-dr.md`); still outstanding: a **remote/external**
+  storage adapter (this local one is fast same-host recovery, explicitly
+  not disaster recovery), a **persistent** retention store (today's is
+  in-memory, so the scheduled worker is a safe no-op), and wiring
+  `src/core/lifecycle/**` into the build/packaging scripts;
 - [ ] deployed log collector, alert-delivery, and paging adapters (the ACME/DNS
   client that used to be paired with this item was removed architecturally -
   cPanel/Plesk own certificate issuance via their AutoSSL/Let's Encrypt

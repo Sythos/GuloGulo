@@ -1000,9 +1000,19 @@ as tester work:
 - [ ] complete HTTP/WebDAV method and XML-report integration (the protocol
   adapter that authenticates a request, applies the method table in
   `doc/dav-and-discovery.md`, and calls the storage backend above);
-- [ ] durable external backup, restore, account-deletion execution, and
-  scheduled retention workers for volume, PostgreSQL, mailbox, DAV, and
-  object-store adapters;
+- [x] local filesystem backup adapter and account-deletion/purge wiring:
+  `src/core/backup/filesystem-backup-adapter.ts` really writes
+  manifests/archives/encrypted metadata to disk, `createBackupStorage()` on
+  every `PlatformAdapter` returns it with a `/var/lib/gulogulo/backups`
+  default, and `src/core/lifecycle/account-lifecycle-wiring.ts` connects
+  account-purge transitions to it plus `retention.ts`'s `runPurgeBatch()`
+  (a CLI entry point and systemd timer/service now exist too — see
+  `doc/lifecycle-backup-dr.md`); still outstanding: a **remote/external**
+  storage adapter for volume, PostgreSQL, mailbox, DAV, and object-store
+  data (this local one is fast same-host recovery, explicitly not disaster
+  recovery), a **persistent** retention store (today's is in-memory, so the
+  scheduled worker is a safe no-op), and wiring `src/core/lifecycle/**` into
+  the build/packaging scripts;
 - [ ] provider-specific Plesk/cPanel API adapter and idempotent reconciliation
   behind the validated read-only tenant binding (the optional upstream
   tenant-tool integration);

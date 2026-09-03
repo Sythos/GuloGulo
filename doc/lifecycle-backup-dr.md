@@ -17,11 +17,14 @@ connected.
 
 ```text
 src/core/lifecycle/
-├── retention.ts               28-day trash purge and restore-safe locks
-└── account-lifecycle.ts       deletion, recovery window, and purge states
+├── retention.ts                28-day trash purge and restore-safe locks
+├── account-lifecycle.ts        deletion, recovery window, and purge states
+├── account-lifecycle-wiring.ts wires the state machine to real backup/purge adapters
+└── run-purge-batch.ts          CLI entry point for a systemd-timer-driven purge worker
 
 src/core/backup/
-└── backup-contract.ts         user/provider scope, encrypted manifests, restore
+├── backup-contract.ts          user/provider scope, encrypted manifests, restore
+└── filesystem-backup-adapter.ts real local-disk storage for the manifests/archives above
 
 src/core/observability/
 ├── log-policy.ts               bounded log-rotation policy (Docker json-file
@@ -73,6 +76,45 @@ const result = store.runPurgeBatch({
 });
 ```
 
+### Scheduled purge worker (`run-purge-batch.ts`)
+
+`runPurgeBatch()` above was, until now, called only from tests — nothing in
+the repository invoked it periodically. `src/core/lifecycle/run-purge-batch.ts`
+is a small CLI entry point meant to be triggered by
+`packaging/shared/gulogulo-purge.timer` (a daily systemd timer) running
+`packaging/shared/gulogulo-purge.service` (a `oneshot` unit), the same
+"the host owns scheduling" model already used for the main
+`gulogulo.service` unit.
+
+**VERIFY BEFORE USE.** Two things are true at the same time here, and both
+matter:
+
+- The process/timer/exit-code plumbing is real and tested
+  (`run-purge-batch.test.ts`): it resolves a retention store through an
+  injectable `resolveStore()` seam, runs one batch, logs a one-line summary,
+  and exits non-zero if the batch reported failures.
+- `createRetentionStore()` itself (above) keeps its state in a process-local
+  `Map`. It has no persistent backing store in this repository today. A
+  fresh `node run-purge-batch.ts` invocation therefore always starts with
+  zero trashed items and purges nothing, regardless of what an earlier run
+  did — this is the honest current behavior, not a bug in the script.
+  `resolveDefaultRetentionStore()` reports `persistent: false` for exactly
+  this reason, and the script logs "no persistent retention store
+  configured; nothing to purge" and exits `0`, mirroring how
+  `packaging/standalone/scripts/run-migrations.mjs` already exits cleanly
+  when `POSTGRES_ENABLED=false`. The day a persistent retention store exists
+  (e.g. PostgreSQL-backed, following the same pattern as
+  `src/core/dav/caldav/postgres-caldav-store.ts`), swapping it into
+  `resolveStore()` is the only change needed — the timer, the service unit,
+  and this script's process/exit-code plumbing do not.
+- Neither `src/core/lifecycle/**/*.ts` nor the two new unit files are wired
+  into `npm run build:server` or any `packaging/*/build-*-package.ts` /
+  `install.sh` script yet — deliberately out of scope for this change (see
+  the top-of-file comment in `run-purge-batch.ts` and in
+  `gulogulo-purge.service`). Until that follow-up lands, the systemd units
+  reference a `dist/server/...` path that does not exist yet in a built
+  package.
+
 ## Account deletion lifecycle
 
 `createAccountLifecycleStore()` keeps account deletion separate from item
@@ -98,6 +140,44 @@ service must execute the plan transactionally where possible, record a
 metadata-only event for every resource result, and make a failed plan visible
 to the tenant's operational tooling.
 
+### Wiring to real adapters (`account-lifecycle-wiring.ts`)
+
+`createAccountLifecycleWiring()` is the "integration service" the paragraph
+above calls for — a thin composition layer over `account-lifecycle.ts`,
+`filesystem-backup-adapter.ts`, and `retention.ts`'s `runPurgeBatch()`. It
+does not implement deletion itself; `account-lifecycle.ts`'s own rule
+("adapters own permanent resource deletion") is unchanged. What it does:
+
+- `completePurge()` re-checks state (`purge_pending`), the strong
+  `PURGE:<userId>` confirmation, and active holds itself, before calling any
+  adapter — so a caller mistake fails closed without any real deletion
+  happening, not only when the underlying store finally rejects it.
+- For every resource in the account's `cleanupPlan`: the `'backups'`
+  resource is purged by calling `deleteAccountArchives()` on the injected
+  `BackupStorageAdapter` directly (Compito 1 already provides a real
+  implementation for it); every other resource type (aliases, delegations,
+  factors, mailbox, dav_collections, preferences) is routed through an
+  injected `purgeResource` callback that the caller supplies — the actual
+  LDAP/PostgreSQL/mailbox/DAV deletion logic still lives with those
+  adapters, not here.
+- Once every resource reports `'purged'`, and only then, it calls
+  `retentionStore.runPurgeBatch()` scoped to the same tenant/user (when a
+  `retentionStore` was injected) so any of that user's still-trashed items
+  do not linger past the account's own purge, and finally calls the
+  underlying `lifecycleStore.completePurge()` with the collected
+  `resourceResults`.
+- `queuePurge()` is a thin wrapper that, when a `backupAdapter` is
+  injected, also logs how many backup archives already exist for the
+  account at the moment its recovery window elapses — informational only,
+  never blocking.
+
+This composition lives in its own file rather than as hooks inside
+`account-lifecycle.ts` on purpose: `account-lifecycle.ts` and
+`backup-contract.ts` are deliberately pure, dependency-free contracts (see
+their own file comments), and importing a filesystem adapter into either
+would break that property for every caller, including ones that never touch
+a filesystem.
+
 ## User backup
 
 `createUserBackupScope()` is self-service by default. The caller can request
@@ -117,6 +197,55 @@ process's own filesystem (outside the install/extension directory on any of
 the three packaging targets) and apply its own encryption-at-rest, access
 logging, lifecycle, and malware scanning policy. A failed checksum or
 expired/revoked link must fail closed.
+
+### The local filesystem backup adapter — and why it is not disaster recovery
+
+`src/core/backup/filesystem-backup-adapter.ts` is a real, disk-writing
+implementation of the storage side of the contract above: every method
+performs actual `node:fs/promises` I/O (manifest JSON, raw entry bytes, and
+the encrypted-metadata envelope, all written under a
+`<tenantId>/<userId>/<archiveId>/` layout), not a mock or a
+validation-only stub. `BackupStorageAdapter` is the generic interface it
+implements — deliberately storage-agnostic, so a future remote adapter
+(rsync to another host, an S3-compatible object store) can be dropped in
+without `backup-contract.ts`, `account-lifecycle-wiring.ts`, or any other
+caller changing.
+
+Every current `PlatformAdapter` (`standalone`, `cpanel`, `plesk`) exposes
+this local adapter through the new `createBackupStorage(config)` contract
+method, defaulting to `/var/lib/gulogulo/backups` — the same
+`%{_localstatedir}`-style data directory `mail.mailboxRoot` and the patch
+status file already default to — and overridable per-install via
+`contract.backup.path` in the loaded configuration.
+
+**This default is a fast-recovery convenience, not disaster recovery, and
+that distinction must stay explicit rather than implied:**
+
+- **What it protects against:** accidental deletion, a bad restore, or
+  needing an earlier version of an archive within the retention window. The
+  data is on disk, in a known layout, with checksummed manifests, ready to
+  read back immediately.
+- **What it does NOT protect against:** a failed disk, a lost host, or
+  anything else that takes the machine the live data lives on down with
+  it — because, without a remote/external adapter, the backup is on the
+  *same* disk (or at least reachable from the same host) as the data it is
+  backing up.
+- **The adapter tells you when this applies.** On first use, if the
+  configured backup path and the application's live data directory
+  (`mail.mailboxRoot`, or an explicit `contract.backup.liveDataPath`
+  override) resolve to the same filesystem device
+  (`fs.statSync(path).dev`, reliable on Linux; treated as inconclusive
+  elsewhere), the adapter logs one explicit warning through the injected
+  logger (falling back to `console.warn` if none was given) naming exactly
+  this limitation. It never blocks the write — an operator may have a
+  second physical disk mounted under the same host that the configured
+  `liveDataPath` simply was not told about — but it makes sure nobody
+  mistakes "a backup exists" for "disaster recovery exists."
+- **Real disaster recovery requires external/remote storage** — a second
+  host, a second disk that is not just a different directory on the same
+  device, or an object store — which is exactly the pluggable seam
+  `BackupStorageAdapter` exists for. No such adapter is implemented yet;
+  see "Still requiring production adapters" below.
 
 ## Provider backup and restore
 
@@ -206,9 +335,23 @@ restore or upgrade procedures call.
 
 The following work is intentionally visible rather than implied:
 
-- external-volume/directory snapshots and encryption-key management;
-- PostgreSQL, LDAP/panel identity, mailbox, DAV, and object-store backup
-  connectors;
+- a **remote/external** `BackupStorageAdapter` implementation (rsync to
+  another host, an S3-compatible object store) — real disaster recovery, as
+  opposed to the local filesystem adapter now implemented (see above),
+  which is fast same-host recovery only;
+- a **persistent** `retention.ts` store — `run-purge-batch.ts` and its
+  systemd timer/service now exist (see above), but `createRetentionStore()`
+  itself is still the in-memory contract it always was, so the scheduled
+  worker is currently a safe no-op in production;
+- staging `src/core/lifecycle/**` and the new systemd units into
+  `npm run build:server` / the three `packaging/*/build-*-package.ts`
+  scripts, so `gulogulo-purge.service` actually finds a compiled
+  `run-purge-batch.js` to run;
+- encryption-key management for archives at rest beyond the reference
+  passed to `encryptArchiveMetadata()`;
+- PostgreSQL, LDAP/panel identity, mailbox, and DAV adapters wired as the
+  `purgeResource` callback `account-lifecycle-wiring.ts` now expects for
+  every non-`'backups'` resource type;
 - a scheduled worker with durable lease storage;
 - log rotation/retention installation and rehearsal for the target's actual
   log destination (journald/systemd on cPanel and Plesk, the operator's own
