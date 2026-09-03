@@ -15,8 +15,11 @@
 # comment: no code-signing key for DEB yet) - the DEBIAN/ maintainer scripts
 # are untouched and still build a working .deb if invoked directly.
 #
-# Usage: ./install.sh [--non-interactive]
+# Usage: ./install.sh [--runtime=node|bun] [--non-interactive]
 # Non-interactive mode is also enabled via GULOGULO_NON_INTERACTIVE=1.
+# --runtime defaults to node; see switch-runtime.sh to change it later
+# without reinstalling. Either way dist/server/ is the exact same compiled
+# JS - only which interpreter the systemd unit's ExecStart runs changes.
 
 set -euo pipefail
 
@@ -28,10 +31,13 @@ READ_WRITE_PATH="${GULOGULO_SERVICE_READ_WRITE_PATH:-/var/lib/gulogulo}"
 UNIT_PATH=/etc/systemd/system/gulogulo.service
 PURGE_UNIT_PATH=/etc/systemd/system/gulogulo-purge.service
 PURGE_TIMER_PATH=/etc/systemd/system/gulogulo-purge.timer
+RUNTIME="node"
 
 for arg in "$@"; do
   case "$arg" in
     --non-interactive) NON_INTERACTIVE=1 ;;
+    --runtime=node) RUNTIME="node" ;;
+    --runtime=bun) RUNTIME="bun" ;;
     *) echo "[install] Unknown argument: $arg" >&2; exit 1 ;;
   esac
 done
@@ -44,6 +50,11 @@ if [ "$(id -u)" -ne 0 ]; then
 fi
 
 # --- Preconditions, same check as DEBIAN/postinst ------------------------
+# Node.js is always required, regardless of --runtime: npm installs
+# dependencies and runs database migrations either way - this script never
+# uses `bun install` or a bun-based migration runner. --runtime only
+# chooses which interpreter the systemd unit later executes the compiled
+# server with.
 
 if ! command -v node >/dev/null 2>&1; then
   fail "Node.js was not found in PATH. Install Node.js >= 26 (see INSTALL.md) before running this script."
@@ -55,7 +66,13 @@ if [ "$NODE_MAJOR" -lt 26 ]; then
 fi
 log "OK: Node.js $NODE_VERSION."
 
+if [ "$RUNTIME" = bun ]; then
+  command -v bun >/dev/null 2>&1 || fail "bun was not found in PATH. Install it (see https://bun.com/docs/installation), then re-run this script."
+  log "Bun found: $(bun --version). No minimum version is enforced yet - only the version exercised by this project's own CI (see .github/workflows/bun-compat.yml) is verified; running Bun in production is VERIFY BEFORE USE."
+fi
+
 cd "$SCRIPT_DIR"
+printf '%s\n' "$RUNTIME" > .runtime
 
 # --- Configuration --------------------------------------------------------
 
@@ -86,7 +103,7 @@ fi
 
 # --- systemd service --------------------------------------------------------
 
-NODE_BIN="$(command -v node)"
+RUNTIME_BIN="$(command -v "$RUNTIME")"
 
 if ! id "$SERVICE_USER" >/dev/null 2>&1; then
   useradd --system --no-create-home --shell /usr/sbin/nologin "$SERVICE_USER"
@@ -99,7 +116,7 @@ sed \
   -e "s#@INSTALL_DIR@#$SCRIPT_DIR#g" \
   -e "s#@SERVICE_USER@#$SERVICE_USER#g" \
   -e "s#@SERVICE_GROUP@#$SERVICE_GROUP#g" \
-  -e "s#@NODE_BIN@#$NODE_BIN#g" \
+  -e "s#@RUNTIME_BIN@#$RUNTIME_BIN#g" \
   -e "s#@READ_WRITE_PATH@#$READ_WRITE_PATH#g" \
   "$SCRIPT_DIR/gulogulo.service.template" > "$UNIT_PATH"
 chmod 0644 "$UNIT_PATH"
