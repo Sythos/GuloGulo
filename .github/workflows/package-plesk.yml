@@ -4,29 +4,35 @@
 
 name: Package Plesk archive
 
-# This target (packaging/plesk/) no longer builds a Plesk "extension" ZIP -
-# it builds a real Debian `.deb` package (see packaging/plesk/build-plesk-
-# package.ts and INSTALL.md for why the Plesk extension mechanism was
-# retired in favor of an OS-native package). Runs inside a real
-# `debian:trixie` container (not the ubuntu-latest runner the other two
-# package-*.yml workflows use) so the whole pipeline - Node.js install via
-# the NodeSource setup_26.x script, `dpkg-deb --build`, `dpkg -c`/`dpkg-deb
-# -I` inspection, `dpkg --unpack` - runs on the actual target OS this
-# package is meant for, not a stand-in.
+# TEMPORARY REVERSION TO TAR.GZ: this target's real, OS-native `.deb`
+# pipeline (packaging/plesk/debian/DEBIAN/, createDebPackage() in
+# packaging/shared/stage-application.ts) still exists and is not touched by
+# this workflow - it is simply not built right now. Publishing an unsigned
+# package through a host's package manager is a worse trust signal than an
+# unsigned tar.gz (see packaging/plesk/build-plesk-package.ts's top-of-file
+# comment for the full rationale); this target ships a plain
+# gulogulo-<version>_plesk_.tar.gz until a code-signing key exists.
 #
-# What this workflow CANNOT do: run this package's postinst to completion.
-# postinst ends with `systemctl daemon-reload && systemctl enable --now
-# gulogulo`, and a plain `debian:trixie` container has no running init
-# system (no PID 1 systemd, no D-Bus) - `systemctl` simply has nothing to
-# talk to. So instead of a full `dpkg -i`/`apt install ./*.deb`, this
-# workflow does the closest safe approximation: `dpkg --unpack` (which
-# really extracts the real payload to /opt/gulogulo and proves the archive
-# is structurally installable) followed by `dpkg --purge` (which exercises
-# prerm/postrm's "package was never configured" no-op paths for real,
-# without ever reaching postinst's systemd calls). The full install -
-# postinst's npm ci / migrations / system user / systemd enable, actually
-# reaching an HTTP-serving process - has NOT been exercised end to end on a
-# real host by this workflow and remains field work; see INSTALL.md.
+# This still runs inside a real `debian:trixie` container (not the
+# ubuntu-latest runner the standalone workflow uses) so the Node.js install
+# via NodeSource's setup_26.x script, and
+# packaging/plesk/scripts/install.sh - a straight shell translation of
+# DEBIAN/postinst - are both exercised on the actual target OS this package
+# is meant for, not a stand-in.
+#
+# What this workflow CANNOT do: exercise install.sh's systemd calls for
+# real. A plain `debian:trixie` container has no running init system (no
+# PID 1 systemd, no D-Bus), so `systemctl daemon-reload`/`enable --now` have
+# nothing to talk to. Rather than skip that part of install.sh entirely,
+# this workflow stubs `systemctl` with a no-op script on PATH before running
+# the installer non-interactively - every other step (user creation, .env
+# creation, `npm ci --omit=dev`, migrations, rendering the systemd unit file
+# from its template) runs for real, and the server is then started directly
+# (same as package-standalone.yml) to prove the installed application
+# actually boots and answers requests. Actually installing/starting the
+# unit via systemd, the assumed Plesk REST endpoints (if used for
+# identity), and the nginx reverse-proxy wiring remain field work - see
+# INSTALL.md.
 
 on:
   push:
@@ -42,7 +48,7 @@ concurrency:
 
 jobs:
   build-and-verify-package:
-    name: Build the .deb package and verify its structure
+    name: Build the tar.gz and install it end to end
     runs-on: ubuntu-latest
     container: debian:trixie
     timeout-minutes: 20
@@ -50,31 +56,25 @@ jobs:
       # actions/checkout needs git, and this is a bare debian:trixie
       # container image - neither git nor the NodeSource setup script's own
       # prerequisites (curl, ca-certificates, gnupg) are present by default.
-      # dpkg-deb itself needs nothing extra (it is part of dpkg, which is
-      # essential and always present); dpkg-dev is installed anyway per
-      # this project's packaging notes, even though `dpkg-deb --build` does
-      # not strictly require it.
+      # passwd provides useradd/id, which packaging/plesk/scripts/install.sh
+      # needs for the dedicated system user, same as DEBIAN/postinst did.
       - name: Install build prerequisites (apt)
         shell: bash
         run: |
           set -euo pipefail
           apt-get update
           apt-get install -y --no-install-recommends \
-            git ca-certificates curl gnupg dpkg-dev
+            git ca-certificates curl gnupg passwd
 
       - name: Checkout
         uses: actions/checkout@v6
         with:
           persist-credentials: false
 
-      # Compito 1 research: NodeSource publishes a genuine `setup_26.x` DEB
-      # repo script (https://github.com/nodesource/distributions), which
-      # does not hardcode a Debian codename allowlist - it only checks for
-      # /etc/debian_version and installs its own generic apt source, so it
-      # is expected to work on Trixie even though NodeSource has not
-      # explicitly certified Trixie support. This step is that claim's
-      # actual verification: if setup_26.x stops working on Trixie, this
-      # job fails here rather than that assumption going unchecked.
+      # A real NodeSource `setup_26.x` DEB repo script exists (see
+      # https://github.com/nodesource/distributions) and does not hardcode a
+      # Debian codename allowlist, so it is expected to work on Trixie; this
+      # step actually exercises it rather than assuming it works.
       - name: Install Node.js 26.x (NodeSource)
         shell: bash
         run: |
@@ -96,7 +96,7 @@ jobs:
           npm run build:web
           npm run build:server
 
-      - name: Build the .deb package
+      - name: Build the tar.gz package
         shell: bash
         env:
           GULOGULO_SKIP_BUILD: "1"
@@ -106,103 +106,130 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          DEB="$(ls packaging/dist/gulogulo_*_all.deb)"
-          echo "DEB=$DEB" >> "$GITHUB_ENV"
+          TARBALL="$(realpath packaging/dist/gulogulo-*_plesk_.tar.gz)"
+          echo "TARBALL=$TARBALL" >> "$GITHUB_ENV"
 
       - name: Verify the package checksum
         shell: bash
         run: |
           set -euo pipefail
           cd packaging/dist
-          ARCHIVE_NAME="$(basename "$(ls gulogulo_*_all.deb)")"
+          ARCHIVE_NAME="$(basename "$(ls gulogulo-*_plesk_.tar.gz)")"
           test -f "${ARCHIVE_NAME}.sha256"
           sha256sum -c "${ARCHIVE_NAME}.sha256"
 
-      - name: Inspect package metadata (dpkg-deb -I)
+      - name: Extract the tarball into a clean install directory
         shell: bash
         run: |
           set -euo pipefail
-          dpkg-deb -I "$DEB"
+          INSTALL_DIR="$RUNNER_TEMP/gulogulo-install"
+          mkdir -p "$INSTALL_DIR"
+          tar -xzf "$TARBALL" -C "$INSTALL_DIR" --strip-components=1
+          echo "INSTALL_DIR=$INSTALL_DIR" >> "$GITHUB_ENV"
 
-          INFO="$(dpkg-deb -I "$DEB")"
-          echo "$INFO" | grep -qE '^ *Package: gulogulo$'
-          echo "$INFO" | grep -qE '^ *Architecture: all$'
-          echo "$INFO" | grep -qE '^ *Maintainer: Sythos <sythos@gmail\.com>$'
-          echo "$INFO" | grep -qE '^ *Depends: systemd$'
+          for path in \
+            dist/server/src/runtime/index.js \
+            web/index.html \
+            web/dist/app.js \
+            assets/gulo-gulo-calendar-mail.png \
+            src/core/db/migrations/0001_m2_foundation.sql \
+            .env.example \
+            VERSION \
+            install.sh \
+            upgrade.sh \
+            uninstall.sh \
+            run-migrations.mjs \
+            gulogulo.service.template \
+            gulogulo-proxy.conf.example \
+          ; do
+            test -f "$INSTALL_DIR/$path" || { echo "Missing from package payload: $path" >&2; exit 1; }
+          done
 
-          # The control template's @VERSION@ placeholder must have been
-          # substituted with a real version.
-          if echo "$INFO" | grep -q '@VERSION@'; then
-            echo "DEBIAN/control still contains an unsubstituted @VERSION@ placeholder." >&2
+      - name: Lint the operator scripts (bash -n)
+        shell: bash
+        run: |
+          set -euo pipefail
+          for script in install.sh upgrade.sh uninstall.sh; do
+            bash -n "$INSTALL_DIR/$script"
+            echo "$script: syntax OK"
+          done
+          # Tripwire that these scripts still translate the same steps as
+          # DEBIAN/postinst and DEBIAN/postrm.
+          grep -q 'npm ci'              "$INSTALL_DIR/install.sh"
+          grep -q 'systemctl enable --now' "$INSTALL_DIR/install.sh"
+          grep -q 'node_modules'        "$INSTALL_DIR/uninstall.sh"
+          echo "operator script content checks: OK"
+
+      - name: Stub systemctl (no running init system in this container)
+        shell: bash
+        run: |
+          set -euo pipefail
+          # install.sh calls systemctl daemon-reload/enable --now, which
+          # have nothing to talk to in a plain container (no PID 1
+          # systemd). This stub lets every other real step in install.sh
+          # run to completion instead of failing the job on the one part
+          # this container genuinely cannot exercise.
+          printf '#!/bin/sh\necho "[ci-stub systemctl] $*"\nexit 0\n' > /usr/local/bin/systemctl
+          chmod +x /usr/local/bin/systemctl
+
+      - name: Run the installer non-interactively
+        shell: bash
+        env:
+          GULOGULO_NON_INTERACTIVE: "1"
+        run: |
+          set -euo pipefail
+          chmod +x "$INSTALL_DIR"/install.sh "$INSTALL_DIR"/upgrade.sh "$INSTALL_DIR"/uninstall.sh "$INSTALL_DIR"/run-migrations.mjs
+          "$INSTALL_DIR/install.sh" --non-interactive
+
+          id gulogulo
+          test -f "$INSTALL_DIR/.env"
+          test -f /etc/systemd/system/gulogulo.service
+
+      - name: Start the installed service and verify readiness
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "$INSTALL_DIR"
+          node --env-file=.env dist/server/src/runtime/index.js > server.log 2>&1 &
+          echo "SERVER_PID=$!" >> "$GITHUB_ENV"
+
+          READY=0
+          for _ in $(seq 1 30); do
+            if curl -fsS http://127.0.0.1:8080/health/ready >/dev/null 2>&1; then
+              READY=1
+              break
+            fi
+            sleep 1
+          done
+
+          if [ "$READY" -ne 1 ]; then
+            echo "Server did not become ready in time." >&2
+            cat server.log >&2 || true
             exit 1
           fi
 
-      - name: Verify package contents (dpkg -c)
+          echo "Server is ready; checking the web shell responds too."
+          curl -fsS http://127.0.0.1:8080/ >/dev/null
+
+      - name: Stop the installed service
+        if: always()
         shell: bash
         run: |
-          set -euo pipefail
-          CONTENTS="$(dpkg -c "$DEB")"
-          echo "$CONTENTS"
+          if [ -n "${SERVER_PID:-}" ]; then
+            kill "$SERVER_PID" 2>/dev/null || true
+            wait "$SERVER_PID" 2>/dev/null || true
+          fi
 
-          for path in \
-            ./opt/gulogulo/dist/server/src/runtime/index.js \
-            ./opt/gulogulo/web/index.html \
-            ./opt/gulogulo/web/dist/app.js \
-            ./opt/gulogulo/assets/gulo-gulo-calendar-mail.png \
-            ./opt/gulogulo/src/core/db/migrations/0001_m2_foundation.sql \
-            ./opt/gulogulo/.env.example \
-            ./opt/gulogulo/VERSION \
-            ./opt/gulogulo/package.json \
-            ./opt/gulogulo/run-migrations.mjs \
-            ./opt/gulogulo/gulogulo.service.template \
-            ./opt/gulogulo/gulogulo-proxy.conf.example \
-          ; do
-            echo "$CONTENTS" | grep -qF " $path" || { echo "Missing from package payload: $path" >&2; exit 1; }
-          done
-
-      - name: Lint the Debian maintainer scripts (sh -n)
+      - name: Show server log on failure
+        if: failure()
         shell: bash
-        run: |
-          set -euo pipefail
-          CONTROL_DIR="$RUNNER_TEMP/gulogulo-control"
-          mkdir -p "$CONTROL_DIR"
-          dpkg-deb -e "$DEB" "$CONTROL_DIR"
-          test -f "$CONTROL_DIR/postinst"
-          test -f "$CONTROL_DIR/prerm"
-          test -f "$CONTROL_DIR/postrm"
-          for script in postinst prerm postrm; do
-            sh -n "$CONTROL_DIR/$script"
-            echo "$script: syntax OK"
-          done
+        run: cat "$INSTALL_DIR/server.log" 2>/dev/null || true
 
-      - name: Dry-run install (dpkg --unpack, no postinst/systemd)
-        shell: bash
-        run: |
-          set -euo pipefail
-          # `dpkg --unpack` really extracts this package's payload to
-          # /opt/gulogulo using dpkg itself (not just `dpkg -c` listing) -
-          # this is the strongest install proof this container can safely
-          # give, since it stops short of `--configure`, which is what
-          # would run postinst's `systemctl enable --now gulogulo` against
-          # a container with no init system.
-          dpkg --unpack "$DEB"
-          test -f /opt/gulogulo/dist/server/src/runtime/index.js
-          test -f /opt/gulogulo/web/index.html
-          test -f /opt/gulogulo/.env.example
-          dpkg-query -W -f='${Status}\n' gulogulo | grep -qE 'install ok unpacked'
-
-          # Removing an unpacked-but-never-configured package exercises
-          # prerm's/postrm's "nothing to do" branches for real (no systemd
-          # unit and no .env exist yet, since postinst never ran) - a
-          # genuine, safe smoke test of both scripts' guard clauses.
-          dpkg --purge gulogulo
-          test ! -d /opt/gulogulo
-
-      - name: Upload the .deb package artifact
+      - name: Upload the tar.gz package artifact
         uses: actions/upload-artifact@v4
         with:
           name: gulogulo-plesk-package
           path: |
-            packaging/dist/gulogulo_*_all.deb
-            packaging/dist/gulogulo_*_all.deb.sha256
+            packaging/dist/gulogulo-*_plesk_.tar.gz
+            packaging/dist/gulogulo-*_plesk_.tar.gz.sha256
           if-no-files-found: error

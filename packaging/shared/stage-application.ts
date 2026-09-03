@@ -16,16 +16,24 @@
  * target's own build script.
  *
  * `createDebPackage` and `createRpmPackage` below are also shared
- * infrastructure. `createDebPackage` (used by
- * `packaging/plesk/build-plesk-package.ts`, which produces a real `.deb`
- * rather than a tarball) shells out to `dpkg-deb --build`, the same way
- * `createTarball` shells out to `tar` - `dpkg-deb` is not an npm dependency,
- * it ships natively on Debian/Ubuntu (and is expected to be present in the
- * `debian:trixie` container this target's CI job runs in). `createRpmPackage`
- * (used by `packaging/cpanel/build-cpanel-package.ts`) shells out to
- * `rpmbuild -bb` the same way, which is RHEL-family-only (see the function's
- * own doc comment for why the cPanel target's CI job runs in an `almalinux:9`
- * container instead).
+ * infrastructure, and both are fully implemented and unit-independent of
+ * this reversion. `createDebPackage` (produces a real `.deb`) shells out to
+ * `dpkg-deb --build`, the same way `createTarball` shells out to `tar` -
+ * `dpkg-deb` is not an npm dependency, it ships natively on Debian/Ubuntu
+ * (and is expected to be present in the `debian:trixie` container that
+ * target's CI job runs in). `createRpmPackage` shells out to `rpmbuild -bb`
+ * the same way, which is RHEL-family-only (see the function's own doc
+ * comment for why that target's CI job would run in an `almalinux:9`
+ * container).
+ *
+ * TEMPORARILY UNUSED: as of this comment, neither
+ * `packaging/cpanel/build-cpanel-package.ts` nor
+ * `packaging/plesk/build-plesk-package.ts` calls `createRpmPackage`/
+ * `createDebPackage` - both targets build a plain `createTarball()` archive
+ * instead, same as standalone, until a code-signing key exists for RPM/DEB
+ * packages (see the top-of-file comment in each of those two build scripts
+ * for the full rationale). Neither function was removed or altered; restore
+ * either build script's call to re-enable the native package output.
  */
 
 import { spawnSync } from 'node:child_process';
