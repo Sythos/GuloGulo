@@ -11,16 +11,16 @@
 # RHEL-family-only. This target previously shipped as a generic
 # gulogulo-<version>-cpanel.tar.gz plus install.sh/upgrade.sh/uninstall.sh;
 # those three scripts are retired in favor of this spec's
-# %pre/%post/%preun/%postun scriptlets, which do the same jobs through the
+# %%pre/%%post/%%preun/%%postun scriptlets, which do the same jobs through the
 # mechanism every RHEL-family operator already knows: `dnf install
 # ./gulogulo-<version>.rpm` / `rpm -Uvh` / `dnf remove gulogulo`.
 #
 # Unlike the tar.gz target (installed to an operator-chosen extraction
 # directory), an RPM install location is fixed by packaging convention:
 # the application lands at /opt/gulogulo, the systemd unit at
-# %{_unitdir}/gulogulo.service, and writable runtime state at
+# %%{_unitdir}/gulogulo.service, and writable runtime state at
 # /var/lib/gulogulo, all owned by a dedicated "gulogulo" system user
-# created in %pre.
+# created in %%pre.
 #
 # Built via `rpmbuild -bb` from packaging/cpanel/build-cpanel-package.ts
 # (packaging/shared/stage-application.ts's createRpmPackage()), which
@@ -45,22 +45,22 @@ Source0:        %{name}-%{version}-cpanel-src.tar.gz
 # bindings, and password hashing uses node:crypto's built-in scrypt, not a
 # native library like argon2; see src/core/auth/password-hashing.ts and
 # INSTALL.md's dependency audit), but because node_modules/ is not part of
-# this RPM's payload at all: %post below runs `npm ci --omit=dev` at
+# this RPM's payload at all: %%post below runs `npm ci --omit=dev` at
 # install time, same as the tar.gz installer did. The payload this package
 # actually ships (compiled JS, HTML/CSS/JS web assets, SQL migrations,
 # scriptlets) is architecture-independent by construction. If a native
-# dependency is ever added, that only changes what %post's `npm ci`
+# dependency is ever added, that only changes what %%post's `npm ci`
 # compiles at install time on whatever architecture the host actually is -
 # this package itself would still stay noarch.
 BuildArch:      noarch
 
-# systemd-rpm-macros provides %{_unitdir} and %systemd_requires used below.
+# systemd-rpm-macros provides %%{_unitdir} and %%systemd_requires used below.
 # Plain `rpmbuild -bb` (unlike mock/dnf builddep) does not auto-install
 # BuildRequires - the CI container installs it explicitly before building.
 BuildRequires:  (systemd-rpm-macros or systemd)
 %{?systemd_requires}
 
-# %pre uses useradd/groupadd/getent to create the dedicated system account.
+# %%pre uses useradd/groupadd/getent to create the dedicated system account.
 Requires(pre): shadow-utils
 
 # Node.js >= 26 is intentionally NOT declared as a `Requires:` here.
@@ -75,7 +75,7 @@ Requires(pre): shadow-utils
 # here. Declaring `Requires: nodejs >= 26` would make `dnf install
 # ./gulogulo-*.rpm` fail outright on any host that has not already enabled
 # a Node 26-capable repository - worse than a clear, actionable runtime
-# check. %post below checks for a working `node` >= 26 in PATH and fails
+# check. %%post below checks for a working `node` >= 26 in PATH and fails
 # with instructions if it is missing; the operator is responsible for
 # installing Node.js >= 26 first (NodeSource's repo, a `dnf module` stream
 # if one becomes available, or their own source).
@@ -123,7 +123,7 @@ exit 0
 
 %post
 # Deliberately kept fail-fast (set -e), matching the retired install.sh's
-# behavior: if `npm ci` or the migration step fails, %post stops before
+# behavior: if `npm ci` or the migration step fails, %%post stops before
 # `daemon-reload`/`enable`, leaving the application files installed but the
 # service NOT wired up - a loud, visible failure (rpm/dnf reports the
 # scriptlet error) rather than a silently half-configured service.
