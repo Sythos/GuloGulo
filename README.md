@@ -369,8 +369,6 @@ gulogulo/
 │   ├── lp6-restore-worker.ts
 │   ├── lp7-proof-check.ts
 │   ├── m10-release-audit.ts (+ .mjs compatibility bridge)
-│   ├── sbom-release-audit.ts
-│   ├── sbom-release-audit.test.ts
 │   └── runtime and fixture utilities
 ├── release/
 │   ├── local-proof-scope.json

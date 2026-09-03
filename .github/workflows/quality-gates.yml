@@ -77,8 +77,6 @@ jobs:
           test -f doc/dav-and-discovery.md
           test -f doc/release-readiness.md
           test -f doc/scanner-signature-volume.md
-          test -f scripts/sbom-release-audit.ts
-          test -f scripts/sbom-release-audit.test.ts
           test -f doc/control-panel-integration.md
           test -f release/v1-release-evidence.template.json
           test -f release/lp2-local-services.json
@@ -241,8 +239,6 @@ jobs:
             scripts/lp9-source-audit.test.ts \
             scripts/lp9-release-audit.ts \
             scripts/lp9-release-audit.test.ts \
-            scripts/sbom-release-audit.ts \
-            scripts/sbom-release-audit.test.ts \
             scripts/lp4-proof-check.ts \
             scripts/lp5-proof-check.ts \
             scripts/lp6-source-fixture.ts \
