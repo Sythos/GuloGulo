@@ -25,10 +25,6 @@ normal workflow.
   read-only Docker/Kubernetes projected-secret adapters.
 - [Runtime and observability](observability.md) — health, logs, request IDs,
   metrics, and the small HTTP surface used by the scaffold.
-- [Compose and fixtures](compose-and-fixtures.md) — local profiles,
-  deterministic test data, and the smoke harness.
-- [Container patching](container-patching.md) — Ubuntu 26.04 LTS image policy,
-  build-time security updates, and controlled maintenance operations.
 - [API and MCP operations](api-and-mcp.md) — the read-only monitoring contract,
   safe examples, and the boundary between monitoring and deployment control.
 - [External identity and application state](identity-and-postgres.md) — LDAP,
@@ -101,10 +97,11 @@ normal workflow.
 - [Server TypeScript boundary](server-typescript.md) — compiler settings,
   build and test commands, compiled production startup, and the temporary
   compatibility-bridge rule.
-- [SBOM and signed-image release workflow](sbom-release-plan.md) — the manual
-  amd64 field-container package, automatic numeric-tag GHCR and GitHub
-  Release lane, digest-bound SBOM/provenance attestations, permissions, and
-  consumer verification.
+- [SBOM and signed-image release workflow](sbom-release-plan.md) — retired
+  GHCR/container mechanism kept as a historical reference for its release
+  security principles (checksum, provenance, attestations, permissions,
+  consumer verification) to be readapted to the cPanel/Plesk/standalone
+  packages.
 
 The project is still intentionally small. The documents describe real behavior
 only: DAV, administration, lifecycle, backup, observability, ACME, abuse, and

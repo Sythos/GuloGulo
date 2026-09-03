@@ -1,5 +1,18 @@
 # SBOM and signed-image release workflow
 
+> **⚠️ Meccanismo ritirato, principi mantenuti come riferimento.** Il
+> meccanismo SBOM/GHCR descritto in questo documento — immagini container
+> pubblicate su GitHub Container Registry, release container, e il workflow
+> `container-release.yml` a cui si fa riferimento qui sotto — è stato
+> smantellato: le immagini GHCR e le release container sono state cancellate
+> e il workflow non esiste più nel repository. Il progetto è migrato a tre
+> pacchetti di distribuzione (cPanel, Plesk, archivio standalone) — vedi
+> [ADR-002](../../ADR-002-gulogulo-packaging-and-distribution-targets.md).
+> Questo documento resta come riferimento storico dei **principi** di
+> sicurezza del rilascio (checksum, provenance, attestazioni, verifica,
+> confini di permesso least-privilege, corrispondenza tag/versione) da
+> riadattare in futuro ai nuovi pacchetti — riadattamento non ancora fatto.
+
 <!--
 SPDX-License-Identifier: MIT
 SPDX-FileCopyrightText: 2026 Sythos (https://www.sythos.net)
