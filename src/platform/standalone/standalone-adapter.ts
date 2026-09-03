@@ -9,8 +9,9 @@ import { createPostgresCalDavStore } from '../../core/dav/caldav/postgres-caldav
 import { createPostgresCardDavStore } from '../../core/dav/carddav/postgres-carddav-store.ts';
 import { createDatabaseIdentityClient } from './db-identity-client.ts';
 import type { IntegrationConfig, IntegrationLogger, LdapIdentityClient, PostgresStore, SecretResolver } from '../../integrations/types.ts';
-import { createLocalMailClients } from '../contract/platform-adapter.ts';
+import { createLocalBackupStorage, createLocalMailClients } from '../contract/platform-adapter.ts';
 import type { DavStore, MailClientFactories, PlatformAdapter } from '../contract/platform-adapter.ts';
+import type { BackupStorageAdapter } from '../../core/backup/filesystem-backup-adapter.ts';
 import type { SessionStore, WebSession } from '../../web/security/session-manager.ts';
 
 function asRecord(value: unknown): Record<string, unknown> {
@@ -109,6 +110,17 @@ export function createStandaloneAdapter(options: StandaloneAdapterOptions = {}):
     return createLocalMailClients(config, { logger });
   }
 
+  /**
+   * A standalone install's location varies by operator (it is an archive
+   * extracted wherever they chose), so `/var/lib/gulogulo/backups` here is
+   * only the fallback default — the same FHS-style data directory
+   * `mail.mailboxRoot` and the patch status file already default to for
+   * this target. `contract.backup.path` in the loaded config overrides it.
+   */
+  async function createBackupStorage(config: IntegrationConfig): Promise<BackupStorageAdapter> {
+    return createLocalBackupStorage(config, { defaultPath: '/var/lib/gulogulo/backups', logger });
+  }
+
   async function createSessionStore(): Promise<SessionStore> {
     return new Map<string, WebSession>();
   }
@@ -120,6 +132,7 @@ export function createStandaloneAdapter(options: StandaloneAdapterOptions = {}):
     createDataStore,
     createDavStore,
     createMailClients,
+    createBackupStorage,
     createSessionStore,
   });
 }

@@ -9,6 +9,8 @@ import type { SmtpClient, SmtpClientLogger, SmtpTlsMode } from '../../core/mail/
 import type { IntegrationConfig, LdapIdentityClient, PostgresStore } from '../../integrations/types.ts';
 import type { PostgresCalDavStore } from '../../core/dav/caldav/postgres-caldav-store.ts';
 import type { PostgresCardDavStore } from '../../core/dav/carddav/postgres-carddav-store.ts';
+import { createFilesystemBackupAdapter } from '../../core/backup/filesystem-backup-adapter.ts';
+import type { BackupAdapterLogger, BackupStorageAdapter } from '../../core/backup/filesystem-backup-adapter.ts';
 import type { SessionStore } from '../../web/security/session-manager.ts';
 
 /** The three packaging/distribution targets defined by ADR-002. */
@@ -42,6 +44,10 @@ function readMailPort(config: IntegrationConfig, field: 'imapsPort' | 'smtpSubmi
 const LOCAL_MAIL_HOST = '127.0.0.1';
 const DEFAULT_IMAPS_PORT = 993;
 const DEFAULT_SMTP_SUBMISSION_PORT = 587;
+/** Matches `src/runtime/config.ts`'s own `mail.mailboxRoot` default, so the same-device check has a sensible fallback even when the loaded config never set it explicitly. */
+const DEFAULT_MAILBOX_ROOT = '/var/lib/gulogulo/mail';
+/** `%{_localstatedir}`-style default shared by every current target (see `packaging/cpanel/gulogulo.spec`'s `/var/lib/gulogulo`); always overridable via `contract.backup.path`. */
+const DEFAULT_BACKUP_PATH = '/var/lib/gulogulo/backups';
 
 /**
  * Build IMAP/SMTP client factories against the packaging target's local mail
@@ -76,6 +82,56 @@ export function createLocalMailClients(
       tls: overrides.tls ?? 'starttls',
       logger,
     }),
+  });
+}
+
+function readBackupPath(config: IntegrationConfig, fallback: string): string {
+  const root = asMailConfigRecord(config);
+  const contract = asMailConfigRecord(root.contract);
+  const backup = asMailConfigRecord(contract.backup ?? root.backup);
+  const value = backup.path;
+  return typeof value === 'string' && value.length > 0 ? value : fallback;
+}
+
+/**
+ * The application's own live mailbox root (`mail.mailboxRoot`, already
+ * configurable per `src/runtime/config.ts`) doubles as the default
+ * comparison path for the local backup adapter's same-filesystem-device
+ * warning — it is the one "live data directory" every target already has a
+ * real, configured answer for. `contract.backup.liveDataPath` overrides it
+ * for anyone whose live data is not the mailbox root.
+ */
+function readBackupLiveDataPath(config: IntegrationConfig): string {
+  const root = asMailConfigRecord(config);
+  const contract = asMailConfigRecord(root.contract);
+  const backup = asMailConfigRecord(contract.backup ?? root.backup);
+  if (typeof backup.liveDataPath === 'string' && backup.liveDataPath.length > 0) return backup.liveDataPath;
+  const mail = asMailConfigRecord(contract.mail ?? root.mail);
+  return typeof mail.mailboxRoot === 'string' && mail.mailboxRoot.length > 0 ? mail.mailboxRoot : DEFAULT_MAILBOX_ROOT;
+}
+
+/**
+ * Builds the local filesystem `BackupStorageAdapter` shared by every current
+ * target's `createBackupStorage()`. `defaultPath` is the per-target
+ * fallback (see each adapter's own comment); `contract.backup.path` in the
+ * loaded config always overrides it, which is what makes the standalone
+ * target's path "configurable" as called for by its own target description
+ * — the very same override mechanism cPanel/Plesk operators can also use if
+ * `/var/lib/gulogulo/backups` is not appropriate for their host.
+ *
+ * IMPORTANT: this is a local-path adapter, not disaster recovery — see the
+ * same-filesystem-device warning documented in
+ * `src/core/backup/filesystem-backup-adapter.ts` and
+ * `doc/lifecycle-backup-dr.md`.
+ */
+export function createLocalBackupStorage(
+  config: IntegrationConfig,
+  options: { readonly defaultPath: string; readonly logger?: BackupAdapterLogger } = { defaultPath: DEFAULT_BACKUP_PATH },
+): BackupStorageAdapter {
+  return createFilesystemBackupAdapter({
+    basePath: readBackupPath(config, options.defaultPath),
+    liveDataPath: readBackupLiveDataPath(config),
+    logger: options.logger,
   });
 }
 
@@ -144,6 +200,20 @@ export interface PlatformAdapter {
    * not forced to implement it.
    */
   createMailClients?(config: IntegrationConfig): Promise<MailClientFactories>;
+
+  /**
+   * Resolves where the manifests/archives `src/core/backup/backup-contract.ts`
+   * builds in memory are actually written. Every current target returns a
+   * local filesystem adapter (`createLocalBackupStorage()` below) — a fast,
+   * same-host recovery convenience within the retention window, explicitly
+   * NOT disaster recovery (see `doc/lifecycle-backup-dr.md`). The interface
+   * itself is storage-agnostic, so a future remote adapter (rsync to
+   * another host, an S3-compatible store) can be returned here without this
+   * contract or any caller changing. Optional for the same reason
+   * `createMailClients` is: an adapter that predates backup wiring, or a
+   * test double, is not forced to implement it.
+   */
+  createBackupStorage?(config: IntegrationConfig): Promise<BackupStorageAdapter>;
 
   /** Resolves where/how web sessions are persisted for this target. */
   createSessionStore(): Promise<SessionStore>;

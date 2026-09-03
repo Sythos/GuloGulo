@@ -79,6 +79,20 @@ test('createDavStore() builds real PostgreSQL-backed CalDAV/CardDAV stores from 
   await davStore.carddav.close();
 });
 
+test('createBackupStorage() builds a real filesystem adapter with the shared /var/lib/gulogulo/backups default', async () => {
+  const adapter = createCpanelAdapter({ environment: emptyEnvironment() });
+  const config = await adapter.loadConfig();
+  const storage = await adapter.createBackupStorage!(config);
+  assert.equal(storage.kind, 'filesystem-local');
+  assert.equal(storage.basePath, '/var/lib/gulogulo/backups');
+});
+
+test('createBackupStorage() honors an overridden contract.backup.path', async () => {
+  const adapter = createCpanelAdapter({ environment: emptyEnvironment() });
+  const storage = await adapter.createBackupStorage!({ contract: { backup: { path: '/srv/gulogulo-backups' } } } as any);
+  assert.equal(storage.basePath, '/srv/gulogulo-backups');
+});
+
 test('createSessionStore() returns a working in-memory SessionStore', async () => {
   const adapter = createCpanelAdapter({ environment: emptyEnvironment() });
   const store = await adapter.createSessionStore();

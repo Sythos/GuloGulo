@@ -4,9 +4,13 @@
 
 import assert from 'node:assert/strict';
 import test from 'node:test';
+import { mkdtemp, readFile, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 
 import { createStandaloneAdapter } from './standalone-adapter.ts';
 import type { PlatformAdapter } from '../contract/platform-adapter.ts';
+import { createArchiveManifest, createUserBackupScope, sha256Hex } from '../../core/backup/backup-contract.ts';
 
 /** An environment with no GULOGULO_CONFIG_FILE set: config.ts falls back to
  * its optional default mount, which does not exist on a test machine, so
@@ -112,6 +116,30 @@ test('loadConfig() defaults identity.source to "ldap"', async () => {
 test('identity.source "database" is rejected by config validation when postgres is disabled', async () => {
   const adapter = createStandaloneAdapter({ environment: { GULOGULO_IDENTITY_SOURCE: 'database' } });
   await assert.rejects(() => adapter.loadConfig(), /identity\.source cannot be "database"/);
+});
+
+test('createBackupStorage() builds a real filesystem adapter with the shared /var/lib/gulogulo/backups default', async () => {
+  const adapter = createStandaloneAdapter({ environment: emptyEnvironment() });
+  const config = await adapter.loadConfig();
+  const storage = await adapter.createBackupStorage!(config);
+  assert.equal(storage.kind, 'filesystem-local');
+  assert.equal(storage.basePath, '/var/lib/gulogulo/backups');
+});
+
+test('createBackupStorage() honors an overridden contract.backup.path and really writes to it — standalone install locations vary, so this is the target this path override matters most for', async (t) => {
+  const adapter = createStandaloneAdapter({ environment: emptyEnvironment() });
+  const tmp = await mkdtemp(join(tmpdir(), 'gulogulo-standalone-backup-'));
+  t.after(() => rm(tmp, { recursive: true, force: true }));
+  const storage = await adapter.createBackupStorage!({ contract: { backup: { path: tmp } } } as any);
+  assert.equal(storage.basePath, tmp);
+
+  const scope = createUserBackupScope({ session: { tenantId: 'acme', userId: 'alice', role: 'user' as const } });
+  const entries = [{ resource: 'preferences' as const, path: 'preferences/settings.json', bytes: Buffer.byteLength('{}'), sha256: sha256Hex('{}') }];
+  const manifest = createArchiveManifest({ scope, entries, archiveId: 'archive-standalone-001' });
+  const result = await storage.writeArchive({ manifest, entries: [{ path: 'preferences/settings.json', content: '{}' }] });
+
+  const written = await readFile(result.manifestPath, 'utf8');
+  assert.equal(JSON.parse(written).archiveId, 'archive-standalone-001');
 });
 
 test('createSessionStore() returns a working in-memory SessionStore', async () => {

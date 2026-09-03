@@ -8,8 +8,9 @@ import { createPostgresStore } from '../../integrations/postgres-store.ts';
 import { createPostgresCalDavStore } from '../../core/dav/caldav/postgres-caldav-store.ts';
 import { createPostgresCardDavStore } from '../../core/dav/carddav/postgres-carddav-store.ts';
 import type { IntegrationConfig, IntegrationLogger, LdapIdentityClient, PostgresStore, SecretResolver } from '../../integrations/types.ts';
-import { createLocalMailClients } from '../contract/platform-adapter.ts';
+import { createLocalBackupStorage, createLocalMailClients } from '../contract/platform-adapter.ts';
 import type { DavStore, MailClientFactories, PlatformAdapter } from '../contract/platform-adapter.ts';
+import type { BackupStorageAdapter } from '../../core/backup/filesystem-backup-adapter.ts';
 import type { SessionStore, WebSession } from '../../web/security/session-manager.ts';
 
 /**
@@ -82,6 +83,11 @@ export function createCpanelAdapter(options: CpanelAdapterOptions = {}): Platfor
     return createLocalMailClients(config, { logger });
   }
 
+  /** `/var/lib/gulogulo/backups`, matching the RPM target's fixed `%{_localstatedir}`-derived install layout (`packaging/cpanel/gulogulo.spec`); overridable via `contract.backup.path`. */
+  async function createBackupStorage(config: IntegrationConfig): Promise<BackupStorageAdapter> {
+    return createLocalBackupStorage(config, { defaultPath: '/var/lib/gulogulo/backups', logger });
+  }
+
   async function createSessionStore(): Promise<SessionStore> {
     return new Map<string, WebSession>();
   }
@@ -93,6 +99,7 @@ export function createCpanelAdapter(options: CpanelAdapterOptions = {}): Platfor
     createDataStore,
     createDavStore,
     createMailClients,
+    createBackupStorage,
     createSessionStore,
   });
 }
