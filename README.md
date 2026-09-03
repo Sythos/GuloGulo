@@ -37,11 +37,12 @@ reconciliation kept as a separate backlog item.
 
 ## Why three packages, and why these targets
 
-Gulo Gulo used to ship as a single OCI container image (ADR-001). ADR-002
-replaced that with three packages built from the same TypeScript core,
-because in practice nobody deploys a mail/groupware app the same way twice:
-some run it on a hosting panel they already have, some run it on a bare
-Linux box they fully control. One generic artifact can't serve both well.
+Gulo Gulo used to ship as a single all-in-one deployment (ADR-001). ADR-002
+replaced that with three OS-native packages built from the same TypeScript
+core, because in practice nobody deploys a mail/groupware app the same way
+twice: some run it on a hosting panel they already have, some run it on a
+bare Linux box they fully control. One generic artifact can't serve both
+well.
 
 Each package targets the OS its ecosystem actually runs on. The
 cPanel/Plesk targets have a real, OS-native package format fully
@@ -93,7 +94,8 @@ Full instructions, requirements, and known gaps for each target are in
 
 ```bash
 node --experimental-strip-types packaging/standalone/build-standalone-package.ts
-tar xzf packaging/dist/gulogulo-<version>-standalone.tar.gz -C /opt/gulogulo
+mkdir -p /opt/gulogulo
+tar xzf packaging/dist/gulogulo-<version>-standalone.tar.gz -C /opt/gulogulo --strip-components=1
 cd /opt/gulogulo && ./install.sh
 ```
 
@@ -125,9 +127,9 @@ rehearsal in CI: each package-*.yml workflow extracts the tarball, runs
 `install.sh --non-interactive` for real (dedicated system user, `npm ci`,
 migrations), starts the compiled server, and polls `/health/ready` and `/`
 until they respond. The cPanel and Plesk workflows additionally run inside
-a real target-OS container (`almalinux:9`, `debian:trixie`) and stub only
-`systemctl` (those containers have no running init system for it to talk
-to) - actually enabling/starting the systemd unit, and the Apache/nginx
+a real target-OS environment (`almalinux:9`, `debian:trixie`) and stub only
+`systemctl` (those CI environments have no running init system for it to
+talk to) - actually enabling/starting the systemd unit, and the Apache/nginx
 reverse-proxy wiring, remain field work on a real host; see the honesty
 notes in INSTALL.md before relying on either in production.
 
@@ -197,7 +199,7 @@ still missing.
   see "Why three packages" above) and each gets a real install-and-health-
   check rehearsal in CI (`install.sh --non-interactive`, server boot,
   `/health/ready`); on cPanel/Plesk the systemd enable/start step is stubbed
-  since their CI containers have no init system, tracked in
+  since their CI environments have no init system, tracked in
   [INSTALL.md](INSTALL.md);
 - [x] provenance and release permissions are granted only by version-tag pushes
   or trusted manual callers, while pull-request validation remains read-only;
@@ -303,7 +305,7 @@ the checked contracts belongs in [INSTALL.md](INSTALL.md).
   (`src/runtime/config.ts`) on all three targets, tested against a local
   `node:http` fake (see `doc/observability.md`); the log collector is
   intentionally not application code — systemd/journald (or logrotate) on
-  every current, non-container target already captures and rotates the
+  every current, OS-native target already captures and rotates the
   stdout/stderr JSON log stream; paging reuses the same webhook mechanism
   with `alerting.minSeverity: 'critical'`, no dedicated paging adapter
   exists or is needed. Still outstanding: nothing in the runtime yet calls
