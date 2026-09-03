@@ -6,7 +6,7 @@
 
 import { loadConfig } from './config.js';
 import { createLogger } from './logger.js';
-import { createProvisionedLoginAuthenticator } from './login.js';
+import { createEnvironmentSecretResolver, createPlatformAdapterForTarget, createProvisionedLoginAuthenticator, resolvePlatformTarget } from './login.js';
 import { createFixtureLoginAuthenticator, createRuntimeServer, startServer, stopServer } from './server.js';
 
 let runtime;
@@ -36,11 +36,34 @@ function resolveLoginAuthenticator(config, logger, environment = process.env) {
   return createProvisionedLoginAuthenticator({ environment, config, logger });
 }
 
+/**
+ * Resolves the persistent CalDAV/CardDAV storage backends
+ * (`PlatformAdapter.createDavStore()`) for the `/dav/*` HTTP surface in
+ * `src/runtime/server.ts`, the same way `resolveLoginAuthenticator()` above
+ * resolves an identity client — same target selection
+ * (`GULOGULO_PLATFORM`/`resolvePlatformTarget()`), same environment secret
+ * resolver. A misconfigured or unreachable PostgreSQL target must not crash
+ * server startup: on failure this logs a warning and returns `undefined`,
+ * which makes every `/dav/*` request respond `503 DAV_STORE_UNAVAILABLE`
+ * instead of taking the whole process down.
+ */
+async function resolveDavStore(config, logger, environment = process.env) {
+  try {
+    const resolveSecret = createEnvironmentSecretResolver(environment);
+    const adapter = createPlatformAdapterForTarget(resolvePlatformTarget(environment), { environment, resolveSecret, logger });
+    return await adapter.createDavStore(config);
+  } catch (error) {
+    logger.warn?.('dav_store_unavailable', { error: { name: error?.name, code: error?.code } });
+    return undefined;
+  }
+}
+
 async function main() {
   const config = loadConfig();
   const logger = createLogger(loggerOptions(config));
   const authenticateLogin = resolveLoginAuthenticator(config, logger);
-  runtime = createRuntimeServer({ config, logger, authenticateLogin });
+  const davStore = await resolveDavStore(config, logger);
+  runtime = createRuntimeServer({ config, logger, authenticateLogin, davStore });
   await startServer(runtime);
 
   const shutdown = async (signal) => {

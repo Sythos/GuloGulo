@@ -15,6 +15,7 @@ import { createRateLimiter } from '../core/ops/abuse/index.ts';
 import { parsePatchStatus, type PatchStatusDto } from '../core/ops/patch/status.ts';
 import { CSRF_HEADER_NAME, createWebSecurity } from '../web/security/index.ts';
 import type { SessionIdentity, WebSecurity, WebSession } from '../web/security/index.ts';
+import type { DavStore } from '../platform/contract/platform-adapter.ts';
 
 type RuntimeConfig = ReturnType<typeof loadConfig> & Record<string, any>;
 type RuntimeLogger = ReturnType<typeof createLogger>;
@@ -39,6 +40,8 @@ interface RuntimeServerOptions {
   rateLimiter?: any;
   authenticateLogin?: LoginAuthenticator;
   apiResources?: Partial<ApiResources>;
+  /** The persistent CalDAV/CardDAV storage backends (`PlatformAdapter.createDavStore()`). Undefined means the `/dav/*` surface responds 503 instead of touching a store. */
+  davStore?: DavStore;
 }
 export interface RuntimeServer {
   config: RuntimeConfig;
@@ -55,6 +58,7 @@ export interface RuntimeServer {
   authenticateLogin: LoginAuthenticator;
   apiResources: ApiResources;
   loginFailures: Map<string, { startedAt: number; count: number }>;
+  davStore: DavStore | undefined;
   server: Server;
 }
 
@@ -89,6 +93,24 @@ const STATIC_MIME_TYPES: Readonly<Record<string, string>> = Object.freeze({
 const REQUEST_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/;
 const WELL_KNOWN_PATH_VALUES = new Set<string>(Object.values(WELL_KNOWN_PATHS));
 const API_BODY_MAX_BYTES = 16 * 1024;
+// One iCalendar object is capped at 1 MiB and one vCard at 256 KiB by the
+// contracts themselves (caldav-contract.ts/carddav-store.ts); this is only a
+// coarse guard against reading an unbounded request body into memory before
+// that real, content-aware validation runs.
+const DAV_BODY_MAX_BYTES = 2 * 1024 * 1024;
+const DAV_XML_CONTENT_TYPE = 'application/xml; charset=utf-8';
+// PROPFIND/GET/HEAD are read-only; PUT/DELETE/REPORT are the minimal
+// interoperable WebDAV/CalDAV/CardDAV write and report surface this adapter
+// implements against the Postgres-backed contracts. Anything else (MKCOL,
+// PROPPATCH, COPY, MOVE, LOCK, ACL, OPTIONS, ...) is explicitly out of scope
+// for this milestone and answers 501 Not Implemented rather than being
+// silently ignored or falling through to the generic 405 handler.
+const SUPPORTED_DAV_METHODS = new Set(['PROPFIND', 'GET', 'HEAD', 'PUT', 'DELETE', 'REPORT']);
+const DAV_ALLOW_HEADER = [...SUPPORTED_DAV_METHODS].join(', ');
+const CALDAV_COLLECTION_PATTERN = /^\/dav\/calendars\/([^/]+)\/([^/]+)\/([^/]+)\/$/u;
+const CALDAV_OBJECT_PATTERN = /^\/dav\/calendars\/([^/]+)\/([^/]+)\/([^/]+)\/([^/]+)$/u;
+const CARDDAV_COLLECTION_PATTERN = /^\/dav\/contacts\/([^/]+)\/([^/]+)\/([^/]+)\/$/u;
+const CARDDAV_OBJECT_PATTERN = /^\/dav\/contacts\/([^/]+)\/([^/]+)\/([^/]+)\/([^/]+)$/u;
 const LOGIN_FAILURE_LIMIT = 5;
 const LOGIN_FAILURE_WINDOW_MS = 15 * 60 * 1000;
 const API_GET_ROUTES = new Map<string, ApiResourceName>([
@@ -240,6 +262,12 @@ function routeName(path: string | null): string {
   if (path !== null && WELL_KNOWN_PATH_VALUES.has(path)) {
     return '/discovery/well-known';
   }
+  if (path !== null && path.startsWith('/dav/calendars/')) {
+    return '/dav/calendars';
+  }
+  if (path !== null && path.startsWith('/dav/contacts/')) {
+    return '/dav/contacts';
+  }
   if (path === '/assets/gulo-gulo-calendar-mail.png') {
     return '/assets';
   }
@@ -309,7 +337,7 @@ function readPatchStatus(config: RuntimeConfig): PatchStatusDto {
 function abuseChannelForPath(path: string | null): string {
   if (path === '/api/session/login') return 'login';
   if (path !== null && path.startsWith('/api/')) return 'api';
-  if (path !== null && WELL_KNOWN_PATH_VALUES.has(path)) return 'dav';
+  if (path !== null && (WELL_KNOWN_PATH_VALUES.has(path) || path.startsWith('/dav/'))) return 'dav';
   return 'http';
 }
 
@@ -367,6 +395,481 @@ function readJsonBody(request: IncomingMessage, maxBytes = API_BODY_MAX_BYTES): 
     });
     request.on('error', reject);
   });
+}
+
+// ---------------------------------------------------------------------------
+// DAV (CalDAV/CardDAV) HTTP surface
+//
+// This section maps the minimal interoperable WebDAV method/report subset
+// already supported by the pure contracts (src/core/dav/caldav/caldav-
+// contract.ts, src/core/dav/carddav/carddav-store.ts) onto HTTP, against the
+// injected Postgres-backed stores (runtime.davStore, from
+// PlatformAdapter.createDavStore()). It intentionally does not implement the
+// full RFC 4791/6352 method set (no MKCOL/MKCALENDAR, PROPPATCH, COPY, MOVE,
+// LOCK/UNLOCK, ACL, or free-busy) — calendars and address books are expected
+// to already exist (created directly against the contract, e.g. during
+// provisioning) before a client ever reaches this HTTP surface.
+//
+// Authentication reuses the exact same cookie session as every other
+// `/api/*` route (`runtime.webSecurity.authenticate()` in the request
+// handler below) — there is no separate DAV credential path. Authorization
+// never trusts the tenantId/ownerUserId path segments on their own: the
+// authenticated session's tenantId must match the URL's tenantId segment
+// (checked here) and every store call is made with an actor/scope built
+// from the *session*, so PostgreSQL RLS and the contract's own ACL checks
+// are always evaluated against who is actually logged in, never against
+// what the URL claims. CardDAV has no delegate/sharing concept in this
+// codebase, so its URL's userId segment must equal the session's userId;
+// CalDAV's ownerUserId segment may legitimately differ from the session
+// user for a delegated (shared, read or write) calendar — the contract's
+// own ACL check (owner vs. delegate) decides that, not this router.
+//
+// Real DAV clients (Apple Calendar, Thunderbird, DAVx5, ...) cannot obtain
+// or send the double-submit CSRF token the browser SPA uses for its own
+// mutating requests (POST /api/session/logout), so PUT/DELETE/REPORT here
+// are authenticated by session cookie alone, relying on the session
+// cookie's own SameSite=Lax/Strict attribute (src/web/security/session-
+// manager.ts) as the cross-site request forgery mitigation. This is a
+// deliberate, documented trade-off, not an oversight — see doc/dav-and-
+// discovery.md.
+
+function xmlEscapeDav(value: unknown): string {
+  return String(value).replace(/&/gu, '&amp;').replace(/</gu, '&lt;').replace(/>/gu, '&gt;')
+    .replace(/"/gu, '&quot;').replace(/'/gu, '&apos;');
+}
+
+function davMultistatus(innerXml: string, extra = ''): string {
+  return `<?xml version="1.0" encoding="utf-8"?>\n<D:multistatus xmlns:D="DAV:" xmlns:C="urn:ietf:params:xml:ns:caldav" xmlns:CARD="urn:ietf:params:xml:ns:carddav">\n${innerXml}${extra}\n</D:multistatus>\n`;
+}
+
+function davPropResponse(href: string, propsInnerXml: string): string {
+  return `  <D:response>\n    <D:href>${xmlEscapeDav(href)}</D:href>\n    <D:propstat>\n      <D:prop>\n${propsInnerXml}\n      </D:prop>\n      <D:status>HTTP/1.1 200 OK</D:status>\n    </D:propstat>\n  </D:response>\n`;
+}
+
+function davTombstoneResponse(href: string): string {
+  return `  <D:response>\n    <D:href>${xmlEscapeDav(href)}</D:href>\n    <D:status>HTTP/1.1 404 Not Found</D:status>\n  </D:response>\n`;
+}
+
+function davErrorXml(code: string, message: string): string {
+  return `<?xml version="1.0" encoding="utf-8"?>\n<D:error xmlns:D="DAV:"><D:code>${xmlEscapeDav(code)}</D:code><D:message>${xmlEscapeDav(message)}</D:message></D:error>\n`;
+}
+
+function caldavCollectionHref(tenantId: string, ownerUserId: string, collectionId: string): string {
+  return `/dav/calendars/${encodeURIComponent(tenantId)}/${encodeURIComponent(ownerUserId)}/${encodeURIComponent(collectionId)}/`;
+}
+
+function davObjectHref(collectionHref: string, objectId: string): string {
+  return `${collectionHref}${encodeURIComponent(objectId)}`;
+}
+
+function carddavCollectionHref(tenantId: string, userId: string, addressBookId: string): string {
+  return `/dav/contacts/${encodeURIComponent(tenantId)}/${encodeURIComponent(userId)}/${encodeURIComponent(addressBookId)}/`;
+}
+
+function caldavObjectPropXml(etag: string): string {
+  return `        <D:getetag>${xmlEscapeDav(etag)}</D:getetag>\n        <D:getcontenttype>text/calendar; charset=utf-8</D:getcontenttype>\n        <D:resourcetype/>`;
+}
+
+function carddavObjectPropXml(etag: string): string {
+  return `        <D:getetag>${xmlEscapeDav(etag)}</D:getetag>\n        <D:getcontenttype>text/vcard</D:getcontenttype>\n        <D:resourcetype/>`;
+}
+
+function caldavCollectionPropXml(collection: any): string {
+  return [
+    '        <D:resourcetype><D:collection/><C:calendar/></D:resourcetype>',
+    `        <D:displayname>${xmlEscapeDav(collection.displayName)}</D:displayname>`,
+    `        <D:getlastmodified>${xmlEscapeDav(new Date(collection.updatedAt).toUTCString())}</D:getlastmodified>`,
+    `        <D:sync-token>${xmlEscapeDav(collection.syncToken)}</D:sync-token>`,
+  ].join('\n');
+}
+
+function carddavCollectionPropXml(addressBook: any): string {
+  return [
+    '        <D:resourcetype><D:collection/><CARD:addressbook/></D:resourcetype>',
+    `        <D:displayname>${xmlEscapeDav(addressBook.displayName)}</D:displayname>`,
+    `        <D:getlastmodified>${xmlEscapeDav(new Date(addressBook.updatedAt).toUTCString())}</D:getlastmodified>`,
+    `        <D:sync-token>${xmlEscapeDav(addressBook.syncToken)}</D:sync-token>`,
+  ].join('\n');
+}
+
+function readRawBody(request: IncomingMessage, maxBytes = DAV_BODY_MAX_BYTES): Promise<string> {
+  return new Promise<string>((resolvePromise, reject) => {
+    const chunks: Buffer[] = [];
+    let failed = false;
+    let bytes = 0;
+    request.on('data', (chunk: Buffer) => {
+      bytes += chunk.length;
+      if (bytes > maxBytes) {
+        failed = true;
+        reject(Object.assign(new Error('request body is too large'), { code: 'BODY_TOO_LARGE', status: 413 }));
+        return;
+      }
+      if (!failed) chunks.push(Buffer.from(chunk));
+    });
+    request.on('end', () => {
+      if (failed) return;
+      resolvePromise(Buffer.concat(chunks).toString('utf8'));
+    });
+    request.on('error', reject);
+  });
+}
+
+/** '0'/'1' per RFC 4918; 'infinity' is rejected by the caller — this adapter never enumerates an unbounded tree. */
+function parseDavDepth(request: IncomingMessage): '0' | '1' | 'infinity' {
+  const value = requestHeader(request, 'depth');
+  if (value === '0') return '0';
+  if (value === 'infinity') return 'infinity';
+  return '1';
+}
+
+/** Namespace-agnostic report-type sniff: matches the report's root element regardless of the client's chosen XML prefix. */
+function detectDavReportType(xmlBody: string): 'calendar-query' | 'addressbook-query' | 'sync-collection' | null {
+  if (/<[^>]*:?sync-collection[\s/>]/iu.test(xmlBody)) return 'sync-collection';
+  if (/<[^>]*:?calendar-query[\s/>]/iu.test(xmlBody)) return 'calendar-query';
+  if (/<[^>]*:?addressbook-query[\s/>]/iu.test(xmlBody)) return 'addressbook-query';
+  return null;
+}
+
+function extractDavSyncToken(xmlBody: string): string | undefined {
+  const match = /<[^>]*:?sync-token[^>]*>([^<]*)<\/[^>]*:?sync-token>/iu.exec(xmlBody);
+  const token = match?.[1]?.trim();
+  return token === undefined || token.length === 0 ? undefined : token;
+}
+
+function davErrorFromCaught(error: unknown): { status: number; code: string; message: string } {
+  const record = error !== null && typeof error === 'object' ? error as Record<string, unknown> : {};
+  const status = typeof record.status === 'number' && record.status >= 400 && record.status < 600 ? record.status : 500;
+  const code = typeof record.code === 'string' ? record.code : 'INTERNAL_ERROR';
+  const message = status === 500 ? 'an internal error occurred' : (error instanceof Error ? error.message : 'request failed');
+  return { status, code, message };
+}
+
+function writeDavResponse(response: ServerResponse, statusCode: number, body: string, contentType: string, method: string, requestDetails: RequestDetails, extraHeaders: Record<string, string> = {}): void {
+  const bodyBuffer = Buffer.from(body ?? '', 'utf8');
+  response.writeHead(statusCode, {
+    ...STATIC_SECURITY_HEADERS,
+    ...extraHeaders,
+    'cache-control': 'no-store',
+    'content-length': bodyBuffer.length,
+    'content-type': contentType,
+    'x-request-id': requestDetails.request_id,
+    'x-correlation-id': requestDetails.correlation_id,
+  });
+
+  if (method !== 'HEAD') {
+    response.end(bodyBuffer);
+    return;
+  }
+
+  response.end();
+}
+
+interface DavRouteMatch {
+  readonly kind: 'caldav' | 'carddav';
+  readonly level: 'collection' | 'object';
+  readonly tenantId: string;
+  readonly ownerUserId: string;
+  readonly collectionId: string;
+  readonly objectSegment: string | null;
+}
+
+function decodeSegment(value: string): string | null {
+  try {
+    return decodeURIComponent(value);
+  } catch {
+    return null;
+  }
+}
+
+function matchDavRoute(path: string): DavRouteMatch | null {
+  const caldavObject = CALDAV_OBJECT_PATTERN.exec(path);
+  if (caldavObject) {
+    const [, tenantId, ownerUserId, collectionId, objectSegment] = caldavObject;
+    const decoded = [tenantId, ownerUserId, collectionId, objectSegment].map(decodeSegment);
+    if (decoded.some((segment) => segment === null)) return null;
+    return { kind: 'caldav', level: 'object', tenantId: decoded[0]!, ownerUserId: decoded[1]!, collectionId: decoded[2]!, objectSegment: decoded[3]! };
+  }
+  const caldavCollection = CALDAV_COLLECTION_PATTERN.exec(path);
+  if (caldavCollection) {
+    const [, tenantId, ownerUserId, collectionId] = caldavCollection;
+    const decoded = [tenantId, ownerUserId, collectionId].map(decodeSegment);
+    if (decoded.some((segment) => segment === null)) return null;
+    return { kind: 'caldav', level: 'collection', tenantId: decoded[0]!, ownerUserId: decoded[1]!, collectionId: decoded[2]!, objectSegment: null };
+  }
+  const carddavObject = CARDDAV_OBJECT_PATTERN.exec(path);
+  if (carddavObject) {
+    const [, tenantId, ownerUserId, collectionId, objectSegment] = carddavObject;
+    const decoded = [tenantId, ownerUserId, collectionId, objectSegment].map(decodeSegment);
+    if (decoded.some((segment) => segment === null)) return null;
+    return { kind: 'carddav', level: 'object', tenantId: decoded[0]!, ownerUserId: decoded[1]!, collectionId: decoded[2]!, objectSegment: decoded[3]! };
+  }
+  const carddavCollection = CARDDAV_COLLECTION_PATTERN.exec(path);
+  if (carddavCollection) {
+    const [, tenantId, ownerUserId, collectionId] = carddavCollection;
+    const decoded = [tenantId, ownerUserId, collectionId].map(decodeSegment);
+    if (decoded.some((segment) => segment === null)) return null;
+    return { kind: 'carddav', level: 'collection', tenantId: decoded[0]!, ownerUserId: decoded[1]!, collectionId: decoded[2]!, objectSegment: null };
+  }
+  return null;
+}
+
+interface DavRouteContext {
+  runtime: RuntimeServer;
+  request: IncomingMessage;
+  response: ServerResponse;
+  method: string;
+  path: string;
+  session: WebSession;
+  requestDetails: RequestDetails;
+  scopedLogger: RuntimeLogger;
+  startedAt: bigint;
+  route: string;
+}
+
+/**
+ * Handles every `/dav/calendars/*` and `/dav/contacts/*` request. Always
+ * writes exactly one response and never throws — every contract/store error
+ * is caught and mapped through `davErrorFromCaught()` to the HTTP status the
+ * contract already chose (see caldav-contract.ts's `CalDavError.status` /
+ * carddav-store.ts's `CardDavError.status`, both reused unmodified by the
+ * PostgreSQL adapters).
+ */
+async function handleDavRoute(context: DavRouteContext): Promise<void> {
+  const { runtime, request, response, method, path, session, requestDetails, scopedLogger, startedAt, route } = context;
+
+  const finishDav = (statusCode: number, body: string, contentType: string, extraHeaders: Record<string, string> = {}): void => {
+    writeDavResponse(response, statusCode, body, contentType, method, requestDetails, extraHeaders);
+    const durationMs = elapsedMilliseconds(startedAt);
+    runtime.metrics.recordRequest({ method, route, statusCode, durationMs });
+    scopedLogger.info('request_completed', {
+      method,
+      route,
+      status_code: statusCode,
+      duration_ms: Number(durationMs.toFixed(3)),
+      result: statusCode < 400 ? 'success' : 'failure',
+    });
+  };
+
+  if (!SUPPORTED_DAV_METHODS.has(method)) {
+    response.setHeader('allow', DAV_ALLOW_HEADER);
+    finishDav(501, davErrorXml('NOT_IMPLEMENTED', `method ${method} is not implemented for DAV resources`), DAV_XML_CONTENT_TYPE);
+    return;
+  }
+
+  if (runtime.davStore === undefined) {
+    finishDav(503, davErrorXml('DAV_STORE_UNAVAILABLE', 'DAV storage is not configured'), DAV_XML_CONTENT_TYPE);
+    return;
+  }
+
+  const match = matchDavRoute(path);
+  if (match === null) {
+    finishDav(404, davErrorXml('NOT_FOUND', 'the requested DAV resource path is not recognized'), DAV_XML_CONTENT_TYPE);
+    return;
+  }
+
+  // Authorization never trusts the URL: the session's own tenant must match
+  // the URL's tenant segment. CardDAV additionally has no delegate concept,
+  // so its "owner" segment must be the session user itself.
+  if (match.tenantId !== session.tenantId) {
+    finishDav(403, davErrorXml('CROSS_TENANT_DENIED', 'cross-tenant DAV access is denied'), DAV_XML_CONTENT_TYPE);
+    return;
+  }
+  if (match.kind === 'carddav' && match.ownerUserId !== session.userId) {
+    finishDav(403, davErrorXml('SCOPE_TARGET_DENIED', 'an address book may only be accessed by its own user'), DAV_XML_CONTENT_TYPE);
+    return;
+  }
+
+  const davStore = runtime.davStore;
+
+  try {
+    if (match.kind === 'caldav') {
+      if (!davStore.caldav.enabled) {
+        finishDav(503, davErrorXml('DAV_STORE_UNAVAILABLE', 'CalDAV storage is not configured'), DAV_XML_CONTENT_TYPE);
+        return;
+      }
+      const actor = { tenantId: session.tenantId, domain: session.domain, userId: session.userId, role: session.role };
+      const calendarId = `${match.ownerUserId}/${match.collectionId}`;
+      const collectionHref = caldavCollectionHref(match.tenantId, match.ownerUserId, match.collectionId);
+
+      if (match.level === 'collection') {
+        if (method === 'PROPFIND') {
+          const depth = parseDavDepth(request);
+          if (depth === 'infinity') { finishDav(403, davErrorXml('DEPTH_NOT_SUPPORTED', 'Depth: infinity is not supported'), DAV_XML_CONTENT_TYPE); return; }
+          const collection = await davStore.caldav.getCalendarCollection(actor, calendarId);
+          let innerXml = davPropResponse(collectionHref, caldavCollectionPropXml(collection));
+          if (depth === '1') {
+            const listing = await davStore.caldav.listCalendarObjects(actor, { calendarId });
+            for (const object of listing.objects) innerXml += davPropResponse(object.href, caldavObjectPropXml(object.etag));
+          }
+          finishDav(207, davMultistatus(innerXml), DAV_XML_CONTENT_TYPE);
+          return;
+        }
+        if (method === 'REPORT') {
+          const xmlBody = await readRawBody(request);
+          const reportType = detectDavReportType(xmlBody);
+          if (reportType === 'sync-collection') {
+            const syncToken = extractDavSyncToken(xmlBody);
+            const result = await davStore.caldav.listCalendarObjects(actor, { calendarId, syncToken });
+            let innerXml = '';
+            for (const object of result.objects) innerXml += davPropResponse(object.href, caldavObjectPropXml(object.etag));
+            for (const deletedObjectId of result.deletedObjectIds) innerXml += davTombstoneResponse(davObjectHref(collectionHref, deletedObjectId));
+            finishDav(207, davMultistatus(innerXml, `  <D:sync-token>${xmlEscapeDav(result.syncToken)}</D:sync-token>\n`), DAV_XML_CONTENT_TYPE);
+            return;
+          }
+          if (reportType === 'calendar-query') {
+            const result = await davStore.caldav.listCalendarObjects(actor, { calendarId });
+            let innerXml = '';
+            for (const object of result.objects) innerXml += davPropResponse(object.href, caldavObjectPropXml(object.etag));
+            finishDav(207, davMultistatus(innerXml), DAV_XML_CONTENT_TYPE);
+            return;
+          }
+          finishDav(501, davErrorXml('REPORT_NOT_SUPPORTED', 'only calendar-query and sync-collection reports are supported'), DAV_XML_CONTENT_TYPE);
+          return;
+        }
+        if (method === 'DELETE') {
+          const ifMatch = requestHeader(request, 'if-match');
+          await davStore.caldav.deleteCalendarCollection(actor, { calendarId, ifMatch });
+          finishDav(204, '', DAV_XML_CONTENT_TYPE);
+          return;
+        }
+        finishDav(404, davErrorXml('NOT_FOUND', 'GET/PUT are not supported on a calendar collection; address an object inside it'), DAV_XML_CONTENT_TYPE);
+        return;
+      }
+
+      // level === 'object'
+      const objectId = match.objectSegment!;
+      if (method === 'GET' || method === 'HEAD') {
+        const object = await davStore.caldav.getCalendarObject(actor, { calendarId, objectId });
+        finishDav(200, object.ical, 'text/calendar; charset=utf-8', { etag: object.etag });
+        return;
+      }
+      if (method === 'PUT') {
+        const ical = await readRawBody(request);
+        const ifMatch = requestHeader(request, 'if-match');
+        const ifNoneMatch = requestHeader(request, 'if-none-match');
+        if (ifNoneMatch === '*') {
+          const created = await davStore.caldav.createCalendarObject(actor, { calendarId, objectId, ical, ifNoneMatch: '*' });
+          finishDav(201, '', 'text/calendar; charset=utf-8', { etag: created.etag, location: created.href });
+          return;
+        }
+        if (ifMatch !== undefined) {
+          const updated = await davStore.caldav.updateCalendarObject(actor, { calendarId, objectId, ical, ifMatch });
+          finishDav(204, '', 'text/calendar; charset=utf-8', { etag: updated.etag });
+          return;
+        }
+        const created = await davStore.caldav.createCalendarObject(actor, { calendarId, objectId, ical });
+        finishDav(201, '', 'text/calendar; charset=utf-8', { etag: created.etag, location: created.href });
+        return;
+      }
+      if (method === 'DELETE') {
+        const ifMatch = requestHeader(request, 'if-match');
+        await davStore.caldav.deleteCalendarObject(actor, { calendarId, objectId, ifMatch });
+        finishDav(204, '', DAV_XML_CONTENT_TYPE);
+        return;
+      }
+      if (method === 'PROPFIND') {
+        const depth = parseDavDepth(request);
+        if (depth === 'infinity') { finishDav(403, davErrorXml('DEPTH_NOT_SUPPORTED', 'Depth: infinity is not supported'), DAV_XML_CONTENT_TYPE); return; }
+        const object = await davStore.caldav.getCalendarObject(actor, { calendarId, objectId });
+        finishDav(207, davMultistatus(davPropResponse(object.href, caldavObjectPropXml(object.etag))), DAV_XML_CONTENT_TYPE);
+        return;
+      }
+      finishDav(404, davErrorXml('NOT_FOUND', 'REPORT is not supported on a single calendar object'), DAV_XML_CONTENT_TYPE);
+      return;
+    }
+
+    // match.kind === 'carddav'
+    if (!davStore.carddav.enabled) {
+      finishDav(503, davErrorXml('DAV_STORE_UNAVAILABLE', 'CardDAV storage is not configured'), DAV_XML_CONTENT_TYPE);
+      return;
+    }
+    const scope = { tenantId: session.tenantId, domain: session.domain, userId: session.userId, role: session.role };
+    const addressBookId = match.collectionId;
+    const collectionHref = carddavCollectionHref(match.tenantId, match.ownerUserId, match.collectionId);
+
+    if (match.level === 'collection') {
+      if (method === 'PROPFIND') {
+        const depth = parseDavDepth(request);
+        if (depth === 'infinity') { finishDav(403, davErrorXml('DEPTH_NOT_SUPPORTED', 'Depth: infinity is not supported'), DAV_XML_CONTENT_TYPE); return; }
+        const addressBook = await davStore.carddav.getAddressBook(scope, { addressBookId });
+        let innerXml = davPropResponse(collectionHref, carddavCollectionPropXml(addressBook));
+        if (depth === '1') {
+          const contacts = await davStore.carddav.listContacts(scope, { addressBookId });
+          for (const contact of contacts) innerXml += davPropResponse(davObjectHref(collectionHref, contact.href), carddavObjectPropXml(contact.etag));
+        }
+        finishDav(207, davMultistatus(innerXml), DAV_XML_CONTENT_TYPE);
+        return;
+      }
+      if (method === 'REPORT') {
+        const xmlBody = await readRawBody(request);
+        const reportType = detectDavReportType(xmlBody);
+        if (reportType === 'sync-collection') {
+          const syncToken = extractDavSyncToken(xmlBody);
+          const result = await davStore.carddav.syncCollection(scope, { addressBookId, syncToken });
+          let innerXml = '';
+          for (const change of result.changes) {
+            const href = davObjectHref(collectionHref, change.href);
+            if (change.status === 'deleted') innerXml += davTombstoneResponse(href);
+            else innerXml += davPropResponse(href, carddavObjectPropXml(change.etag));
+          }
+          finishDav(207, davMultistatus(innerXml, `  <D:sync-token>${xmlEscapeDav(result.syncToken)}</D:sync-token>\n`), DAV_XML_CONTENT_TYPE);
+          return;
+        }
+        if (reportType === 'addressbook-query') {
+          const contacts = await davStore.carddav.listContacts(scope, { addressBookId });
+          let innerXml = '';
+          for (const contact of contacts) innerXml += davPropResponse(davObjectHref(collectionHref, contact.href), carddavObjectPropXml(contact.etag));
+          finishDav(207, davMultistatus(innerXml), DAV_XML_CONTENT_TYPE);
+          return;
+        }
+        finishDav(501, davErrorXml('REPORT_NOT_SUPPORTED', 'only addressbook-query and sync-collection reports are supported'), DAV_XML_CONTENT_TYPE);
+        return;
+      }
+      if (method === 'DELETE') {
+        const ifMatch = requestHeader(request, 'if-match');
+        await davStore.carddav.deleteAddressBook(scope, { addressBookId, ifMatch });
+        finishDav(204, '', DAV_XML_CONTENT_TYPE);
+        return;
+      }
+      finishDav(404, davErrorXml('NOT_FOUND', 'GET/PUT are not supported on an address book collection; address a contact inside it'), DAV_XML_CONTENT_TYPE);
+      return;
+    }
+
+    // level === 'object'
+    const href = match.objectSegment!;
+    if (method === 'GET' || method === 'HEAD') {
+      const contact = await davStore.carddav.getContact(scope, { addressBookId, href });
+      finishDav(200, contact.vCard, contact.mediaType ?? 'text/vcard', { etag: contact.etag });
+      return;
+    }
+    if (method === 'PUT') {
+      const vCard = await readRawBody(request);
+      const ifMatch = requestHeader(request, 'if-match');
+      const ifNoneMatch = requestHeader(request, 'if-none-match');
+      const result = await davStore.carddav.putContact(scope, { addressBookId, href, ifMatch, ifNoneMatch, vCard });
+      const created = ifNoneMatch === '*';
+      finishDav(created ? 201 : 204, '', 'text/vcard', { etag: result.etag, location: davObjectHref(collectionHref, result.href) });
+      return;
+    }
+    if (method === 'DELETE') {
+      const ifMatch = requestHeader(request, 'if-match');
+      await davStore.carddav.deleteContact(scope, { addressBookId, href, ifMatch });
+      finishDav(204, '', DAV_XML_CONTENT_TYPE);
+      return;
+    }
+    if (method === 'PROPFIND') {
+      const depth = parseDavDepth(request);
+      if (depth === 'infinity') { finishDav(403, davErrorXml('DEPTH_NOT_SUPPORTED', 'Depth: infinity is not supported'), DAV_XML_CONTENT_TYPE); return; }
+      const contact = await davStore.carddav.getContactMetadata(scope, { addressBookId, href });
+      finishDav(207, davMultistatus(davPropResponse(davObjectHref(collectionHref, contact.href), carddavObjectPropXml(contact.etag))), DAV_XML_CONTENT_TYPE);
+      return;
+    }
+    finishDav(404, davErrorXml('NOT_FOUND', 'REPORT is not supported on a single contact'), DAV_XML_CONTENT_TYPE);
+  } catch (error) {
+    const mapped = davErrorFromCaught(error);
+    scopedLogger.warn('dav_request_failed', { error: { code: mapped.code }, status_code: mapped.status });
+    finishDav(mapped.status, davErrorXml(mapped.code, mapped.message), DAV_XML_CONTENT_TYPE);
+  }
 }
 
 function publicSessionUser(session: WebSession) {
@@ -467,6 +970,7 @@ export function createRuntimeServer({
   rateLimiter,
   authenticateLogin = createFixtureLoginAuthenticator(),
   apiResources = defaultApiResources(),
+  davStore,
 }: RuntimeServerOptions = {}): RuntimeServer {
   const runtimeMetrics = metrics ?? createMetrics({ clock });
   const metadata = buildMetadata(config);
@@ -501,6 +1005,7 @@ export function createRuntimeServer({
     authenticateLogin,
     apiResources: { ...defaultApiResources(), ...apiResources },
     loginFailures: new Map(),
+    davStore,
     server: undefined as unknown as Server,
   };
 
@@ -732,6 +1237,24 @@ export function createRuntimeServer({
           error: { code: 'RESOURCE_UNAVAILABLE', message: 'The requested resource is unavailable.' },
         }));
       }
+      return;
+    }
+
+    if (path.startsWith('/dav/calendars/') || path.startsWith('/dav/contacts/')) {
+      if (session === null) { unauthorized(); return; }
+      completed = true;
+      await handleDavRoute({
+        runtime,
+        request,
+        response,
+        method,
+        path,
+        session,
+        requestDetails,
+        scopedLogger,
+        startedAt,
+        route,
+      });
       return;
     }
 
