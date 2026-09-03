@@ -1,0 +1,386 @@
+# SPDX-License-Identifier: MIT
+# SPDX-FileCopyrightText: 2026 Sythos (https://www.sythos.net)
+# Author: Sythos (https://www.sythos.net)
+
+name: Release
+
+# TAG CONVENTION: bare "<major>.<minor>.<patch>", no "v" prefix - this
+# repository's existing tags (0.1.2, 0.1.3, 0.1.4, see `git tag -l`) were all
+# created without one, and each one matches package.json's "version" field
+# exactly at that commit. This workflow follows the same convention rather
+# than introducing a "v"-prefixed one now. `tags: '*.*.*'` is a glob filter
+# (not a regex - GitHub Actions ref filters don't support quantifiers), so
+# the `detect-version` job below re-validates the pushed tag against a strict
+# `major.minor.patch` shape before anything is built, and fails clearly if it
+# doesn't match instead of silently building an unexpected ref.
+#
+# This workflow is intentionally push-tags-only: there is no `pull_request`
+# or `workflow_dispatch` trigger, so it structurally cannot run from a PR or
+# a manual click. `publish-release` (job 4) additionally re-checks
+# `github.ref_type` itself before calling `gh release create`, so even a
+# future edit that adds another trigger fails loudly there instead of
+# publishing a phantom release.
+#
+# NOTE: this workflow builds and publishes packages; it does not run the
+# end-to-end install-and-health-check rehearsal each package-*.yml workflow
+# already runs on every push (extract, install.sh --non-interactive, start
+# the server, poll /health/ready). That coverage is not repeated here -
+# only the build step, reusing the exact same scripts.
+#
+# VERIFICATION NOTE: this workflow's YAML has been validated with Python's
+# `yaml.safe_load` (same method used for package-standalone.yml,
+# package-cpanel.yml, and package-plesk.yml in this session). Its actual
+# execution has NOT been verified end to end - that requires a real tag
+# push, which was intentionally not done here (this task only touches the
+# filesystem; a human pushes the tag after review).
+
+on:
+  push:
+    tags:
+      - '*.*.*'
+
+permissions:
+  contents: read
+
+concurrency:
+  # Tags are normally immutable, but a re-push after deleting/re-creating a
+  # tag shouldn't be able to race a release publish that's already underway.
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  detect-version:
+    name: Validate the pushed tag and resolve the release version
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      version: ${{ steps.resolve.outputs.version }}
+    steps:
+      - name: Validate tag shape and resolve version
+        id: resolve
+        shell: bash
+        run: |
+          set -euo pipefail
+          TAG="${GITHUB_REF_NAME}"
+          if ! [[ "$TAG" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::Tag '$TAG' does not look like a release version (expected bare major.minor.patch, e.g. '0.1.4' - no 'v' prefix, matching this repo's existing tags). Refusing to build a release for it." >&2
+            exit 1
+          fi
+          echo "version=$TAG" >> "$GITHUB_OUTPUT"
+          echo "Resolved release version: $TAG"
+
+  build-standalone:
+    name: Build the standalone package
+    needs: detect-version
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: '26'
+          check-latest: true
+
+      - name: Install dependencies
+        shell: bash
+        run: npm ci --no-audit --no-fund
+
+      - name: Build web and server bundles
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm run build:web
+          npm run build:server
+
+      - name: Build the standalone package
+        shell: bash
+        env:
+          GULOGULO_SKIP_BUILD: "1"
+        run: node --experimental-strip-types packaging/standalone/build-standalone-package.ts
+
+      - name: Verify the package checksum
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd packaging/dist
+          TARBALL="$(basename "$(ls gulogulo-*-standalone.tar.gz)")"
+          test -f "${TARBALL}.sha256"
+          sha256sum -c "${TARBALL}.sha256"
+
+      - name: Upload the standalone package artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: gulogulo-standalone-package
+          path: |
+            packaging/dist/gulogulo-*-standalone.tar.gz
+            packaging/dist/gulogulo-*-standalone.tar.gz.sha256
+          if-no-files-found: error
+
+  build-cpanel:
+    name: Build the cPanel package
+    needs: detect-version
+    runs-on: ubuntu-latest
+    container: almalinux:9
+    timeout-minutes: 20
+    steps:
+      # Same bare-container prerequisites as package-cpanel.yml: neither git
+      # nor the NodeSource setup script's own prerequisites are present by
+      # default in almalinux:9.
+      - name: Install RHEL-family build prerequisites (dnf)
+        shell: bash
+        run: |
+          set -euo pipefail
+          dnf install -y --allowerasing \
+            git tar gzip curl ca-certificates
+
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+
+      - name: Install Node.js 26.x (NodeSource)
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -fsSL https://rpm.nodesource.com/setup_26.x -o /tmp/nodesource_setup.sh
+          bash /tmp/nodesource_setup.sh
+          dnf install -y nodejs
+          node --version
+          npm --version
+
+      - name: Install dependencies
+        shell: bash
+        run: npm ci --no-audit --no-fund
+
+      - name: Build web and server bundles
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm run build:web
+          npm run build:server
+
+      - name: Build the cPanel tar.gz package
+        shell: bash
+        env:
+          GULOGULO_SKIP_BUILD: "1"
+        run: node --experimental-strip-types packaging/cpanel/build-cpanel-package.ts
+
+      - name: Verify the package checksum
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd packaging/dist
+          ARCHIVE_NAME="$(basename "$(ls gulogulo-*_cpanel_.tar.gz)")"
+          test -f "${ARCHIVE_NAME}.sha256"
+          sha256sum -c "${ARCHIVE_NAME}.sha256"
+
+      - name: Upload the cPanel package artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: gulogulo-cpanel-package
+          path: |
+            packaging/dist/gulogulo-*_cpanel_.tar.gz
+            packaging/dist/gulogulo-*_cpanel_.tar.gz.sha256
+          if-no-files-found: error
+
+  build-plesk:
+    name: Build the Plesk package
+    needs: detect-version
+    runs-on: ubuntu-latest
+    container: debian:trixie
+    timeout-minutes: 20
+    steps:
+      # Same bare-container prerequisites as package-plesk.yml: neither git
+      # nor the NodeSource setup script's own prerequisites are present by
+      # default in debian:trixie.
+      - name: Install build prerequisites (apt)
+        shell: bash
+        run: |
+          set -euo pipefail
+          apt-get update
+          apt-get install -y --no-install-recommends \
+            git ca-certificates curl gnupg
+
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+
+      - name: Install Node.js 26.x (NodeSource)
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -fsSL https://deb.nodesource.com/setup_26.x -o /tmp/nodesource_setup.sh
+          bash /tmp/nodesource_setup.sh
+          apt-get install -y nodejs
+          node --version
+          npm --version
+
+      - name: Install dependencies
+        shell: bash
+        run: npm ci --no-audit --no-fund
+
+      - name: Build web and server bundles
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm run build:web
+          npm run build:server
+
+      - name: Build the Plesk tar.gz package
+        shell: bash
+        env:
+          GULOGULO_SKIP_BUILD: "1"
+        run: node --experimental-strip-types packaging/plesk/build-plesk-package.ts
+
+      - name: Verify the package checksum
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd packaging/dist
+          ARCHIVE_NAME="$(basename "$(ls gulogulo-*_plesk_.tar.gz)")"
+          test -f "${ARCHIVE_NAME}.sha256"
+          sha256sum -c "${ARCHIVE_NAME}.sha256"
+
+      - name: Upload the Plesk package artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: gulogulo-plesk-package
+          path: |
+            packaging/dist/gulogulo-*_plesk_.tar.gz
+            packaging/dist/gulogulo-*_plesk_.tar.gz.sha256
+          if-no-files-found: error
+
+  publish-release:
+    name: Publish the GitHub Release
+    needs: [detect-version, build-standalone, build-cpanel, build-plesk]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    # Belt-and-suspenders: the workflow only triggers on tag pushes (no
+    # pull_request/workflow_dispatch trigger exists), but this job re-checks
+    # it is actually running for a tag before it ever calls `gh release
+    # create`, so a future trigger change fails loudly here instead of
+    # publishing a release for the wrong event.
+    if: github.ref_type == 'tag'
+    permissions:
+      contents: write
+    env:
+      VERSION: ${{ needs.detect-version.outputs.version }}
+    steps:
+      - name: Refuse to run for anything but a tag push
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ "${{ github.ref_type }}" != "tag" ] || [ "${{ github.event_name }}" != "push" ]; then
+            echo "::error::publish-release must only run for a tag push. Got ref_type='${{ github.ref_type }}', event_name='${{ github.event_name }}'. Refusing to create a release." >&2
+            exit 1
+          fi
+
+      - name: Download the three package artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: release-assets
+          pattern: gulogulo-*-package
+          merge-multiple: true
+
+      - name: Verify the expected package filenames were produced
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd release-assets
+          STANDALONE="gulogulo-${VERSION}-standalone.tar.gz"
+          CPANEL="gulogulo-${VERSION}_cpanel_.tar.gz"
+          PLESK="gulogulo-${VERSION}_plesk_.tar.gz"
+          for f in "$STANDALONE" "$CPANEL" "$PLESK"; do
+            if [ ! -f "$f" ]; then
+              echo "::error::Expected package '$f' was not found among the downloaded build artifacts. This usually means package.json's \"version\" did not match the pushed tag '$VERSION' at build time. Refusing to publish a release with mismatched artifacts." >&2
+              exit 1
+            fi
+          done
+          {
+            echo "STANDALONE=$STANDALONE"
+            echo "CPANEL=$CPANEL"
+            echo "PLESK=$PLESK"
+          } >> "$GITHUB_ENV"
+
+      - name: Build and verify the aggregated checksums.txt
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd release-assets
+          : > checksums.txt
+          for f in "$STANDALONE" "$CPANEL" "$PLESK"; do
+            cat "${f}.sha256" >> checksums.txt
+          done
+          sort -k2 -o checksums.txt checksums.txt
+          echo "Aggregated checksums.txt:"
+          cat checksums.txt
+          sha256sum -c checksums.txt
+
+      - name: Generate the release notes
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd release-assets
+
+          standalone_size="$(stat -c%s "$STANDALONE" | numfmt --to=iec-i --suffix=B)"
+          cpanel_size="$(stat -c%s "$CPANEL" | numfmt --to=iec-i --suffix=B)"
+          plesk_size="$(stat -c%s "$PLESK" | numfmt --to=iec-i --suffix=B)"
+
+          standalone_sha="$(cut -d' ' -f1 "${STANDALONE}.sha256")"
+          cpanel_sha="$(cut -d' ' -f1 "${CPANEL}.sha256")"
+          plesk_sha="$(cut -d' ' -f1 "${PLESK}.sha256")"
+
+          cat > ../release-notes.md <<EOF
+          ## Gulo Gulo ${VERSION}
+
+          Three prebuilt packages, all built from the same TypeScript application
+          core via \`packaging/shared/stage-application.ts\`. Verify a download by
+          checking its \`.sha256\` (or the aggregated \`checksums.txt\`) before you
+          extract it.
+
+          | Package | File | Size | SHA-256 |
+          | --- | --- | --- | --- |
+          | Standalone (any Linux host, Node.js 26+) | \`${STANDALONE}\` | ${standalone_size} | \`${standalone_sha}\` |
+          | cPanel (AlmaLinux/CloudLinux/RHEL) | \`${CPANEL}\` | ${cpanel_size} | \`${cpanel_sha}\` |
+          | Plesk (Debian/Ubuntu) | \`${PLESK}\` | ${plesk_size} | \`${plesk_sha}\` |
+
+          All three currently ship as a plain \`.tar.gz\` plus
+          \`install.sh\`/\`upgrade.sh\`/\`uninstall.sh\` shell scripts. The
+          cPanel and Plesk targets each have a real, OS-native package format
+          fully implemented (\`.rpm\` for cPanel, \`.deb\` for Plesk), but this
+          project does not yet have a code-signing key/certificate for
+          RPM/DEB packages, and publishing an unsigned package through a
+          host's package manager is a worse trust signal than an unsigned
+          tar.gz. That code is not deleted - it is one call away from being
+          re-enabled once a signing key exists.
+
+          See [INSTALL.md](https://github.com/${{ github.repository }}/blob/main/INSTALL.md)
+          for full installation instructions, requirements, and known gaps
+          for each target.
+          EOF
+
+          cat ../release-notes.md
+
+      - name: Create the GitHub Release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh release create "${GITHUB_REF_NAME}" \
+            --repo "${{ github.repository }}" \
+            --title "Gulo Gulo ${VERSION}" \
+            --notes-file release-notes.md \
+            release-assets/checksums.txt \
+            release-assets/"$STANDALONE" \
+            release-assets/"$STANDALONE".sha256 \
+            release-assets/"$CPANEL" \
+            release-assets/"$CPANEL".sha256 \
+            release-assets/"$PLESK" \
+            release-assets/"$PLESK".sha256
