@@ -60,8 +60,6 @@ jobs:
           grep -Fxq '# Gulo Gulo' README.md
           test -f assets/README.md
           test -f assets/gulo-gulo-calendar-mail.png
-          test -f scripts/m0-smoke.ps1
-          test -f scripts/m1-fixture-smoke.ps1
           test -f test/fixtures/manifest.json
           test -f test/fixtures/tenant.json
           test -f test/fixtures/failure-modes.json
@@ -70,8 +68,6 @@ jobs:
           test -f doc/README.md
           test -f doc/configuration.md
           test -f doc/observability.md
-          test -f doc/compose-and-fixtures.md
-          test -f doc/container-patching.md
           test -f doc/api-and-mcp.md
           test -f doc/identity-and-postgres.md
           test -f doc/storage-and-quotas.md
@@ -247,8 +243,6 @@ jobs:
           for file in \
             README.md \
             .env.example \
-            scripts/m0-smoke.ps1 \
-            scripts/m1-fixture-smoke.ps1 \
             scripts/lp3-proof-smoke.mjs \
             scripts/lp3-proof-smoke.ts \
             scripts/lp9-source-audit.ts \
