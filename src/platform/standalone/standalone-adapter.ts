@@ -5,17 +5,38 @@
 import { loadConfig as loadRuntimeConfig } from '../../runtime/config.ts';
 import { createLdapIdentityClient } from '../../integrations/ldap-client.ts';
 import { createPostgresStore } from '../../integrations/postgres-store.ts';
+import { createDatabaseIdentityClient } from './db-identity-client.ts';
 import type { IntegrationConfig, IntegrationLogger, LdapIdentityClient, PostgresStore, SecretResolver } from '../../integrations/types.ts';
 import type { PlatformAdapter } from '../contract/platform-adapter.ts';
 import type { SessionStore, WebSession } from '../../web/security/session-manager.ts';
+
+function asRecord(value: unknown): Record<string, unknown> {
+  return value !== null && typeof value === 'object' ? value as Record<string, unknown> : {};
+}
+
+/**
+ * Reads `identity.source` from either the full contract (`config.contract.identity`)
+ * or the legacy flat shape (`config.identity`), matching how every other
+ * `readSettings()` in `src/integrations/` resolves its section. Defaults to
+ * `'ldap'` so an operator who never sets this field keeps today's behavior.
+ */
+function identitySource(config: IntegrationConfig): 'ldap' | 'database' {
+  const root = asRecord(config);
+  const contract = asRecord(root.contract);
+  const raw = asRecord(contract.identity ?? root.identity).source;
+  return raw === 'database' ? 'database' : 'ldap';
+}
 
 /**
  * Options accepted by {@link createStandaloneAdapter}. Every field mirrors an
  * existing knob already understood by the delegate it is forwarded to:
  * `environment`/`configFilePath` go to `loadConfig()` in
  * `src/runtime/config.ts`, `resolveSecret`/`logger` go to
- * `createLdapIdentityClient()` and `createPostgresStore()` in
- * `src/integrations/`. Nothing here introduces new configuration surface.
+ * `createLdapIdentityClient()`, `createDatabaseIdentityClient()`, and
+ * `createPostgresStore()` in `src/integrations/`/`./db-identity-client.ts`.
+ * Which identity client is built is controlled entirely by the loaded
+ * config's `identity.source` field (`'ldap'`, the default, or `'database'`),
+ * not by anything here.
  */
 export interface StandaloneAdapterOptions {
   readonly environment?: NodeJS.ProcessEnv;
@@ -33,7 +54,11 @@ export interface StandaloneAdapterOptions {
  * - `loadConfig()` calls `loadConfig()` from `src/runtime/config.ts`, the
  *   same file/env-driven configuration loader the runtime already uses.
  * - `createIdentityClient()` calls `createLdapIdentityClient()` from
- *   `src/integrations/ldap-client.ts`.
+ *   `src/integrations/ldap-client.ts` by default, or
+ *   `createDatabaseIdentityClient()` from `./db-identity-client.ts` when the
+ *   loaded config sets `identity.source` to `'database'` — a PostgreSQL-backed
+ *   `local_users` table for lighter single/few-tenant installs that would
+ *   rather not stand up an LDAP directory.
  * - `createDataStore()` calls `createPostgresStore()` from
  *   `src/integrations/postgres-store.ts`.
  * - `createSessionStore()` returns the same in-memory `Map` that
@@ -52,7 +77,9 @@ export function createStandaloneAdapter(options: StandaloneAdapterOptions = {}):
   }
 
   async function createIdentityClient(config: IntegrationConfig): Promise<LdapIdentityClient> {
-    return createLdapIdentityClient({ config, resolveSecret, logger });
+    return identitySource(config) === 'database'
+      ? createDatabaseIdentityClient({ config, resolveSecret, logger })
+      : createLdapIdentityClient({ config, resolveSecret, logger });
   }
 
   async function createDataStore(config: IntegrationConfig): Promise<PostgresStore> {

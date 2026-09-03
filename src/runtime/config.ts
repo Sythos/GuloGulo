@@ -43,6 +43,7 @@ const TOP_LEVEL_KEYS = new Set([
   'buildDigest',
   'project',
   'runtime',
+  'identity',
   'ldap',
   'postgres',
   'controlPanel',
@@ -59,6 +60,7 @@ const TOP_LEVEL_KEYS = new Set([
 const SECTION_KEYS = Object.freeze({
   project: new Set(['displayName', 'machineName']),
   runtime: new Set(['host', 'port', 'serviceName', 'environment', 'shutdownTimeoutMs']),
+  identity: new Set(['source']),
   ldap: new Set([
     'enabled',
     'url',
@@ -145,6 +147,9 @@ const ENVIRONMENT_VARIABLES = Object.freeze({
     serviceName: ['GULOGULO_SERVICE_NAME'],
     environment: ['GULOGULO_ENV', 'APP_ENV'],
     shutdownTimeoutMs: ['GULOGULO_SHUTDOWN_TIMEOUT_MS'],
+  },
+  identity: {
+    source: ['GULOGULO_IDENTITY_SOURCE', 'IDENTITY_SOURCE'],
   },
   ldap: {
     enabled: ['GULOGULO_LDAP_ENABLED', 'LDAP_ENABLED'],
@@ -512,6 +517,7 @@ function buildConfiguration(fileConfiguration, environment) {
   assertKnownKeys(fileConfiguration, TOP_LEVEL_KEYS, 'config');
 
   const runtimeFile = readSection(fileConfiguration, 'runtime');
+  const identityFile = readSection(fileConfiguration, 'identity');
   const ldapFile = readSection(fileConfiguration, 'ldap');
   const postgresFile = readSection(fileConfiguration, 'postgres');
   const controlPanelFile = readSection(fileConfiguration, 'controlPanel');
@@ -543,6 +549,9 @@ function buildConfiguration(fileConfiguration, environment) {
       serviceName: readString(runtimeFile.serviceName ?? DEFAULT_SERVICE_NAME, 'runtime.serviceName', SAFE_NAME_PATTERN),
       environment: readString(runtimeFile.environment ?? DEFAULT_ENVIRONMENT, 'runtime.environment', SAFE_NAME_PATTERN),
       shutdownTimeoutMs: readShutdownTimeout(runtimeFile.shutdownTimeoutMs ?? DEFAULT_SHUTDOWN_TIMEOUT_MS),
+    },
+    identity: {
+      source: readEnum(identityFile.source ?? 'ldap', 'identity.source', ['ldap', 'database']),
     },
     ldap: {
       enabled: readBoolean(ldapFile.enabled ?? false, 'ldap.enabled'),
@@ -656,6 +665,7 @@ function buildConfiguration(fileConfiguration, environment) {
 
   const environmentSections = [
     ['runtime', config.runtime, ENVIRONMENT_VARIABLES.runtime],
+    ['identity', config.identity, ENVIRONMENT_VARIABLES.identity],
     ['ldap', config.ldap, ENVIRONMENT_VARIABLES.ldap],
     ['postgres', config.postgres, ENVIRONMENT_VARIABLES.postgres],
     ['controlPanel', config.controlPanel, ENVIRONMENT_VARIABLES.controlPanel],
@@ -676,6 +686,11 @@ function buildConfiguration(fileConfiguration, environment) {
       applyEnvironmentValue(target, 'serviceName', environment, variables.serviceName, (value, name) => readEnvironmentString(value, name, SAFE_NAME_PATTERN));
       applyEnvironmentValue(target, 'environment', environment, variables.environment, (value, name) => readEnvironmentString(value, name, SAFE_NAME_PATTERN));
       applyEnvironmentValue(target, 'shutdownTimeoutMs', environment, variables.shutdownTimeoutMs, (value, name) => readEnvironmentInteger(value, name, 1_000, 60_000));
+      continue;
+    }
+
+    if (sectionName === 'identity') {
+      applyEnvironmentValue(target, 'source', environment, variables.source, (value, name) => readEnvironmentEnum(value, name, ['ldap', 'database']));
       continue;
     }
 
@@ -790,6 +805,10 @@ function buildConfiguration(fileConfiguration, environment) {
 
   if (config.project.displayName !== PRODUCT_DISPLAY_NAME || config.project.machineName !== PRODUCT_MACHINE_NAME) {
     throw configurationError('project identity must remain Gulo Gulo / gulogulo');
+  }
+
+  if (config.identity.source === 'database' && !config.postgres.enabled) {
+    throw configurationError('identity.source cannot be "database" unless postgres.enabled is true');
   }
 
   if (config.ldap.enabled && config.ldap.bindSecretRef === null) {

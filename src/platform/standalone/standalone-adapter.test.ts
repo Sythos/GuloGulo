@@ -45,6 +45,63 @@ test('createDataStore() builds a real PostgresStore from src/integrations/postgr
   await store.close();
 });
 
+function ldapEnabledEnvironment(overrides: NodeJS.ProcessEnv = {}): NodeJS.ProcessEnv {
+  return {
+    GULOGULO_LDAP_ENABLED: 'true',
+    GULOGULO_LDAP_URL: 'ldaps://ldap.example.test:636',
+    GULOGULO_LDAP_BIND_DN: 'cn=service,dc=example,dc=test',
+    GULOGULO_LDAP_BIND_SECRET_REF: 'ldap/bind',
+    GULOGULO_LDAP_USER_BASE_DN: 'ou=users,dc=example,dc=test',
+    ...overrides,
+  };
+}
+
+function postgresEnabledEnvironment(overrides: NodeJS.ProcessEnv = {}): NodeJS.ProcessEnv {
+  return {
+    GULOGULO_POSTGRES_ENABLED: 'true',
+    GULOGULO_POSTGRES_DSN_SECRET_REF: 'postgres/dsn',
+    ...overrides,
+  };
+}
+
+test('createIdentityClient() defaults to LDAP when identity.source is unset', async () => {
+  const adapter = createStandaloneAdapter({
+    environment: ldapEnabledEnvironment(),
+    resolveSecret: async () => 'secret-value',
+  });
+  const config = await adapter.loadConfig();
+  const client = await adapter.createIdentityClient(config);
+  // LDAP is enabled and postgres is not: only the LDAP path yields an
+  // enabled client here, so this also proves the DB-backed path was not
+  // picked by mistake.
+  assert.equal(client.enabled, true);
+});
+
+test('createIdentityClient() switches to the DB-backed client when identity.source is "database"', async () => {
+  const adapter = createStandaloneAdapter({
+    environment: postgresEnabledEnvironment({ GULOGULO_IDENTITY_SOURCE: 'database' }),
+    resolveSecret: async () => 'secret-value',
+  });
+  const config = await adapter.loadConfig();
+  const client = await adapter.createIdentityClient(config);
+  // LDAP is not enabled and postgres is: only the DB-backed path yields an
+  // enabled client here, so this also proves the LDAP path was not picked
+  // by mistake.
+  assert.equal(client.enabled, true);
+  await client.close();
+});
+
+test('loadConfig() defaults identity.source to "ldap"', async () => {
+  const adapter = createStandaloneAdapter({ environment: emptyEnvironment() });
+  const config = await adapter.loadConfig() as Record<string, any>;
+  assert.equal(config.contract.identity.source, 'ldap');
+});
+
+test('identity.source "database" is rejected by config validation when postgres is disabled', async () => {
+  const adapter = createStandaloneAdapter({ environment: { GULOGULO_IDENTITY_SOURCE: 'database' } });
+  await assert.rejects(() => adapter.loadConfig(), /identity\.source cannot be "database"/);
+});
+
 test('createSessionStore() returns a working in-memory SessionStore', async () => {
   const adapter = createStandaloneAdapter({ environment: emptyEnvironment() });
   const store = await adapter.createSessionStore();

@@ -23,6 +23,18 @@ export interface TenantContextInput {
   role?: unknown;
 }
 
+/**
+ * The subset of the loaded configuration that selects which identity source
+ * `src/platform/standalone/standalone-adapter.ts` uses: `'ldap'` (the
+ * existing default) or `'database'` (`src/platform/standalone/db-identity-client.ts`,
+ * a PostgreSQL-backed `local_users` table for lighter single/few-tenant
+ * installs). Additive to the existing `IntegrationConfig` contract, mirroring
+ * the `upgrade.strategy` enum already in `src/runtime/config.ts`.
+ */
+export interface IdentitySettings {
+  source: 'ldap' | 'database';
+}
+
 /** The subset of the loaded configuration consumed by the LDAP adapter. */
 export interface LdapSettings {
   enabled: boolean;
@@ -81,11 +93,13 @@ export interface PleskApiSettings {
 /** A deliberately narrow configuration envelope so adapters do not depend on runtime internals. */
 export interface IntegrationConfig {
   readonly contract?: {
+    readonly identity?: Partial<IdentitySettings>;
     readonly ldap?: Partial<LdapSettings>;
     readonly postgres?: Partial<PostgresSettings>;
     readonly cpanel?: Partial<CpanelApiSettings>;
     readonly plesk?: Partial<PleskApiSettings>;
   };
+  readonly identity?: Partial<IdentitySettings>;
   readonly ldap?: Partial<LdapSettings>;
   readonly postgres?: Partial<PostgresSettings>;
   readonly cpanel?: Partial<CpanelApiSettings>;
