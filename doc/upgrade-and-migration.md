@@ -77,72 +77,118 @@ above and is the directly relevant migration-authoring guidance.
 Rollback: restore `<install-dir>.backup-<timestamp>.tar.gz` over the install
 directory and restart the service manually. No automatic rollback exists.
 
-## cPanel: `upgrade.sh <new-tarball.tar.gz> <install-dir> [--non-interactive] [--dry-run]`
+## cPanel: through rpm/dnf's own upgrade mechanism
 
-Same backup/extract/copy/`npm ci`/migrate sequence as standalone (the copy
-step additionally preserves `gulogulo.service.rendered` if present), but
-with one difference:
+This target ships as a real RPM package (see `../INSTALL.md`), not a
+tarball plus `install.sh`/`upgrade.sh`/`uninstall.sh` — those three scripts
+were deliberately retired in favor of an OS-native package, since cPanel &
+WHM only runs on RHEL-family Linux anyway. There is no separate "upgrade"
+script of its own: upgrading means installing a newer `.rpm` — `dnf install
+./gulogulo-<newversion>-1*.rpm` (or `rpm -Uvh`) — over an already-installed
+one. rpm's own transaction handles this the standard way: the new package's
+files replace the old package's files, then `%post` runs against the new
+files — the same `npm ci --omit=dev`, run pending migrations, and
+`systemctl daemon-reload` as a fresh install, but on an upgrade (`$1 >= 2`
+inside `%post`) it runs `systemctl restart gulogulo` instead of `systemctl
+enable gulogulo` (which only fires on `$1 == 1`, a genuinely first
+install) — restarting automatically because gulogulo is a dedicated
+systemd unit this package itself installs and manages, not a process the
+operator runs under their own supervisor, and deliberately not re-enabling,
+so an operator who disabled the unit between versions stays disabled.
 
-- **Automatically restarts the service:** `systemctl restart gulogulo`,
-  because this target installs and manages a dedicated systemd unit itself
-  — it is not a process the operator runs under their own supervisor, so
-  there is no ambiguity about who owns the restart. Under `--dry-run`, every
-  prior step (backup, extract, copy, `npm ci`, migrations) still runs for
-  real — none of it touches host system configuration — but the final
-  `systemctl restart gulogulo` is skipped and only printed.
+Unlike the standalone script, this has **no explicit backup step** — rpm
+overwrites the package's shipped files (`dist/`, `web/`, migrations,
+`package.json`, ...) directly, with no tar-before-replace equivalent to
+`upgrade.sh`'s. `/opt/gulogulo/.env` and anything else `%post` created at
+runtime (`node_modules/`) are not shipped by the package, so rpm does not
+touch them across an upgrade — they survive by construction, not by any
+explicit preservation logic.
 
-Rollback: restore the backup tarball over the install directory, run
-`npm ci`, and `systemctl restart gulogulo` again. Apache reverse-proxy
-configuration and the optional WHM AppConfig registration are untouched by
-upgrade — they were applied manually at install time and are not
-reapplied or removed by `upgrade.sh`.
+**This rpm upgrade path has not been exercised against a real host by this
+project's CI** (`.github/workflows/package-cpanel.yml` builds and inspects
+the `.rpm` structurally, syntax-checks its scriptlets, and runs `rpm -i
+--test` plus a real `rpm2cpio | cpio` extraction, but cannot run `%post` to
+completion — see that workflow's own comments for why: `systemctl
+daemon-reload`/`enable`/`restart` need a running init system the CI
+container does not have). Before relying on this in production:
 
-## Plesk: analogous to cPanel, through Plesk's own update mechanism
+- back up `/opt/gulogulo/.env` yourself before an upgrade — not because rpm
+  is expected to touch it, but because there is no automated backup of it
+  anywhere in this package, unlike the standalone target;
+- rehearse an actual `dnf install ./gulogulo-<newversion>-1*.rpm` upgrade
+  over a running install on a real cPanel/WHM host before treating this
+  target as production-ready — confirm `%post` actually re-runs cleanly
+  against an existing `.env`/`node_modules` and that the service restarts
+  and comes back up;
+- rollback is `dnf downgrade gulogulo` / `rpm -Uvh --oldpackage` against a
+  previously-built `.rpm` you kept around — there is no automatic rollback
+  to the previous version's files otherwise, and `%post` still reruns on a
+  downgrade the same way it does on an upgrade. Apache reverse-proxy
+  configuration and the optional WHM AppConfig registration are untouched
+  by an upgrade or a downgrade either way — they were applied manually at
+  install time and are not reapplied or removed by rpm.
 
-There is no dedicated `upgrade.php` lifecycle hook shipped in
-`packaging/plesk/scripts/` — only `pre-install.php`, `post-install.php`, and
-`pre-uninstall.php`. Updating the extension to a new version relies on
-Plesk's own extension update mechanism: installing a newer package
-(`gulogulo-<version>-plesk.zip`, with a higher `<version>`/`<release>` in
-`meta.xml`) over an already-installed one. The most likely and standard
-behavior for a Plesk extension without a separate upgrade hook is that Plesk
-re-runs `pre-install.php` and `post-install.php` against the new `plib/`
-contents — which would give the same practical steps as cPanel's
-`upgrade.sh` (`npm ci`, run pending migrations, `systemctl restart` via
-`systemctl enable --now gulogulo` again since `post-install.php` always
-performs that step) but **without an explicit backup step**, since
-`post-install.php` has no equivalent of `upgrade.sh`'s tar-before-replace
-logic.
+## Plesk: through dpkg/apt's own upgrade mechanism
 
-**This has not been verified against a real Plesk host and should be treated
-as an assumption, not a documented fact**, consistent with the other
-unverified Plesk specifics called out in `../INSTALL.md` and
-`src/platform/plesk/README.md`. Before relying on this in production:
+This target ships as a real Debian `.deb` package (see `../INSTALL.md`), not
+a Plesk extension — the Plesk extension mechanism (`meta.xml` +
+`plib/scripts/` PHP lifecycle hooks) was deliberately retired in favor of an
+OS-native package. There is no separate "upgrade" script of its own:
+upgrading means installing a newer `.deb` — `apt install
+./gulogulo_<newversion>_all.deb` (or `dpkg -i`) — over an already-installed
+one. dpkg's own maintainer-script contract handles this the standard way:
+`DEBIAN/prerm upgrade <new-version>` runs first (deliberately a no-op here —
+it leaves the service running, see `packaging/plesk/debian/DEBIAN/prerm`),
+dpkg replaces the package's files, then `DEBIAN/postinst configure
+<old-version>` runs against the new files — the same `npm ci --omit=dev`,
+run pending migrations, and `systemctl enable --now gulogulo` (restarting
+the service) as a fresh install, since `postinst` does not distinguish a
+fresh configure from a reconfigure.
 
-- confirm on a real Plesk instance whether an extension update actually
-  re-runs `post-install.php`, runs some other hook, or requires a manual
-  uninstall-then-reinstall cycle;
-- if it does re-run `post-install.php`, consider adding an explicit backup
-  step there (mirroring `upgrade.sh`'s tar-before-replace) before this
-  target is treated as production-ready, since today an interrupted or
-  failed Plesk extension update has no automatic rollback path;
-- back up `plib/app/.env` yourself before triggering any Plesk extension
-  update, for the same reason called out for uninstall in
-  `../INSTALL.md` — the exact conditions under which Plesk touches
-  or removes `plib/` around an update are unverified.
+Unlike the standalone script, this has **no explicit backup step** (neither
+does the cPanel `.rpm`, for the same reason — see the cPanel section above)
+— dpkg overwrites the package's shipped files (`dist/`, `web/`, migrations,
+`package.json`, ...) directly, with no tar-before-replace equivalent to
+`upgrade.sh`'s. `.env` and anything else `postinst` created at runtime
+(`node_modules/`) are not shipped by the package, so dpkg does not touch
+them across an upgrade — they survive by construction, not by any explicit
+preservation logic.
+
+**This dpkg upgrade path has not been exercised against a real host by this
+project's CI** (`.github/workflows/package-plesk.yml` builds and inspects
+the `.deb` structurally but cannot run `postinst` to completion — see that
+workflow's own comments for why: `systemctl enable --now` needs a running
+init system the CI container does not have). Before relying on this in
+production:
+
+- back up `/opt/gulogulo/.env` yourself before an upgrade — not because
+  dpkg is expected to touch it, but because there is no automated backup of
+  it anywhere in this package, unlike the standalone target;
+- rehearse an actual `apt install ./gulogulo_<newversion>_all.deb` upgrade
+  over a running install on a real Debian/Ubuntu host before treating this
+  target as production-ready — confirm `postinst` actually re-runs cleanly
+  against an existing `.env`/`node_modules` and that the service comes back
+  up;
+- if an upgrade fails mid-`postinst`, dpkg leaves the package
+  "half-configured" — `dpkg --configure gulogulo` retries `postinst` after
+  fixing whatever caused the failure (e.g. Node.js version); there is no
+  automatic rollback to the previous version's files.
 
 ## Audit and failure behavior
 
 None of the three upgrade scripts emit structured audit events of their own
-today — they log to stdout only (`[upgrade] ...` / `[gulogulo post-install]
-...`). An operator building evidence for a real upgrade should capture that
+today — they log to stdout only (`[upgrade] ...` for standalone, `[gulogulo]
+...` for the cPanel RPM's `%post`, `[gulogulo postinst] ...` for the Plesk
+`.deb`'s `postinst`). An operator building evidence for a real upgrade should capture that
 log output alongside the backup path, source/target versions, and the
 migration runner's own summary line (`schema at <version> (<n> migration(s)
 applied this run)`), and retain it per the evidence hand-off rules in
 `../INSTALL.md`.
 
-All three scripts fail closed on error (`set -euo pipefail` in the bash
-scripts; explicit non-zero exits with `fail()` in the PHP hooks) — a failed
+All three scripts fail closed on error (`set -euo pipefail` in standalone's
+`upgrade.sh`, `set -e` in the cPanel RPM's `%post` and the Plesk `.deb`'s
+`postinst`; explicit non-zero exits via a `fail()` helper in `upgrade.sh` and
+`postinst`, plain `exit 1` in `%post`) — a failed
 `npm ci` or a failed migration stops the script before it restarts (or,
 for standalone, before it prints the restart reminder for) the service, so
 a partially-upgraded install is left in place rather than silently brought
@@ -154,12 +200,14 @@ versa.
 Before any of these three upgrade paths is treated as production-ready:
 
 - a real upgrade rehearsal on each target's real host type (a running
-  standalone install upgraded in place; a real cPanel/WHM host upgraded and
-  its systemd service confirmed to restart cleanly; a real Plesk extension
-  update exercised end to end, resolving the open question above);
-- a rollback rehearsal from each target's backup (standalone/cPanel) and a
-  decision on what Plesk's rollback path even is, given it has no backup
-  step today;
+  standalone install upgraded in place; a real cPanel/WHM host upgraded via
+  `dnf install`/`rpm -Uvh` with its systemd service confirmed to restart
+  cleanly; a real Plesk `.deb` update exercised end to end, resolving the
+  open question above);
+- a rollback rehearsal from the standalone target's backup, and a decision
+  on what the cPanel (`dnf downgrade`/`rpm -Uvh --oldpackage`) and Plesk
+  rollback paths even look like exercised for real, given neither package
+  has a backup step of its own today;
 - at least one real expand/backfill/switch/contract migration exercised
   across an upgrade, not just the single foundational migration that exists
   today;

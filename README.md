@@ -35,6 +35,37 @@ mail, calendar, contacts, quotas, retention, and audit. The integration is
 deliberately read-only and tenant-bound today, with provider-specific API
 reconciliation kept as a separate backlog item.
 
+## Why three packages, and why these targets
+
+Gulo Gulo used to ship as a single OCI container image (ADR-001). ADR-002
+replaced that with three packages built from the same TypeScript core,
+because in practice nobody deploys a mail/groupware app the same way twice:
+some run it on a hosting panel they already have, some run it on a bare
+Linux box they fully control. One generic artifact can't serve both well.
+
+Each package targets the OS its ecosystem actually runs on, and uses that
+OS's native package format instead of a generic tarball + shell script,
+so the host's own package manager handles dependency resolution, upgrade
+tracking, and clean removal instead of Gulo Gulo reinventing it:
+
+- **cPanel → `.rpm`, built and tested on AlmaLinux 9.** cPanel & WHM only
+  runs on RHEL-family Linux (AlmaLinux/CloudLinux/RHEL) - there is no such
+  thing as "cPanel on Ubuntu". Building and CI-testing on anything else
+  would validate a host that doesn't actually exist in cPanel's world.
+- **Plesk → `.deb`, built and tested on Debian Trixie.** Plesk officially
+  supports Debian/Ubuntu (also RHEL-family and Windows, out of scope here).
+  This deliberately does not use Plesk's own extension mechanism
+  (`meta.xml` + `plesk bin extension -i`) - the extension format buys UI
+  integration this project never wired up anyway, at the cost of not being
+  a package the host's own package manager understands.
+- **Standalone → `.tar.gz`, built and tested on Ubuntu.** No panel, no OS
+  constraint - this is the "any Linux host with Node.js 26+" target, so it
+  stays the simplest, most portable format rather than picking one
+  distro's native package for a target that isn't distro-specific.
+
+See [ADR-002](doc/adr/ADR-002-gulogulo-packaging-and-distribution-targets.md)
+for the full architectural rationale.
+
 ## Quickstart
 
 Full instructions, requirements, and known gaps for each target are in
@@ -48,27 +79,32 @@ tar xzf packaging/dist/gulogulo-<version>-standalone.tar.gz -C /opt/gulogulo
 cd /opt/gulogulo && ./install.sh
 ```
 
-**cPanel** (root/WHM access required):
+**cPanel** (RHEL-family host - AlmaLinux/CloudLinux/RHEL - with root/WHM
+access; ships as a real `.rpm`, built and installed at a fixed
+`/opt/gulogulo`, and Node.js 26+ must already be installed, see
+INSTALL.md):
 
 ```bash
 node --experimental-strip-types packaging/cpanel/build-cpanel-package.ts
-tar xzf packaging/dist/gulogulo-<version>-cpanel.tar.gz -C /opt/gulogulo
-cd /opt/gulogulo && sudo ./install.sh
+sudo dnf install ./packaging/dist/gulogulo-<version>-1*.rpm
 ```
 
-**Plesk** (root access to install the systemd unit; the extension zip itself
-installs via `plesk bin extension -i`):
+**Plesk** (Debian/Ubuntu host; ships as a real `.deb`, not a Plesk extension
+- root access required, and Node.js 26+ must already be installed, see
+INSTALL.md):
 
 ```bash
 node --experimental-strip-types packaging/plesk/build-plesk-package.ts
-plesk bin extension -i packaging/dist/gulogulo-<version>-plesk.zip
+sudo apt install ./packaging/dist/gulogulo_<version>_all.deb
 ```
 
 Only the standalone archive has a real end-to-end install-and-health-check
-rehearsal today (in CI, on a clean runner). The cPanel and Plesk packages
-build and their structure is verified, but installing them on a real host is
-still field work - see the honesty notes in INSTALL.md before relying
-on either in production.
+rehearsal today (in CI, on a clean runner). The cPanel `.rpm` and Plesk
+`.deb` build and their structure is verified (each additionally gets a real
+partial extraction/unpack inside its target OS's CI container - `almalinux:9`
+for cPanel, `debian:trixie` for Plesk), but completing an install on a real
+host is still field work - see the honesty notes in INSTALL.md before
+relying on either in production.
 
 ## Production readiness checklist
 
@@ -235,10 +271,10 @@ gulogulo/
 │   ├── upgrade-and-migration.md
 │   └── web-foundation.md
 ├── packaging/
-│   ├── shared/ (staging + zip helpers shared by all three build scripts)
+│   ├── shared/ (staging + tar/deb/rpm package-building helpers shared by all three build scripts)
 │   ├── standalone/ (build-standalone-package.ts, install/upgrade/uninstall.sh)
-│   ├── cpanel/ (build-cpanel-package.ts, systemd + reverse-proxy install scripts)
-│   └── plesk/ (build-plesk-package.ts, meta.xml, PHP lifecycle hooks)
+│   ├── cpanel/ (build-cpanel-package.ts, gulogulo.spec, systemd unit + reverse-proxy example)
+│   └── plesk/ (build-plesk-package.ts, debian/DEBIAN/ control + maintainer scripts)
 ├── scripts/
 │   ├── lp3-proof-smoke.ts (+ .mjs compatibility bridge)
 │   ├── lp4-proof-check.ts

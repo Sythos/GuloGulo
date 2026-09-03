@@ -60,13 +60,15 @@ avoiding the deprecated cpapi2; Plesk's modern REST API or XML-RPC
 ≥ 1.6.9.1. The exact compatibility matrix (API calls used and minimum panel
 version) is documented separately once the adapters are implemented.
 
-Package naming: `gulogulo-<semver>-cpanel.tar.gz`,
-`gulogulo-<semver>-plesk.tar.gz`, `gulogulo-<semver>-standalone.tar.gz`. The
-package name does not encode a panel major version; exact version
-compatibility is documented apart from the package itself.
-
-Distro-specific Linux packages (`.deb`, `.rpm`, etc.) remain out of scope and
-may be evaluated in the future.
+Package naming: `gulogulo-<semver>-standalone.tar.gz` for the standalone
+target; the cPanel and Plesk targets instead ship as real, OS-native Linux
+packages — `gulogulo-<semver>-1.<dist>.noarch.rpm` for cPanel (built with
+`rpmbuild`, standard RPM NVRA convention) and `gulogulo_<semver>_all.deb` for
+Plesk (built with `dpkg-deb`, standard Debian archive convention) — rather
+than the `gulogulo-<semver>-<target>.tar.gz` shape originally used for all
+three; see `packaging/cpanel/` and `packaging/plesk/` for the current build
+scripts. None of the three package names encode a panel major version; exact
+version compatibility is documented apart from the package itself.
 
 ## Reference architecture
 
@@ -82,8 +84,8 @@ src/core/            (RBAC, TenantContext, quota, delegation, auth,
       │
       └── src/runtime/               (common bootstrap)
             │
-            ├── git/packaging/cpanel/       → gulogulo-<semver>-cpanel.tar.gz
-            ├── git/packaging/plesk/        → gulogulo-<semver>-plesk.tar.gz
+            ├── git/packaging/cpanel/       → gulogulo-<semver>-1.<dist>.noarch.rpm
+            ├── git/packaging/plesk/        → gulogulo_<semver>_all.deb
             └── git/packaging/standalone/   → gulogulo-<semver>-standalone.tar.gz
 ~~~
 

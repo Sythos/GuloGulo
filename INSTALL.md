@@ -51,13 +51,16 @@ via `packaging/shared/stage-application.ts`:
 
 - **Standalone** (`packaging/standalone/`) — a generic tarball for any
   server/VPS, no panel required. Identity via LDAP, data via PostgreSQL.
-- **cPanel** (`packaging/cpanel/`) — a tarball for a cPanel/WHM server,
-  installed by an operator running the installer as root. Identity via
-  cPanel UAPI, data via the same PostgreSQL integration.
-- **Plesk** (`packaging/plesk/`) — a real Plesk extension ZIP (`meta.xml` +
-  `plib/scripts/` lifecycle hooks), installed through Plesk's own extension
-  mechanism. Identity via the Plesk REST API, data via the same PostgreSQL
-  integration.
+- **cPanel** (`packaging/cpanel/`) — a real RPM package (built with
+  `rpmbuild`, installed with `dnf install`/`rpm -Uvh`), for a cPanel/WHM
+  server — RHEL-family Linux only (AlmaLinux/CloudLinux/RHEL), which is the
+  only family cPanel & WHM actually runs on, deliberately not a generic
+  tarball (see below). Identity via cPanel UAPI, data via the same
+  PostgreSQL integration.
+- **Plesk** (`packaging/plesk/`) — a real Debian `.deb` package (built with
+  `dpkg-deb`, installed with `dpkg -i`/`apt install`), for a Debian/Ubuntu
+  server — deliberately not Plesk's own extension mechanism (see below).
+  Identity via the Plesk REST API, data via the same PostgreSQL integration.
 
 **Current state, honestly:** the packaging code and build scripts for all
 three targets are complete and pass their respective CI workflows
@@ -69,21 +72,32 @@ verification differs sharply by target:
   `install.sh --non-interactive` for real, starts the compiled server, and
   polls `/health/ready` and `/` until they respond. This is a genuine,
   automated install-and-boot proof, on a disposable Ubuntu CI runner.
-- **cPanel is only dry-run tested.** `package-cpanel.yml` builds the tarball
-  and runs `install.sh --non-interactive --dry-run`, which exercises argument
-  parsing, precondition checks (downgraded to warnings off a real cPanel
-  host), `.env` creation, `npm ci`, and the no-op migration step — but never
-  writes a systemd unit, never touches Apache, and never actually starts the
-  service, because the CI runner is not a real cPanel/WHM host. Nobody has
-  run this installer against a real cPanel/WHM server yet.
-- **Plesk is only structurally verified.** `package-plesk.yml` builds the
-  ZIP, checks that `meta.xml` sits at the archive root with the required
-  fields, confirms the ZIP is well-formed, and runs `php -l` on the three
-  lifecycle scripts. It does **not** execute `pre-install.php`,
-  `post-install.php`, or `pre-uninstall.php` — that needs root on a real
-  Linux host with systemd and, more importantly, a real Plesk installation,
-  which no CI runner here provides. Nobody has installed this extension on a
-  real Plesk server yet.
+- **cPanel (`.rpm`) is structurally verified, plus a real (partial) unpack.**
+  `package-cpanel.yml` runs inside an actual `almalinux:9` container: it
+  builds the RPM with `rpmbuild -bb`, inspects its metadata (`rpm -qp
+  --info`/`--requires`) and payload (`rpm -qlp`), syntax-checks the built
+  `%pre`/`%post`/`%preun`/`%postun` scriptlet bodies (`bash -n`), resolves
+  dependencies and checks for file conflicts with a real `rpm -i --test`,
+  and runs a real `rpm2cpio | cpio -idmv` extraction — this genuinely
+  extracts the package's files without a package manager and without
+  running any scriptlet. It does **not** run `%post` to completion: `%post`
+  ends with `systemctl daemon-reload && systemctl enable gulogulo`, and the
+  CI container has no running init system for `systemctl` to talk to. So
+  the `npm ci` / migrations / system user / systemd-enable path, and
+  therefore an actually-running service, has never been exercised end to
+  end by CI — nor has anybody installed this package on a real host yet.
+- **Plesk (`.deb`) is structurally verified, plus a real (partial) unpack.**
+  `package-plesk.yml` runs inside an actual `debian:trixie` container: it
+  builds the `.deb` with `dpkg-deb --build`, inspects its metadata
+  (`dpkg-deb -I`) and payload (`dpkg -c`), lints the maintainer scripts
+  (`sh -n`), and runs a real `dpkg --unpack` + `dpkg --purge` cycle — this
+  genuinely extracts the package's files with `dpkg` itself and exercises
+  `prerm`/`postrm`'s no-op paths. It does **not** run `postinst` to
+  completion: `postinst` ends with `systemctl enable --now gulogulo`, and
+  the CI container has no running init system for `systemctl` to talk to.
+  So the `npm ci` / migrations / system user / systemd-enable path, and
+  therefore an actually-running service, has never been exercised end to
+  end by CI — nor has anybody installed this package on a real host yet.
 
 In short: **the code is ready and verified in CI, but cPanel and Plesk
 install/upgrade/uninstall are unvalidated against a real host.** Do not treat
@@ -161,83 +175,212 @@ a real database, or a real directory.
 
 ## 3. cPanel
 
+**This target ships as a real RPM package, not a generic tarball.** Earlier
+revisions of this project built a `gulogulo-<version>-cpanel.tar.gz` plus
+`install.sh`/`upgrade.sh`/`uninstall.sh` shell scripts the operator ran by
+hand. Those three scripts are retired: cPanel & WHM only runs on RHEL-family
+Linux (AlmaLinux/CloudLinux/RHEL), so a real `.rpm` — built and verified
+inside an `almalinux:9` container instead of the Ubuntu runner this
+repository otherwise defaults to — gets the same install/upgrade/uninstall
+outcome through the mechanism every RHEL-family operator already knows:
+`dnf install ./gulogulo-<version>.rpm` / `rpm -Uvh` / `dnf remove gulogulo`.
+Identity still comes through cPanel's UAPI (`src/platform/cpanel/`), and the
+install/upgrade/uninstall behavior is functionally the same as the retired
+scripts (systemd unit, dedicated system user, Apache reverse-proxy example,
+optional WHM AppConfig example, never applied automatically) — only the
+delivery mechanism changed. One real behavior difference: an RPM install
+location is **fixed** by packaging convention (`/opt/gulogulo`, a dedicated
+`gulogulo` system user, `/var/lib/gulogulo`), not chosen by the operator at
+extraction time the way the tarball was.
+
 ### Build
 
 ```bash
 node --experimental-strip-types packaging/cpanel/build-cpanel-package.ts
 ```
 
-Same staging mechanism as standalone, plus the cPanel-specific operator
-scripts. Produces `packaging/dist/gulogulo-<version>-cpanel.tar.gz`.
+Runs `npm run build:web` and `npm run build:server` itself unless
+`GULOGULO_SKIP_BUILD=1` is set (CI sets it), stages the same application
+files as standalone (`packaging/shared/stage-application.ts`) plus the fixed
+systemd unit and the Apache reverse-proxy/WHM AppConfig example docs, packs
+them into a source tarball, then runs `rpmbuild -bb` against
+`packaging/cpanel/gulogulo.spec` (`createRpmPackage` in
+`packaging/shared/stage-application.ts` — `rpmbuild` ships as part of the
+`rpm-build` package on any RHEL-family host; **this step fails on
+Windows/Ubuntu/Debian**, which is expected — it only runs for real inside
+the `almalinux:9` CI container or on a real RHEL-family host). Produces
+`packaging/dist/gulogulo-<version>-1<dist-tag>.noarch.rpm` (the standard
+rpmbuild `<name>-<version>-<release>.<arch>.rpm` filename, e.g.
+`gulogulo-0.1.4-1.el9.noarch.rpm` — deliberately not renamed to the
+`gulogulo-<version>-cpanel` convention the retired tarball used, since RPM
+tooling and operators expect the real NVRA filename).
+
+`noarch` because this project has no native/compiled dependencies (password
+hashing uses Node's built-in `node:crypto` `scrypt`, not a native Argon2
+binding — see `src/core/auth/password-hashing.ts` — and the only two
+runtime npm dependencies, `ldapts` and `pg`, are pure JavaScript/TypeScript
+with no `.node` addons), and more fundamentally because `node_modules/` is
+not part of this RPM's payload at all — `%post` runs `npm ci --omit=dev` at
+install time, same as the retired `install.sh` did. The payload this
+package actually ships is architecture-independent by construction.
 
 Also writes a `.sha256` sidecar and updates `packaging/dist/checksums.txt`,
-same as standalone. Verify the archive before trusting it:
+same as the other two targets. Verify the package before installing it:
 
 ```bash
 cd packaging/dist
-sha256sum -c gulogulo-<version>-cpanel.tar.gz.sha256
+sha256sum -c gulogulo-<version>-1*.rpm.sha256
+rpm -qp --info gulogulo-<version>-1*.rpm      # metadata
+rpm -qlp gulogulo-<version>-1*.rpm            # file listing
 ```
 
-### Install (`install.sh [--non-interactive] [--dry-run] [--yes]`)
+### Install
 
-Must run as root on a real cPanel/WHM server (checks `/usr/local/cpanel`
-exists; both the root and cPanel checks are downgraded to warnings only under
-`--dry-run`, which is how CI exercises the script safely on a non-cPanel
-runner).
+```bash
+sudo dnf install ./gulogulo-<version>-1*.rpm
+# or: sudo rpm -Uvh gulogulo-<version>-1*.rpm
+```
 
-1. Node.js ≥ 26 check, `.env` creation from `.env.example` (also hints at
-   setting `CPANEL_API_*` for the UAPI identity adapter and `POSTGRES_*` for
-   an existing PostgreSQL database), `npm ci --omit=dev`, and the same
-   no-op-while-disabled migration step as standalone.
-2. **Really installs and starts a systemd service.** cPanel's own Application
-   Manager is Passenger-based and is not a fit for a standalone-port
-   `app.listen()` Node process, so this target renders
-   `gulogulo.service.template` (substituting install dir, service user/group,
-   `node` binary path, and a read-write path), creates a dedicated
-   `gulogulo` system user if one doesn't exist, and — subject to
-   confirmation (interactive prompt, or `--yes` in non-interactive mode; both
-   skipped entirely under `--dry-run`) — writes the unit to
-   `/etc/systemd/system/gulogulo.service` and runs
-   `systemctl daemon-reload && systemctl enable --now gulogulo`. If not
-   confirmed, the rendered unit is left at `gulogulo.service.rendered` for
-   manual review and manual `cp`/`daemon-reload`/`enable --now`.
-3. Writes `gulogulo-proxy.conf.example` (an Apache reverse-proxy snippet,
-   rewritten to the port from `.env` if not 8080) — **never applies it**; the
-   operator applies it manually via WHM's Include Editor or a userdata hook,
-   then rebuilds/restarts Apache.
-4. Points at `gulogulo-appconfig.conf.example` as an **optional** WHM
-   AppConfig registration, not required for Gulo Gulo to work, applied
-   manually with `cp ... /var/cpanel/apps/gulogulo.conf` followed by
-   `register_appconfig` — never run automatically.
+Requires Node.js ≥ 26 already installed and on `PATH` **before** this
+command — it is deliberately not declared as an RPM `Requires:` (see
+`gulogulo.spec`'s own comment for why: RHEL9/AlmaLinux9's own AppStream
+repos do not ship Node.js ≥ 26, and the third-party NodeSource RPM repo that
+does is not enabled by default and not part of RHEL's own supported package
+set). `%post` checks for a working `node` ≥ 26 in `PATH` and fails with
+instructions if it is missing, rather than declaring a `Requires:` that
+could make `dnf install` fail outright on a host that has not enabled a
+Node 26-capable repository yet. Install Node.js 26 first, e.g. via
+NodeSource's `setup_26.x` script:
+
+```bash
+curl -fsSL https://rpm.nodesource.com/setup_26.x -o nodesource_setup.sh
+sudo bash nodesource_setup.sh
+sudo dnf install -y nodejs
+```
+
+A real NodeSource `setup_26.x` RPM repo script for EL9 exists (see
+https://github.com/nodesource/distributions), and
+`.github/workflows/package-cpanel.yml` actually runs it inside the
+`almalinux:9` container on every CI run, which is the closest this project
+can get to verifying that claim without a persistent real host. Its
+long-term availability/currency for any specific Node 26.x point release
+cannot be verified with certainty beyond that.
+
+Once Node.js is present, `dnf install`/`rpm -Uvh` unpacks the package and
+runs `%post` as root — the same high-level steps as the retired
+`install.sh`: creates `/opt/gulogulo/.env` from `.env.example` if missing
+(hints at `CPANEL_API_*`/`POSTGRES_*`) and locks it down to mode `0640`,
+owned `root:gulogulo` — unlike the retired tarball target, where `.env`
+landed wherever the operator chose to extract it, the RPM guarantees this
+file at a fixed, predictable path on a host that is definitionally full of
+other, untrusted shell users (cPanel accounts), so it is deliberately not
+left world-readable — runs `npm ci --omit=dev` and the
+migration step (a clean no-op while `POSTGRES_ENABLED=false`), then
+`systemctl daemon-reload` and, on a **first install only**,
+`systemctl enable gulogulo` (enabled but not started — review `.env`, then
+`systemctl start gulogulo`). `%pre` creates the dedicated `gulogulo` system
+user/group first if neither already exists. It also prints (never applies)
+pointers to `/usr/share/doc/gulogulo/gulogulo-proxy.conf.example` (an Apache
+reverse-proxy snippet) and the optional
+`/usr/share/doc/gulogulo/gulogulo-appconfig.conf.example` WHM AppConfig
+registration — applied manually the same way as before (WHM's Include
+Editor or a userdata hook, then `/scripts/rebuildhttpdconf && systemctl
+restart httpd`; `register_appconfig` for AppConfig).
+
+`%post` is deliberately fail-fast (`set -e`, matching `install.sh`'s prior
+behavior): if `npm ci` or the migration step fails, the scriptlet stops
+before wiring up systemd, leaving the application files installed but the
+service not enabled — a loud, visible failure rather than a silently
+half-configured service.
+
+### Upgrade
+
+```bash
+sudo dnf install ./gulogulo-<newer-version>-1*.rpm
+# or: sudo rpm -Uvh gulogulo-<newer-version>-1*.rpm
+```
+
+rpm's own upgrade transaction replaces the package's files, then re-runs
+`%post` — same `npm ci`/migrate steps, but on an upgrade (`$1 >= 2` inside
+`%post`) it **restarts the service automatically**
+(`systemctl restart gulogulo`) instead of enabling it, mirroring the retired
+`upgrade.sh`'s unconditional restart (gulogulo is a dedicated systemd unit
+this package itself manages, not a process the operator runs under their
+own supervisor) — and deliberately does **not** re-run `systemctl enable`,
+so an operator who had disabled the unit between versions stays disabled.
+**No explicit backup step** exists here, unlike the retired `upgrade.sh` —
+rpm overwrites the packaged files directly with no tar-before-replace
+equivalent; rollback is `dnf downgrade gulogulo` / `rpm -Uvh --oldpackage`
+against a previously-built `.rpm`, which restores the packaged files (not
+`node_modules/`, which `%post` reruns `npm ci` for, and deliberately not
+`/opt/gulogulo/.env`, which is never shipped by the package). See
+`doc/upgrade-and-migration.md` for the full picture and its own caveats.
+
+### Uninstall
+
+```bash
+sudo dnf remove gulogulo
+```
+
+`%preun` stops and disables the systemd service on a real removal (`$1 -eq
+0`; never on an upgrade, where `%post`'s restart branch handles it
+instead). `%postun` cleans up what rpm itself does not track because
+`%post` created it at runtime rather than shipping it in the package:
+`node_modules/` (rpm's own file removal already deletes every packaged file
+under `/opt/gulogulo`, including `.env.example`, `VERSION`, etc.). It never
+touches external PostgreSQL data or `/var/lib/gulogulo`, never touches
+Apache configuration or WHM AppConfig registration (only prints reminders
+for those two), and never deletes the dedicated system user — same caution
+as the retired `uninstall.sh`. `/opt/gulogulo/.env`, since it is not a
+packaged file, survives an `rpm -e`/`dnf remove` untouched; remove it
+yourself if you want it gone.
 
 ### Requirements
 
 Same as standalone (Node.js ≥ 26, PostgreSQL optional, LDAP not applicable
 since identity comes from cPanel's own UAPI — see Section 5 for the current
-`authenticate()` limitation), plus: a real cPanel/WHM host with root access,
-since this installer refuses to do its irreversible work anywhere else
-(outside `--dry-run`).
-
-### Uninstall (`uninstall.sh [--non-interactive] [--dry-run] [--yes]`)
-
-Stops/disables the systemd service (with confirmation) and optionally removes
-the unit file, then — separately confirmed — removes application files and
-optionally `.env`. Never touches PostgreSQL data, and never touches Apache
-configuration or WHM AppConfig registration; it only prints reminders for
-those two, since both are manual, host-wide changes the operator made
-deliberately.
+`authenticate()` limitation), plus: a real RHEL-family cPanel/WHM host with
+root access, and `rpmbuild`/`rpm-build` if building the package on that host
+rather than downloading a pre-built one.
 
 ### CI status
 
-**DONE — repository, dry-run only.** `package-cpanel.yml` never runs on a
-real cPanel/WHM host, so it can only validate that the installer's logic is
-internally sound (`--dry-run` skips every systemd/Apache/user write, argument
-parsing rejects unknown flags, no systemd unit or system user is left behind).
-**VERIFY BEFORE USE:** an actual install on a real cPanel/WHM server —
-systemd unit creation and startup, the dedicated system user, the Apache
-reverse proxy wiring, and (if used) the AppConfig registration.
+**DONE — repository, structural verification plus a real partial
+extraction.** `package-cpanel.yml` runs inside an actual `almalinux:9`
+container (not a stand-in `ubuntu-latest` runner): it installs Node.js 26
+via NodeSource, builds the RPM, inspects its metadata (`rpm -qp
+--info`/`--requires`) and file listing (`rpm -qlp`), syntax-checks the
+built `%pre`/`%post`/`%preun`/`%postun` scriptlet bodies (`bash -n`),
+resolves dependencies and checks for file conflicts with a real `rpm -i
+--test`, and runs a real `rpm2cpio | cpio -idmv` extraction — genuinely
+extracting the package's files without a package manager and without
+running anything. It does **not** run `%post` to completion (no `dnf
+install`/`rpm -Uvh`): `%post` ends with `systemctl daemon-reload &&
+systemctl enable gulogulo`, which needs a running init system the CI
+container does not have. **VERIFY BEFORE USE, in full:** the actual
+install/upgrade/uninstall cycle on a real cPanel/WHM host — `%post`
+completing successfully (`npm ci`, migrations, system user, systemd
+enable/restart), the service actually answering requests, and the Apache
+reverse-proxy wiring.
 
 ## 4. Plesk
+
+**This target ships as a real Debian `.deb` package, not a Plesk
+extension.** Earlier revisions of this project built a Plesk extension ZIP
+(`meta.xml` + `plib/scripts/` PHP lifecycle hooks, installed via `plesk bin
+extension -i`). That mechanism has been deliberately retired: it depended on
+Plesk itself being present to install anything at all, its lifecycle hooks
+ran under Plesk's own PHP-based extension runner rather than a well-known OS
+mechanism, and Plesk's own Node.js hosting support targets a subscription's
+own web app, not a dedicated cross-subscription system service anyway — so
+this target never actually used Plesk to *run* Gulo Gulo, only to *install*
+it. An OS-native `.deb` gets the same outcome (a systemd service behind a
+reverse proxy, same as cPanel) through a mechanism every Debian/Ubuntu
+operator already knows, and one that a real container can build and
+partially verify in CI (see "CI status" below) rather than only checking a
+ZIP's shape. This target still targets a Debian/Ubuntu host that Plesk may
+also be managing domains on; it identifies users through Plesk's REST API
+(`src/platform/plesk/`) the same as before.
 
 ### Build
 
@@ -245,92 +388,139 @@ reverse proxy wiring, and (if used) the AppConfig registration.
 node --experimental-strip-types packaging/plesk/build-plesk-package.ts
 ```
 
-Unlike the other two targets, this produces a real Plesk extension **ZIP**
-(`packaging/dist/gulogulo-<version>-plesk.zip`), built by a dependency-free
-ZIP writer (`createZipArchive` in `packaging/shared/stage-application.ts`,
-built on `node:zlib`), with `meta.xml` at the archive root and lifecycle
-scripts under `plib/scripts/` — the layout Plesk's extension installer
-requires. The staged application lives under `plib/app/` (same staging
-helper as the other two targets, plus the systemd unit template shared with
-cPanel, the nginx proxy example, and `run-migrations.mjs`).
+Produces a real Debian binary package,
+`packaging/dist/gulogulo_<version>_all.deb`, built with `dpkg-deb --build`
+(`createDebPackage` in `packaging/shared/stage-application.ts` — `dpkg-deb`
+ships natively on Debian/Ubuntu, nothing extra to install). `Architecture:
+all` because this project has no native/compiled dependencies: password
+hashing uses Node's built-in `node:crypto` `scrypt` (see
+`src/core/auth/password-hashing.ts`), not a native Argon2 binding, and the
+only two runtime npm dependencies (`ldapts`, `pg`) are pure JavaScript/
+TypeScript with no `.node` addons in `node_modules/` — confirmed by
+inspection, not assumed.
 
-`meta.xml` declares `plesk_min_version` `18.0.29` (the Obsidian line, chosen
-as the conservative floor for the modern REST API v2 this project's Plesk
-adapter uses) and an open-ended `plesk_max_version` (`18.999.999`). **This
-floor has not been verified against a real Plesk instance** — see
-`src/platform/plesk/README.md` for the same caveat already documented for the
-REST endpoints this package's identity adapter calls (only
-`GET /api/v2/domains` is confirmed; the mail-accounts and server-probe
-endpoints are the most reasonable guess, not verified).
+The package layout follows standard Debian conventions
+(`packaging/plesk/debian/DEBIAN/` for the control file and maintainer
+scripts, staged into `DEBIAN/` at build time with `@VERSION@` substituted;
+the application itself staged to `opt/gulogulo/` — same staging helper as
+the other two targets, plus the systemd unit template
+(`packaging/shared/gulogulo-deb.service.template`, substituted by
+`postinst` at install time — the cPanel RPM target uses its own
+pre-rendered `packaging/shared/gulogulo-rpm.service` instead, since an RPM
+install location has no operator-configurable paths to substitute), the
+nginx proxy example, and `run-migrations.mjs`).
 
 Also writes a `.sha256` sidecar and updates `packaging/dist/checksums.txt`,
-same as the other two targets. Verify the ZIP before uploading it to Plesk:
+same as the other two targets. Verify the package before installing it:
 
 ```bash
 cd packaging/dist
-sha256sum -c gulogulo-<version>-plesk.zip.sha256
+sha256sum -c gulogulo_<version>_all.deb.sha256
+dpkg-deb -I gulogulo_<version>_all.deb   # metadata
+dpkg -c gulogulo_<version>_all.deb       # file listing
 ```
 
-### Install — run by Plesk itself, not by the operator directly
+### Install
 
-Plesk runs these hooks as root as part of its own extension lifecycle:
+```bash
+sudo apt install ./gulogulo_<version>_all.deb
+# or: sudo dpkg -i gulogulo_<version>_all.deb
+```
 
-1. **`pre-install.php`** — checks `PHP_OS_FAMILY === 'Linux'` and Node.js ≥
-   26 (parsed from `node --version`). A non-zero exit aborts the install with
-   this script's stderr shown to the operator; nothing is written yet.
-2. **`post-install.php`** — the same steps as the cPanel `install.sh`, driven
-   from PHP: creates `.env` from `.env.example` if missing (hints at
-   `POSTGRES_*`), runs `npm ci --omit=dev` and the migration step, then
-   **always** creates the `gulogulo` system user if missing and installs +
-   enables + starts the systemd service — there is no interactive/`--yes`
-   distinction here, because this script runs with root privileges
-   unconditionally by construction of the Plesk extension mechanism. It also
-   writes (never applies) `gulogulo-proxy.conf.example`, an nginx directive
-   snippet rewritten to the configured port, applied manually via Plesk's
-   Websites & Domains → Apache & nginx Settings → "Additional nginx
-   directives".
+Requires Node.js ≥ 26 already installed and on `PATH` **before** this
+command — it is deliberately not declared as an apt `Depends:` (see
+`packaging/plesk/debian/DEBIAN/control`'s long description for why: no
+Debian Trixie main-archive or independently-verified NodeSource apt
+repository for Node.js 26 on Trixie could be confirmed reliable enough to
+hard-depend on it). Install Node.js 26 first, e.g. via NodeSource's
+`setup_26.x` script:
 
-**No dedicated Plesk upgrade hook exists in this repository.** The packaging
-ships only `pre-install.php`, `post-install.php`, and `pre-uninstall.php` — no
-`upgrade.php`. Plesk's own extension update mechanism (installing a newer
-package version over an already-installed one) is assumed to re-run
-`pre-install.php`/`post-install.php` against the new files, which is the
-standard shape of a Plesk extension lifecycle, but **this has not been
-verified against a real Plesk host** and is a real open question, not a
-documented fact. See `doc/upgrade-and-migration.md` for how this affects the
-Plesk upgrade story.
+```bash
+curl -fsSL https://deb.nodesource.com/setup_26.x -o nodesource_setup.sh
+sudo bash nodesource_setup.sh
+sudo apt install nodejs
+```
 
-### Uninstall (`pre-uninstall.php`)
+A real NodeSource `setup_26.x` script for Debian-based systems exists (see
+https://github.com/nodesource/distributions) and does not hardcode a
+Debian-codename allowlist, so it is expected to work on Trixie — and
+`.github/workflows/package-plesk.yml` actually runs it inside a
+`debian:trixie` container on every CI run, which is the closest this
+project can get to verifying that claim without a persistent real host.
 
-Stops/disables the systemd service, removes the unit file, and removes the
-generated build/dependency directories (`node_modules/`, `dist/`,
-`web/dist/`). **Known risk, called out explicitly in the script's own
-comments:** once `pre-uninstall.php` returns successfully, Plesk deletes the
-extension's entire `plib/` directory itself — including `plib/app/.env`. This
-has not been verified against a real Plesk host. The script's own default
-(leaving `.env` in place unless `GULOGULO_PLESK_PURGE_ENV=1` is set) is the
-safer of the two possible outcomes, but if Plesk does delete `plib/`
-regardless, this script cannot prevent the loss of `.env` — **back up `.env`
-yourself before uninstalling if you want to keep it.**
+Once Node.js is present, `apt install`/`dpkg -i` unpacks the package and
+runs `DEBIAN/postinst` as root — the same high-level steps as the retired
+Plesk `post-install.php` and the retired cPanel `install.sh` (see
+`packaging/cpanel/gulogulo.spec`'s `%post` for the cPanel RPM target's own,
+now-equivalent, scriptlet): creates `.env` from `.env.example`
+if missing (hints at `POSTGRES_*`), runs `npm ci --omit=dev` and the
+migration step, creates the `gulogulo` system user if missing, and
+installs + enables + starts the systemd service — unconditionally, with no
+interactive/`--yes` distinction, since `postinst` always runs as root by
+construction of the dpkg maintainer-script contract. It also writes (never
+applies) `/opt/gulogulo/gulogulo-proxy.conf.example`, an nginx directive
+snippet rewritten to the configured port, applied manually the same way as
+the cPanel target's Apache example (Plesk's Websites & Domains → Apache &
+nginx Settings → "Additional nginx directives", or the Plesk CLI).
+
+### Upgrade
+
+`apt install ./gulogulo_<newer-version>_all.deb` over an existing install:
+dpkg's own maintainer-script contract runs `DEBIAN/prerm upgrade
+<new-version>` (a no-op — it deliberately leaves the service running),
+replaces the package's files, then re-runs `DEBIAN/postinst configure
+<old-version>` — the same `npm ci`, migrate, and `systemctl enable --now`
+steps as a fresh install. **No explicit backup step** exists here, unlike
+`upgrade.sh` on the other two targets — dpkg overwrites the shipped files
+directly with no tar-before-replace equivalent. `.env` and `node_modules/`
+are not shipped by the package, so they are untouched by an upgrade by
+construction, not by explicit preservation logic. See
+`doc/upgrade-and-migration.md` for the full picture and its own caveats.
+
+### Uninstall
+
+```bash
+sudo apt remove gulogulo    # or: dpkg -r  — stops/disables the service,
+                             # leaves .env and /var/lib/gulogulo in place
+sudo apt purge gulogulo     # or: dpkg -P  — also removes .env
+```
+
+`DEBIAN/prerm` stops and disables the systemd service on a real removal
+(never on an upgrade). `DEBIAN/postrm` cleans up what dpkg itself does not
+track because `postinst` created it at runtime rather than shipping it in
+the package: `node_modules/` and the rendered `/etc/systemd/system/
+gulogulo.service` unit (both `remove` and `purge`), and `.env` (`purge`
+only). It never touches external data (PostgreSQL database, mailbox
+storage) or `/var/lib/gulogulo` (`GULOGULO_SERVICE_READ_WRITE_PATH`), and
+never deletes the dedicated system user — same caution as the cPanel
+target's `uninstall.sh`.
 
 ### Requirements
 
-Linux Plesk host, Node.js ≥ 26, PostgreSQL optional (same as the other
-targets), Plesk Obsidian (18.0.29+, floor unverified) with the modern REST
-API v2 reachable locally.
+Debian/Ubuntu host, Node.js ≥ 26 pre-installed (not an apt dependency of
+this package — see "Install" above), PostgreSQL optional (same as the other
+targets). Plesk itself is not required to be installed on the host at all
+for this package to work; the Plesk REST API identity adapter
+(`src/platform/plesk/`) is only relevant if the host is also Plesk-managed
+and you intend to use it for identity.
 
 ### CI status
 
-**DONE — repository, structure only.** `package-plesk.yml` cannot install a
-real extension (no Plesk CLI, extension catalog, or panel-user PHP context on
-the `ubuntu-latest` runner, and no suitable official Plesk Docker image). It
-verifies the ZIP builds with the exact structure Plesk requires, that
-`meta.xml` is well-formed XML with the required fields, and that all three
-PHP scripts pass `php -l`. **VERIFY BEFORE USE, in full:** the actual
-extension install/upgrade/uninstall cycle on a real Plesk host, the assumed
-REST endpoints, the `plesk_min_version` floor, the systemd install, the nginx
-reverse-proxy wiring, and especially the `plib/` deletion behavior on
-uninstall.
+**DONE — repository, structural verification plus a real partial unpack.**
+`package-plesk.yml` runs inside an actual `debian:trixie` container (not a
+stand-in `ubuntu-latest` runner): it installs Node.js 26 via NodeSource,
+builds the `.deb`, inspects its metadata (`dpkg-deb -I`) and file listing
+(`dpkg -c`), lints the three maintainer scripts (`sh -n`), and runs a real
+`dpkg --unpack` + `dpkg --purge` cycle — genuinely extracting the package's
+files with `dpkg` itself and exercising `prerm`/`postrm`'s no-op paths for
+real. It does **not** run `postinst` to completion (no `dpkg -i`/`apt
+install`/`dpkg --configure`): `postinst` ends with `systemctl enable --now
+gulogulo`, which needs a running init system the CI container does not
+have. **VERIFY BEFORE USE, in full:** the actual install/upgrade/uninstall
+cycle on a real Debian/Ubuntu host — `postinst` completing successfully
+(`npm ci`, migrations, system user, systemd enable), the service actually
+answering requests, the assumed Plesk REST endpoints (if used for
+identity), and the nginx reverse-proxy wiring.
 
 ## 5. Cross-cutting known limitations
 
@@ -389,16 +579,23 @@ removed or replaced below; see ADR-002 for why.
   installs non-interactively, starts, and answers `/health/ready` and `/` in
   CI. Verify a real host: real traffic, PostgreSQL/LDAP enabled, and process
   supervision (systemd/pm2) chosen and configured by the operator.
-- [x] **DONE — repository, dry-run only.** The cPanel package builds and its
-  installer's argument parsing, precondition handling, and non-destructive
-  steps are verified under `--dry-run`. Verify a real cPanel/WHM host: the
-  systemd unit, the dedicated system user, and the Apache reverse-proxy
-  wiring.
-- [x] **DONE — repository, structure only.** The Plesk package builds a
-  structurally valid extension ZIP and its PHP lifecycle scripts pass
-  `php -l`. Verify a real Plesk host: the actual install/upgrade/uninstall
-  cycle, the assumed REST endpoints, the `plesk_min_version` floor, and the
-  `plib/` deletion behavior on uninstall.
+- [x] **DONE — repository, structural verification plus a real partial
+  extraction.** The cPanel package builds a structurally valid `.rpm`
+  (verified with `rpm -qp --info`/`--requires`/`-qlp`), its scriptlets pass
+  `bash -n`, and CI runs a real `rpm -i --test` (dependency/conflict check)
+  plus a real `rpm2cpio | cpio -idmv` extraction inside an `almalinux:9`
+  container. Verify a real cPanel/WHM host: `%post` completing successfully
+  (`dnf install`/`rpm -Uvh`, which CI cannot run — no init system in the
+  container), the systemd unit, the dedicated system user, and the Apache
+  reverse-proxy wiring.
+- [x] **DONE — repository, structural verification plus a real partial
+  unpack.** The Plesk package builds a structurally valid `.deb` (verified
+  with `dpkg-deb -I`/`dpkg -c`), its maintainer scripts pass `sh -n`, and CI
+  runs a real `dpkg --unpack`/`dpkg --purge` cycle inside a `debian:trixie`
+  container. Verify a real Debian/Ubuntu host: `postinst` completing
+  successfully (`apt install`/`dpkg -i`, which CI cannot run — no init
+  system in the container), the assumed Plesk REST endpoints (if used for
+  identity), and the nginx reverse-proxy wiring.
 - [ ] **OPEN CODE — MySQL/MariaDB data engine.** ADR-002's promise of a
   MySQL/MariaDB engine for cPanel/Plesk hosts is not implemented; all three
   targets require PostgreSQL today.
@@ -528,11 +725,15 @@ removed or replaced below; see ADR-002 for why.
   contract are implemented. The provider still has to install and verify its
   host-side freshclam/map updater, feed permissions, alerting, and filesystem
   policy; those are VERIFY BEFORE USE work, not packaging code.
-- [x] **DONE — per-target in-place upgrade scripts.** Each of the three
-  targets ships its own backup-then-replace upgrade script (or, for Plesk,
-  relies on Plesk's own package-replace mechanism); see
-  `doc/upgrade-and-migration.md`. Verify each target's real upgrade path end
-  to end, including rollback from the backup taken.
+- [x] **DONE — per-target upgrade mechanism.** Standalone ships its own
+  backup-then-replace `upgrade.sh`; cPanel and Plesk both rely on their
+  package manager's own package-replace mechanism instead (`dnf install
+  ./gulogulo-<newer-version>-1*.rpm`/`rpm -Uvh` re-running `%post`, or `apt
+  install ./gulogulo_<newer-version>_all.deb` re-running `postinst`), with
+  no explicit backup step of their own; see `doc/upgrade-and-migration.md`.
+  Verify each target's real upgrade path end to end, including rollback
+  from the backup taken (standalone) or from `dnf downgrade`/`rpm -Uvh
+  --oldpackage` (cPanel) / `dpkg --configure` retry after a fix (Plesk).
 - [x] **DONE — RPO/RTO and incident/DR contract shape.** Recovery objectives,
   integrity/privacy checks, sanitized evidence, and operator procedures are
   represented. Verify and approve measured objectives, escalation paths,
@@ -729,10 +930,11 @@ release evidence system as sanitized records.
   credential rotation.
 - Verify queue, scanner, certificate, storage, authentication, and dependency
   alerts reach the assigned operator.
-- Verify each target's install, upgrade, and uninstall scripts on a real host
-  of that type — standalone on a plain server/VPS, cPanel on a real
-  cPanel/WHM server as root, Plesk through a real Plesk extension
-  install/update/remove cycle.
+- Verify each target's install, upgrade, and uninstall path on a real host of
+  that type — standalone on a plain server/VPS, cPanel (`.rpm`) through a
+  real `dnf install`/`rpm -Uvh`/`dnf remove` cycle as root on a real
+  cPanel/WHM server, Plesk (`.deb`) through a real `apt install`/`dpkg -i`
+  install/upgrade/remove cycle on a Debian/Ubuntu host.
 
 ### Tenant master and user tester
 
