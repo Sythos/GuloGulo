@@ -87,7 +87,7 @@ test('reads both scanner states from one metadata-only external root', async () 
   } };
   const missing = await readScannerSignatureStatus('/external', 'clamav', { fileSystem });
   assert.equal(missing.status, 'missing');
-  const ready = await readScannerSignatureStatus('/external', 'rspamd', { fileSystem });
+  const ready = await readScannerSignatureStatus('/external', 'rspamd', { fileSystem, now: new Date('2026-08-27T00:01:00Z') });
   assert.equal(ready.status, 'ready');
   assert.throws(() => resolveScannerSignaturePath('/external', POINTER, '../secret'), /invalid/);
 });
