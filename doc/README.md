@@ -51,8 +51,7 @@ backlog.
 - [Lifecycle, backup, and disaster recovery](lifecycle-backup-dr.md) — the
   28-day purge rule, account lifecycle, encrypted backup envelopes, restore
   metadata, and operational evidence limits.
-- [ACME, abuse, and production deployment](acme-abuse-deployment.md) —
-  Let's Encrypt and generic ACME configuration, renewal/reload health,
+- [Abuse controls and production readiness](abuse-deployment.md) —
   metadata-only rate and abuse controls, and fail-closed Compose readiness.
 - [Upgrade and migration operations](upgrade-and-migration.md) — the
   expand/backfill/switch/contract database-migration discipline shared by all
@@ -84,11 +83,14 @@ replaced that model with the standalone/cPanel/Plesk packages; see
 `../INSTALL.md` for the current, real deployment and verification story.
 
 The project is still intentionally small. The documents describe real behavior
-only: DAV, administration, lifecycle, backup, observability, ACME, abuse, and
+only: DAV, administration, lifecycle, backup, observability, abuse, and
 upgrade are deterministic contract boundaries until their external adapters and
 rehearsals are in place. The release-readiness guide collects those limits in a
 machine-checkable decision, but production deployment still needs a persistent
-DAV backend, authenticated HTTP method adapter, real ACME/DNS operations,
-measured RPO/RTO, a real in-place upgrade rehearsal on each of the three
-packaging targets (see `doc/upgrade-and-migration.md`), and standard-client
-interoperability rehearsal before it is treated as a complete external service.
+DAV backend, authenticated HTTP method adapter, measured RPO/RTO, a real
+in-place upgrade rehearsal on each of the three packaging targets (see
+`doc/upgrade-and-migration.md`), and standard-client interoperability
+rehearsal before it is treated as a complete external service. TLS
+certificates are the panel's own AutoSSL/Let's Encrypt integration on
+cPanel/Plesk, and the operator's own reverse proxy on standalone - Gulo Gulo
+does not manage certificates itself.

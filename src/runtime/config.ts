@@ -49,7 +49,6 @@ const TOP_LEVEL_KEYS = new Set([
   'cpanel',
   'plesk',
   'mail',
-  'certificates',
   'webAuth',
   'retention',
   'api',
@@ -129,7 +128,6 @@ const SECTION_KEYS = Object.freeze({
     'queueMaxAttempts',
     'queueRetryBaseMs',
   ]),
-  certificates: new Set(['provider', 'autoRenew']),
   webAuth: new Set(['totp', 'webauthn', 'recoveryCodes']),
   retention: new Set(['trashDays']),
   api: new Set(['readOnly']),
@@ -215,10 +213,6 @@ const ENVIRONMENT_VARIABLES = Object.freeze({
     maxMessagesPerUserPerMinute: ['GULOGULO_MAIL_MAX_MESSAGES_PER_USER_PER_MINUTE', 'MAIL_MAX_MESSAGES_PER_USER_PER_MINUTE'],
     queueMaxAttempts: ['GULOGULO_MAIL_QUEUE_MAX_ATTEMPTS', 'MAIL_QUEUE_MAX_ATTEMPTS'],
     queueRetryBaseMs: ['GULOGULO_MAIL_QUEUE_RETRY_BASE_MS', 'MAIL_QUEUE_RETRY_BASE_MS'],
-  },
-  certificates: {
-    provider: ['GULOGULO_CERTIFICATE_PROVIDER', 'CERTIFICATE_PROVIDER'],
-    autoRenew: ['GULOGULO_CERTIFICATE_AUTO_RENEW', 'CERTIFICATE_AUTO_RENEW'],
   },
   webAuth: {
     totp: ['GULOGULO_WEB_AUTH_TOTP', 'WEB_AUTH_TOTP'],
@@ -524,7 +518,6 @@ function buildConfiguration(fileConfiguration, environment) {
   const cpanelFile = readSection(fileConfiguration, 'cpanel');
   const pleskFile = readSection(fileConfiguration, 'plesk');
   const mailFile = readSection(fileConfiguration, 'mail');
-  const certificatesFile = readSection(fileConfiguration, 'certificates');
   const webAuthFile = readSection(fileConfiguration, 'webAuth');
   const retentionFile = readSection(fileConfiguration, 'retention');
   const apiFile = readSection(fileConfiguration, 'api');
@@ -624,10 +617,6 @@ function buildConfiguration(fileConfiguration, environment) {
       queueMaxAttempts: readInteger(mailFile.queueMaxAttempts ?? 5, 'mail.queueMaxAttempts', 1, 100),
       queueRetryBaseMs: readInteger(mailFile.queueRetryBaseMs ?? 60_000, 'mail.queueRetryBaseMs', 1_000, 86_400_000),
     },
-    certificates: {
-      provider: readEnum(certificatesFile.provider ?? 'letsencrypt', 'certificates.provider', ['letsencrypt', 'acme']),
-      autoRenew: readBoolean(certificatesFile.autoRenew ?? true, 'certificates.autoRenew'),
-    },
     webAuth: {
       totp: readEnum(webAuthFile.totp ?? 'optional', 'webAuth.totp', ['disabled', 'optional', 'required']),
       webauthn: readEnum(webAuthFile.webauthn ?? 'optional', 'webAuth.webauthn', ['disabled', 'optional', 'required']),
@@ -673,7 +662,6 @@ function buildConfiguration(fileConfiguration, environment) {
     ['cpanel', config.cpanel, ENVIRONMENT_VARIABLES.cpanel],
     ['plesk', config.plesk, ENVIRONMENT_VARIABLES.plesk],
     ['mail', config.mail, ENVIRONMENT_VARIABLES.mail],
-    ['certificates', config.certificates, ENVIRONMENT_VARIABLES.certificates],
     ['webAuth', config.webAuth, ENVIRONMENT_VARIABLES.webAuth],
     ['retention', config.retention, ENVIRONMENT_VARIABLES.retention],
     ['api', config.api, ENVIRONMENT_VARIABLES.api],
@@ -769,12 +757,6 @@ function buildConfiguration(fileConfiguration, environment) {
       applyEnvironmentValue(target, 'maxMessagesPerUserPerMinute', environment, variables.maxMessagesPerUserPerMinute, (value, name) => readEnvironmentInteger(value, name, 1, 100_000));
       applyEnvironmentValue(target, 'queueMaxAttempts', environment, variables.queueMaxAttempts, (value, name) => readEnvironmentInteger(value, name, 1, 100));
       applyEnvironmentValue(target, 'queueRetryBaseMs', environment, variables.queueRetryBaseMs, (value, name) => readEnvironmentInteger(value, name, 1_000, 86_400_000));
-      continue;
-    }
-
-    if (sectionName === 'certificates') {
-      applyEnvironmentValue(target, 'provider', environment, variables.provider, (value, name) => readEnvironmentEnum(value, name, ['letsencrypt', 'acme']));
-      applyEnvironmentValue(target, 'autoRenew', environment, variables.autoRenew, readEnvironmentBoolean);
       continue;
     }
 

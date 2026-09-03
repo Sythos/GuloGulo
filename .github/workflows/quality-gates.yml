@@ -217,11 +217,9 @@ jobs:
           test -f doc/lifecycle-backup-dr.md
           test -f src/core/ops/abuse/index.ts
           test -f src/core/ops/abuse/index.test.ts
-          test -f src/core/ops/acme/index.ts
-          test -f src/core/ops/acme/index.test.ts
           test -f src/core/observability/index.ts
           test -f src/core/observability/observability.test.ts
-          test -f doc/acme-abuse-deployment.md
+          test -f doc/abuse-deployment.md
           test -f src/core/upgrade/compatibility.ts
           test -f src/core/upgrade/index.ts
           test -f src/core/upgrade/upgrade-contract.test.ts
@@ -348,10 +346,6 @@ jobs:
           grep -Fq 'createLogRotationPolicy' src/core/observability/log-policy.ts
           grep -Fq 'createStructuredEvent' src/core/observability/structured-event.ts
           grep -Fq 'createAlertPolicy' src/core/observability/alert-policy.ts
-          grep -Fq 'LETSENCRYPT' src/core/ops/acme/index.ts
-          grep -Fq 'HTTP_01' src/core/ops/acme/index.ts
-          grep -Fq 'DNS_01' src/core/ops/acme/index.ts
-          grep -Fq 'createSafeReloadPlan' src/core/ops/acme/index.ts
           grep -Fq 'DEFAULT_RATE_LIMITS' src/core/ops/abuse/index.ts
           grep -Fq 'createAbuseAuditEvent' src/core/ops/abuse/index.ts
           grep -Fq 'validateComposeProductionReadiness' src/core/ops/abuse/index.ts

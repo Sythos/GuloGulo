@@ -116,14 +116,6 @@
         "queueRetryBaseMs": { "type": "integer", "minimum": 1000, "maximum": 86400000, "default": 60000 }
       }
     },
-    "certificates": {
-      "type": "object",
-      "additionalProperties": false,
-      "properties": {
-        "provider": { "type": "string", "enum": ["letsencrypt", "acme"], "default": "letsencrypt" },
-        "autoRenew": { "type": "boolean", "default": true }
-      }
-    },
     "webAuth": {
       "type": "object",
       "additionalProperties": false,

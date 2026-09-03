@@ -415,14 +415,13 @@ removed or replaced below; see ADR-002 for why.
   relay, sender spoofing, unknown internal recipients, catch-all delivery, and
   automatic forwarding. Verify the behavior with the selected Postfix and
   submission topology, including negative tests from an untrusted network.
-- [x] **DONE — TLS and certificate health contract.** The runtime exposes
-  certificate-health metadata and the ACME state contract. Verify the complete
-  certificate chain, hostname validation, renewal window, reload behavior,
-  expiry alert, and failure recovery with the provider certificate authority.
-- [x] **DONE — ACME policy and safe reload boundary.** Let's Encrypt is the
-  default provider and a generic ACME profile is supported by contract. Verify
-  DNS or HTTP challenge routing, firewall rules, rate limits, account-key
-  protection, renewal, and rollback in the real network.
+- **REMOVED — TLS/ACME certificate management.** Gulo Gulo no longer owns a
+  certificate provider or ACME state contract; the item was written for the
+  superseded container/reverse-proxy model. On cPanel/Plesk, the panel's own
+  AutoSSL/Let's Encrypt integration issues and renews certificates in front of
+  Gulo Gulo. On standalone, the packaging pipeline does not configure a
+  reverse proxy at all; the operator supplies TLS termination and certificate
+  renewal with whatever proxy they choose. See ADR-002.
 - [x] **DONE — LDAP security boundary (standalone identity).** The adapter
   requires LDAPS or verified StartTLS, uses a secret reference, limits
   requested attributes, builds a tenant-aware filter, rejects ambiguous
@@ -695,10 +694,10 @@ writable from Gulo Gulo's own process.
 1. Declare the incident, affected tenant scope, correlation ID, operator, and
    current release without putting secrets or message content in the record.
 2. Classify the failure: LDAP/panel identity, PostgreSQL, mail store, DAV,
-   ACME, Rspamd, ClamAV, storage, network, or an in-place package upgrade.
+   Rspamd, ClamAV, storage, network, or an in-place package upgrade.
 3. Apply the fail-closed policy for the affected dependency. Preserve the
-   current valid certificate, known-good scanner definitions, the pre-upgrade
-   backup taken by the target's own upgrade script, queue, and durable state.
+   known-good scanner definitions, the pre-upgrade backup taken by the
+   target's own upgrade script, queue, and durable state.
 4. Communicate impact and start the approved recovery objective clock.
 5. Restore or roll back (from the upgrade script's own backup, on the
    affected target) in an isolated target, verify integrity and privacy, and
@@ -802,8 +801,11 @@ as tester work:
 - [ ] provider-specific Plesk/cPanel API adapter and idempotent reconciliation
   behind the validated read-only tenant binding (the optional upstream
   tenant-tool integration);
-- [ ] provider ACME/DNS client integration and deployed log collector,
-  alert-delivery, and paging adapters.
+- [ ] deployed log collector, alert-delivery, and paging adapters (the ACME/DNS
+  client that used to be paired with this item was removed architecturally -
+  cPanel/Plesk own certificate issuance via their AutoSSL/Let's Encrypt
+  integration, and standalone doesn't configure a reverse proxy at all - so it
+  is no longer a backlog gap).
 
 Shared mailboxes, resource calendars, write-capable tenant API/MCP operations,
 and assisted IMAP migration remain intentionally deferred product features,

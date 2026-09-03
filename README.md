@@ -6,8 +6,6 @@ Author: Sythos (https://www.sythos.net)
 
 # Gulo Gulo
 
-> **ℹ️ Nota.** Il vecchio modello di distribuzione container/Docker è stato rimosso — vedi [ADR-002](doc/adr/ADR-002-gulogulo-packaging-and-distribution-targets.md). Le checklist sotto sono state aggiornate al nuovo modello a 3 pacchetti; alcune voci restano deliberatamente non spuntate dove il lavoro di packaging non ha ancora un equivalente del vecchio meccanismo container (es. firma/checksum dei pacchetti).
-
 [![Issues](https://img.shields.io/github/issues/Sythos/GuloGulo?label=issues)](https://github.com/Sythos/GuloGulo/issues)
 [![Last commit](https://img.shields.io/github/last-commit/Sythos/GuloGulo?label=last%20commit)](https://github.com/Sythos/GuloGulo/commits/main/)
 [![Commit tests](https://github.com/Sythos/GuloGulo/actions/workflows/commit-tests.yml/badge.svg)](https://github.com/Sythos/GuloGulo/actions/workflows/commit-tests.yml)
@@ -85,8 +83,11 @@ still missing.
 ### Security
 
 - [x] no open relay;
-- [x] TLS and certificate health contract verified;
-- [x] ACME renewal state and safe-reload contract tested;
+- **REMOVED — TLS/ACME certificate management.** Gulo Gulo no longer owns a
+  certificate provider or ACME state contract; see INSTALL.md's Security and
+  identity section for the current ownership split between the panel's
+  AutoSSL/Let's Encrypt integration (cPanel/Plesk) and the operator's own
+  reverse proxy (standalone);
 - [x] LDAP uses TLS and minimum bind privilege;
 - [x] PostgreSQL protected and backed up;
 - [x] secret store and rotation configured through an allowlisted, versioned
@@ -96,11 +97,9 @@ still missing.
 - [x] email HTML sanitization;
 - [x] rate and abuse controls contract tested;
 - [x] audit has no secrets;
-- [ ] package checksum/signing and consumer-verification gate for the cPanel,
-  Plesk, and standalone archives; the container-era SBOM/image-attestation
-  workflow was retired with the container model (see
-  [ADR-002](doc/adr/ADR-002-gulogulo-packaging-and-distribution-targets.md)) and
-  has no packaging-target equivalent yet.
+- [x] SHA256 checksum sidecar and aggregated checksums.txt for the cPanel,
+  Plesk, and standalone archives, verified in each package-*.yml CI job
+  before upload; GPG/minisign signing not built yet.
 
 ### Data
 
@@ -182,9 +181,8 @@ are the only remaining unchecked implementation items; field verification for
 the checked contracts belongs in [INSTALL.md](INSTALL.md).
 
 - [x] provider-neutral secret-store contract and managed versioned-file rotation;
-- [ ] package checksum/signing and consumer verification workflow for the
-  cPanel, Plesk, and standalone archives (the container-era SBOM/GitHub
-  Release workflow was retired, no packaging-target replacement built yet);
+- [x] package checksum (SHA256) and verification gate for the cPanel, Plesk,
+  and standalone archives; signing (GPG/minisign) not built yet;
 - [x] cPanel and Plesk PlatformAdapter implementations (identity via UAPI/REST,
   data via the existing PostgreSQL store, packaging pipeline for both) - real
   password authentication for cPanel/Plesk mailboxes and MySQL/MariaDB support
@@ -197,9 +195,15 @@ the checked contracts belongs in [INSTALL.md](INSTALL.md).
   complete HTTP/WebDAV method and XML-report integration;
 - [ ] durable external backup, restore, account-deletion execution, and
   scheduled retention workers;
-- [ ] provider migration controller and live provider API/MCP wiring;
-- [ ] provider ACME/DNS client plus deployed log collector, alert-delivery,
-  and paging adapters.
+- [ ] provider migration controller and live provider API/MCP wiring - the
+  previous controller (control-plane.ts/rollout.ts/rehearsal.ts) was
+  Docker/Kubernetes-only and was removed; this needs a new, packaging-target-
+  agnostic design, not a rewire of removed code;
+- [ ] deployed log collector, alert-delivery, and paging adapters (the ACME/DNS
+  client that used to be paired with this item was removed architecturally -
+  cPanel/Plesk own certificate issuance via their AutoSSL/Let's Encrypt
+  integration, and standalone doesn't configure a reverse proxy at all - so it
+  is no longer a backlog gap).
 
 ## Repository layout
 
@@ -224,7 +228,7 @@ gulogulo/
 ├── doc/
 │   ├── README.md
 │   ├── api-and-mcp.md
-│   ├── acme-abuse-deployment.md
+│   ├── abuse-deployment.md
 │   ├── control-panel-integration.md
 │   ├── configuration.md
 │   ├── dav-and-discovery.md
@@ -302,7 +306,6 @@ gulogulo/
 │   │   ├── observability/
 │   │   ├── ops/
 │   │   │   ├── abuse/ (typed rate and abuse controls)
-│   │   │   ├── acme/ (typed ACME and certificate health contracts)
 │   │   │   └── patch/ (typed sanitized patch-status contract)
 │   │   ├── release/
 │   │   │   ├── index.ts
