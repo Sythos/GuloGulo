@@ -1027,11 +1027,27 @@ as tester work:
 - [ ] provider-specific Plesk/cPanel API adapter and idempotent reconciliation
   behind the validated read-only tenant binding (the optional upstream
   tenant-tool integration);
-- [ ] deployed log collector, alert-delivery, and paging adapters (the ACME/DNS
-  client that used to be paired with this item was removed architecturally -
-  cPanel/Plesk own certificate issuance via their AutoSSL/Let's Encrypt
-  integration, and standalone doesn't configure a reverse proxy at all - so it
-  is no longer a backlog gap).
+- [x] alert-delivery webhook adapter, with the log collector and paging
+  questions resolved (the ACME/DNS client that used to be paired with this
+  item was removed architecturally - cPanel/Plesk own certificate issuance
+  via their AutoSSL/Let's Encrypt integration, and standalone doesn't
+  configure a reverse proxy at all - so it is no longer a backlog gap):
+  `src/core/observability/webhook-alert-adapter.ts` is a real, generic HTTP
+  webhook delivery adapter (Slack/Discord/any JSON endpoint) for
+  `alert-policy.ts`'s evaluated alerts, wired through
+  `PlatformAdapter.createAlertDelivery()` and `alerting.*` config
+  (`src/runtime/config.ts`) on all three targets, tested against a local
+  `node:http` fake (see `doc/observability.md`); the log collector is
+  intentionally not application code — systemd/journald (or logrotate) on
+  every current, non-container target already captures and rotates the
+  stdout/stderr JSON log stream; paging reuses the same webhook mechanism
+  with `alerting.minSeverity: 'critical'`, no dedicated paging adapter
+  exists or is needed. Still outstanding: nothing in the runtime yet calls
+  `alert-policy.ts`'s `evaluate()` on a periodic snapshot and feeds the
+  result to the delivery adapter (the wiring point,
+  `deliverAlertEvaluation()`, exists and is tested, but nothing schedules
+  it), and none of this has been verified against a real Slack/Discord/
+  PagerDuty endpoint.
 
 Shared mailboxes, resource calendars, write-capable tenant API/MCP operations,
 and assisted IMAP migration remain intentionally deferred product features,
