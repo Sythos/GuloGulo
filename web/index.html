@@ -11,9 +11,18 @@ Author: Sythos (https://www.sythos.net)
     <meta name="color-scheme" content="dark light">
     <meta name="description" content="Gulo Gulo secure mail and groupware workspace">
     <meta name="csrf-token" content="">
+    <!--
+      frame-ancestors is deliberately absent here: the CSP spec ignores it
+      (and sandbox/report-uri) when delivered via <meta> - only an HTTP
+      response header enforces it, which src/runtime/server.ts already
+      sends on every response (see its content-security-policy header,
+      which does include frame-ancestors 'none'). Keeping it in this meta
+      tag would be dead weight that a real ZAP baseline scan correctly
+      flags as an invalid CSP meta directive.
+    -->
     <meta
       http-equiv="Content-Security-Policy"
-      content="default-src 'self'; base-uri 'none'; object-src 'none'; frame-ancestors 'none'; form-action 'self'; connect-src 'self'; img-src 'self' data: blob:; style-src 'self'; script-src 'self'"
+      content="default-src 'self'; base-uri 'none'; object-src 'none'; form-action 'self'; connect-src 'self'; img-src 'self' data: blob:; style-src 'self'; script-src 'self'"
     >
     <title>Gulo Gulo — Mail</title>
     <link rel="manifest" href="/web/manifest.json">
