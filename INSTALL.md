@@ -415,13 +415,6 @@ removed or replaced below; see ADR-002 for why.
   relay, sender spoofing, unknown internal recipients, catch-all delivery, and
   automatic forwarding. Verify the behavior with the selected Postfix and
   submission topology, including negative tests from an untrusted network.
-- **REMOVED — TLS/ACME certificate management.** Gulo Gulo no longer owns a
-  certificate provider or ACME state contract; the item was written for the
-  superseded container/reverse-proxy model. On cPanel/Plesk, the panel's own
-  AutoSSL/Let's Encrypt integration issues and renews certificates in front of
-  Gulo Gulo. On standalone, the packaging pipeline does not configure a
-  reverse proxy at all; the operator supplies TLS termination and certificate
-  renewal with whatever proxy they choose. See ADR-002.
 - [x] **DONE — LDAP security boundary (standalone identity).** The adapter
   requires LDAPS or verified StartTLS, uses a secret reference, limits
   requested attributes, builds a tenant-aware filter, rejects ambiguous

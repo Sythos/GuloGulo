@@ -83,11 +83,6 @@ still missing.
 ### Security
 
 - [x] no open relay;
-- **REMOVED — TLS/ACME certificate management.** Gulo Gulo no longer owns a
-  certificate provider or ACME state contract; see INSTALL.md's Security and
-  identity section for the current ownership split between the panel's
-  AutoSSL/Let's Encrypt integration (cPanel/Plesk) and the operator's own
-  reverse proxy (standalone);
 - [x] LDAP uses TLS and minimum bind privilege;
 - [x] PostgreSQL protected and backed up;
 - [x] secret store and rotation configured through an allowlisted, versioned
