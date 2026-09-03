@@ -49,22 +49,10 @@ especially since none of the three targets currently roll back schema
 changes automatically — the only rollback mechanism is restoring the
 pre-upgrade backup each target's upgrade script takes (see below).
 
-**Honesty note on `src/core/upgrade/`:** the repository used to also contain
-a formal TypeScript module (`rollout.ts`, `control-plane.ts`,
-`rehearsal.ts`) that modeled this same `MIGRATION_PHASES` vocabulary plus a
-full provider-only HTTP/MCP API
-(`/provider/upgrade/{capabilities,plan,preflight,prepare,status,cutover,
-rollback,finalize}`) for orchestrating a Docker-to-Docker or Kubernetes
-blue/green cutover, with digest-pinned source/target versions and an
-idempotent operation state machine. None of the three packaged upgrade
-paths described below ever called into that module — it predated ADR-002
-and modeled the container-swap upgrade approach ADR-001 originally
-specified; ADR-002 replaced that with the simple in-place scripts in this
-document. `rollout.ts`, `control-plane.ts`, and `rehearsal.ts` have since
-been **removed** as dead code describing that superseded deployment model.
-Only `src/core/upgrade/compatibility.ts` remains: it still provides the
-`MIGRATION_PHASES` vocabulary (`expand`/`backfill`/`switch`/`contract`) and
-is the directly relevant migration-authoring guidance today.
+**Note on `src/core/upgrade/`:** `src/core/upgrade/compatibility.ts` is the
+only module in this directory relevant today. It provides the
+`MIGRATION_PHASES` vocabulary (`expand`/`backfill`/`switch`/`contract`) used
+above and is the directly relevant migration-authoring guidance.
 
 ## Standalone: `upgrade.sh <new-tarball.tar.gz> <install-dir> [--non-interactive]`
 

@@ -60,7 +60,7 @@ scanner failure mode: fail_closed
 mailbox root: /var/lib/gulogulo/mail
 trash retention: 28 days
 API/MCP: read-only
-upgrade strategy: blue_green
+upgrade strategy: in_place
 patching mode: build_and_operator
 ```
 

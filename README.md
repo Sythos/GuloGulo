@@ -190,10 +190,6 @@ the checked contracts belongs in [INSTALL.md](INSTALL.md).
   complete HTTP/WebDAV method and XML-report integration;
 - [ ] durable external backup, restore, account-deletion execution, and
   scheduled retention workers;
-- [ ] provider migration controller and live provider API/MCP wiring - the
-  previous controller (control-plane.ts/rollout.ts/rehearsal.ts) was
-  Docker/Kubernetes-only and was removed; this needs a new, packaging-target-
-  agnostic design, not a rewire of removed code;
 - [ ] deployed log collector, alert-delivery, and paging adapters (the ACME/DNS
   client that used to be paired with this item was removed architecturally -
   cPanel/Plesk own certificate issuance via their AutoSSL/Let's Encrypt
