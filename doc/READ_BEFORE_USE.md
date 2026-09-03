@@ -1,7 +1,5 @@
 # Read before using Gulo Gulo
 
-> **⚠️ Documento in transizione.** Il modello di distribuzione container/Docker descritto in questo documento è stato rimosso dal repository. Il progetto sta migrando a tre pacchetti di distribuzione (cPanel, Plesk, archivio standalone) — vedi [ADR-002](../../ADR-002-gulogulo-packaging-and-distribution-targets.md). Questo documento verrà riscritto in una milestone successiva; nel frattempo le istruzioni Docker/compose qui sotto non sono più applicabili.
-
 <!--
 SPDX-License-Identifier: MIT
 SPDX-FileCopyrightText: 2026 Sythos (https://www.sythos.net)
@@ -20,6 +18,11 @@ the repository gate for it passes. It does not mean that a provider has already
 configured or exercised the item in the field. The field work belongs here and
 in the release evidence record.
 
+Gulo Gulo's distribution model is defined by
+[ADR-002](../../ADR-002-gulogulo-packaging-and-distribution-targets.md), which
+superseded the Docker/OCI-native model of ADR-001. Read ADR-002 first if you
+need the rationale; this document only covers the practical hand-off.
+
 ## Status model
 
 - **DONE — repository** means that the code, contract, or runbook boundary is
@@ -34,146 +37,351 @@ Never turn a VERIFY BEFORE USE item into a fake repository pass. Conversely,
 do not leave an implementation checklist item open merely because the provider
 has not run its deployment rehearsal yet.
 
-## Container installation and first run
+## 1. Executive summary
 
-This is the practical path for bringing up the repository container without
-mistaking a local proof image for a production deployment. The commands below
-assume Docker Engine or Docker Desktop with Compose v2 and a Linux host (or a
-Linux VM on a development workstation). The supported final image platform
-is `linux/amd64` (x86_64). The final release path builds this platform
-directly; the optional field archive remains AMD64-only for quick local
-experiments.
+Gulo Gulo is a self-hosted groupware runtime (mail, calendar, contacts) built
+on a single TypeScript application core — RBAC, tenant isolation, quota,
+delegation, mail/calendar/contacts business logic, and the HTML5 + TypeScript
+web frontend. That core does not change across deployment targets; only the
+identity source, the installation mechanics, and (eventually) the data engine
+differ.
 
-### Choose the image source
+Gulo Gulo ships as three packages, all built from the same application core
+via `packaging/shared/stage-application.ts`:
 
-- **Source checkout:** use this when changing code or running the complete
-  Compose proof. The checkout builds the image locally from the exact commit.
-- **AMD64 field archive:** the manual `container-release` workflow can produce
-  a downloadable `.docker.tar` plus a SHA-256 file. It is an offline field-test
-  artifact for `linux/amd64`.
-- **Immutable registry image and Release:** pushing a numeric semver tag (for
-  example `0.1.4`) whose value exactly matches `package.json.version` starts
-  the trusted release workflow. It publishes `linux/amd64` to GHCR, generates
-  the SBOM and Artifact Attestations, and creates or updates the matching
-  GitHub Release with the SBOM and digest-bound evidence. The owner still
-  explicitly chooses and pushes the version tag. A manual `publish=true` run
-  remains available for a trusted rehearsal on `main`.
+- **Standalone** (`packaging/standalone/`) — a generic tarball for any
+  server/VPS, no panel required. Identity via LDAP, data via PostgreSQL.
+- **cPanel** (`packaging/cpanel/`) — a tarball for a cPanel/WHM server,
+  installed by an operator running the installer as root. Identity via
+  cPanel UAPI, data via the same PostgreSQL integration.
+- **Plesk** (`packaging/plesk/`) — a real Plesk extension ZIP (`meta.xml` +
+  `plib/scripts/` lifecycle hooks), installed through Plesk's own extension
+  mechanism. Identity via the Plesk REST API, data via the same PostgreSQL
+  integration.
 
-To consume the published runtime directly, pull the immutable version tag and
-check the digest recorded in the matching GitHub Release evidence before
-pinning it in a deployment:
+**Current state, honestly:** the packaging code and build scripts for all
+three targets are complete and pass their respective CI workflows
+(`.github/workflows/package-{standalone,cpanel,plesk}.yml`). But the depth of
+verification differs sharply by target:
 
-~~~powershell
-docker pull ghcr.io/sythos/gulogulo:0.1.4
-docker image inspect ghcr.io/sythos/gulogulo:0.1.4
-~~~
+- **Standalone is the only target with a real end-to-end install rehearsal in
+  CI.** `package-standalone.yml` builds the tarball, extracts it, runs
+  `install.sh --non-interactive` for real, starts the compiled server, and
+  polls `/health/ready` and `/` until they respond. This is a genuine,
+  automated install-and-boot proof, on a disposable Ubuntu CI runner.
+- **cPanel is only dry-run tested.** `package-cpanel.yml` builds the tarball
+  and runs `install.sh --non-interactive --dry-run`, which exercises argument
+  parsing, precondition checks (downgraded to warnings off a real cPanel
+  host), `.env` creation, `npm ci`, and the no-op migration step — but never
+  writes a systemd unit, never touches Apache, and never actually starts the
+  service, because the CI runner is not a real cPanel/WHM host. Nobody has
+  run this installer against a real cPanel/WHM server yet.
+- **Plesk is only structurally verified.** `package-plesk.yml` builds the
+  ZIP, checks that `meta.xml` sits at the archive root with the required
+  fields, confirms the ZIP is well-formed, and runs `php -l` on the three
+  lifecycle scripts. It does **not** execute `pre-install.php`,
+  `post-install.php`, or `pre-uninstall.php` — that needs root on a real
+  Linux host with systemd and, more importantly, a real Plesk installation,
+  which no CI runner here provides. Nobody has installed this extension on a
+  real Plesk server yet.
 
-This image is the Gulo Gulo application runtime. The protocol services
-(Postfix, Dovecot, Rspamd, and ClamAV) remain separate Compose services and
-must use their documented external volumes.
+In short: **the code is ready and verified in CI, but cPanel and Plesk
+install/upgrade/uninstall are unvalidated against a real host.** Do not treat
+a green CI run for those two targets as equivalent to a working production
+install — treat it as "the scripts are internally consistent and the archive
+has the right shape."
 
-### Prepare a checkout and external volumes
+## 2. Standalone
 
-Start from the release tag or commit that you intend to run. The following
-example uses the `0.1.4` source tag and a machine-safe tenant prefix. This
-specific version increment is an artifact-generation release for the
-container and Release files; it is not production evidence:
+### Build
 
-~~~text
-git clone https://github.com/Sythos/GuloGulo.git gulogulo
-cd gulogulo
-git checkout 0.1.4
-~~~
+```bash
+node --experimental-strip-types packaging/standalone/build-standalone-package.ts
+```
 
-Copy `.env.example` to `.env` and edit only deployment-safe values. At minimum,
-set `GULOGULO_ENV=production`, `APP_ENV=production`,
-`GULOGULO_VERSION=0.1.4`, a unique `GULOGULO_VOLUME_PREFIX`, and
-`GULOGULO_VOLUMES_EXTERNAL=true`. Keep LDAP, PostgreSQL, ACME, control-panel,
-and backup credentials in the provider secret store; `.env` may contain only
-their reference names. Never commit the populated file.
+Runs `npm run build:web` and `npm run build:server` itself unless
+`GULOGULO_SKIP_BUILD=1` is set (CI sets it, to avoid building twice). Produces
+`packaging/dist/gulogulo-<version>-standalone.tar.gz`, containing the
+compiled server (`dist/server/`), web assets (`web/`), static assets
+(`assets/`), database migrations (`src/core/db/migrations/`),
+`package.json`/`package-lock.json`/`LICENSE`/`.env.example`, a `VERSION`
+file, and the operator scripts below.
 
-Create the four durable application volumes before the first start. The names
-must match the prefix in `.env`; use a provider-backed volume driver or a
-protected host storage policy when Docker's default volume root is not suitable:
+### Install (`install.sh [--non-interactive]`)
 
-~~~powershell
-$prefix = 'gulogulo-tenant1'
-'runtime-state','mail-data','dav-data','backup-data' |
-  ForEach-Object { docker volume create "$prefix-$_" }
-~~~
+1. Requires `node` in `PATH` and Node.js ≥ 26 (checked from
+   `process.versions.node`).
+2. Copies `.env.example` to `.env` if `.env` does not already exist; leaves an
+   existing `.env` untouched.
+3. Runs `npm ci --omit=dev --no-audit --no-fund`.
+4. Runs `run-migrations.mjs`, which is a clean no-op while
+   `POSTGRES_ENABLED=false` (the packaged default) and otherwise applies
+   pending PostgreSQL migrations.
+5. Prints the manual start command
+   (`node --env-file=.env dist/server/src/runtime/index.js`) and points at
+   `gulogulo.service.example` as an optional systemd unit — **the installer
+   never starts the service and never installs a systemd unit itself.**
 
-These volumes hold runtime state, mailbox data, DAV objects, and backup
-references. They are deliberately external to disposable containers and must
-survive `docker compose down` and image replacement. Do not use
-`docker compose down --volumes` on a deployment that contains user data.
+### Requirements
 
-### Validate and start the runtime
+- Node.js ≥ 26.
+- PostgreSQL — optional. Disabled by default (`POSTGRES_ENABLED=false`); the
+  operator enables it and provides `POSTGRES_DSN_SECRET_REF` plus a
+  `GULOGULO_POSTGRES_DSN` environment variable before running migrations for
+  real.
+- LDAP — optional. Disabled by default (`LDAP_ENABLED=false`); without it,
+  there is no working authentication path on this target (see Section 5).
 
-Run the configuration check before creating containers, then build or select
-the exact image and start only the default runtime service:
+### Uninstall (`uninstall.sh [--non-interactive] [--yes]`)
 
-~~~powershell
-docker compose config --quiet
-docker compose build --pull gulogulo
-docker compose up --detach gulogulo
-docker compose ps
-~~~
+Interactively confirms (or, non-interactively, requires `--yes` for) removing
+the application files (`dist/`, `web/`, `assets/`, `src/`, `node_modules/`,
+`package*.json`, `LICENSE`, `VERSION`) and, separately, removing `.env`.
+Never touches external PostgreSQL or LDAP data — none of it lives inside the
+install directory.
 
-The default Compose binding is loopback-only (`127.0.0.1:8080`). Keep it that
-way when a Plesk/cPanel-managed reverse proxy is in front of Gulo Gulo; let the
-proxy own public TLS, DNS, and IPv4/IPv6 exposure. Do not mount the Docker
-socket and do not publish the service directly to the Internet until the
-provider has completed the dual-stack, certificate, firewall, and abuse review.
+### CI status
 
-Check readiness and retain the sanitized result:
+**DONE — repository, with a real end-to-end proof.** `package-standalone.yml`
+installs non-interactively, starts the compiled server, and verifies
+`/health/ready` and `/` respond. This is the strongest evidence of the three
+targets, but it still runs against synthetic defaults (Postgres and LDAP both
+disabled) on a disposable CI runner, not a production host with real traffic,
+a real database, or a real directory.
 
-~~~powershell
-Invoke-WebRequest http://127.0.0.1:8080/health/ready | Select-Object StatusCode, Content
-docker compose logs --no-color --tail 100 gulogulo
-~~~
+## 3. cPanel
 
-LDAP and PostgreSQL are disabled by the safe empty-scaffold defaults. A real
-deployment must enable them only after their TLS endpoints, secret references,
-tenant mapping, roles, and network policy have been verified. The default
-runtime is also read-only apart from its external volumes and a bounded `/tmp`.
+### Build
 
-### Importing the AMD64 field archive
+```bash
+node --experimental-strip-types packaging/cpanel/build-cpanel-package.ts
+```
 
-When testing an Actions artifact on an AMD64 host, verify its checksum before
-loading it and keep the imported tag visible in the evidence record:
+Same staging mechanism as standalone, plus the cPanel-specific operator
+scripts. Produces `packaging/dist/gulogulo-<version>-cpanel.tar.gz`.
 
-~~~powershell
-Get-Content .\gulogulo-field-<tag>.docker.tar.sha256
-Get-FileHash .\gulogulo-field-<tag>.docker.tar -Algorithm SHA256
-docker load --input .\gulogulo-field-<tag>.docker.tar
-docker image inspect gulogulo:field-<tag>
-~~~
+### Install (`install.sh [--non-interactive] [--dry-run] [--yes]`)
 
-The archive is intentionally a field-test package. Use the matching checkout
-and Compose definition for a repeatable proof, or use the digest-pinned GHCR
-image after the final publication gate.
+Must run as root on a real cPanel/WHM server (checks `/usr/local/cpanel`
+exists; both the root and cPanel checks are downgraded to warnings only under
+`--dry-run`, which is how CI exercises the script safely on a non-cPanel
+runner).
 
-### Stop, upgrade, and roll back safely
+1. Node.js ≥ 26 check, `.env` creation from `.env.example` (also hints at
+   setting `CPANEL_API_*` for the UAPI identity adapter and `POSTGRES_*` for
+   an existing PostgreSQL database), `npm ci --omit=dev`, and the same
+   no-op-while-disabled migration step as standalone.
+2. **Really installs and starts a systemd service.** cPanel's own Application
+   Manager is Passenger-based and is not a fit for a standalone-port
+   `app.listen()` Node process, so this target renders
+   `gulogulo.service.template` (substituting install dir, service user/group,
+   `node` binary path, and a read-write path), creates a dedicated
+   `gulogulo` system user if one doesn't exist, and — subject to
+   confirmation (interactive prompt, or `--yes` in non-interactive mode; both
+   skipped entirely under `--dry-run`) — writes the unit to
+   `/etc/systemd/system/gulogulo.service` and runs
+   `systemctl daemon-reload && systemctl enable --now gulogulo`. If not
+   confirmed, the rendered unit is left at `gulogulo.service.rendered` for
+   manual review and manual `cp`/`daemon-reload`/`enable --now`.
+3. Writes `gulogulo-proxy.conf.example` (an Apache reverse-proxy snippet,
+   rewritten to the port from `.env` if not 8080) — **never applies it**; the
+   operator applies it manually via WHM's Include Editor or a userdata hook,
+   then rebuilds/restarts Apache.
+4. Points at `gulogulo-appconfig.conf.example` as an **optional** WHM
+   AppConfig registration, not required for Gulo Gulo to work, applied
+   manually with `cp ... /var/cpanel/apps/gulogulo.conf` followed by
+   `register_appconfig` — never run automatically.
 
-Use `docker compose stop` when pausing a deployment; the external volumes stay
-intact. For an upgrade, record the source and target digests, run the
-preflight/readiness checks, start the green container with the same external
-volume references, observe queue/IMAP IDLE/DAV behavior, and keep the blue
-container available until the observation window closes. If a gate regresses,
-cut traffic back to blue without copying or deleting mailbox data. The complete
-Docker and Kubernetes procedure is in the migration runbook below.
+### Requirements
 
-The disposable `local`, `test`, `fixture`, `lp3`, and other proof profiles are
-for repository verification only. They use synthetic identities and data and
-must never be pointed at a tenant's production LDAP, PostgreSQL, mailbox, DAV,
-scanner-signature, or backup volumes.
+Same as standalone (Node.js ≥ 26, PostgreSQL optional, LDAP not applicable
+since identity comes from cPanel's own UAPI — see Section 5 for the current
+`authenticate()` limitation), plus: a real cPanel/WHM host with root access,
+since this installer refuses to do its irreversible work anywhere else
+(outside `--dry-run`).
+
+### Uninstall (`uninstall.sh [--non-interactive] [--dry-run] [--yes]`)
+
+Stops/disables the systemd service (with confirmation) and optionally removes
+the unit file, then — separately confirmed — removes application files and
+optionally `.env`. Never touches PostgreSQL data, and never touches Apache
+configuration or WHM AppConfig registration; it only prints reminders for
+those two, since both are manual, host-wide changes the operator made
+deliberately.
+
+### CI status
+
+**DONE — repository, dry-run only.** `package-cpanel.yml` never runs on a
+real cPanel/WHM host, so it can only validate that the installer's logic is
+internally sound (`--dry-run` skips every systemd/Apache/user write, argument
+parsing rejects unknown flags, no systemd unit or system user is left behind).
+**VERIFY BEFORE USE:** an actual install on a real cPanel/WHM server —
+systemd unit creation and startup, the dedicated system user, the Apache
+reverse proxy wiring, and (if used) the AppConfig registration.
+
+## 4. Plesk
+
+### Build
+
+```bash
+node --experimental-strip-types packaging/plesk/build-plesk-package.ts
+```
+
+Unlike the other two targets, this produces a real Plesk extension **ZIP**
+(`packaging/dist/gulogulo-<version>-plesk.zip`), built by a dependency-free
+ZIP writer (`createZipArchive` in `packaging/shared/stage-application.ts`,
+built on `node:zlib`), with `meta.xml` at the archive root and lifecycle
+scripts under `plib/scripts/` — the layout Plesk's extension installer
+requires. The staged application lives under `plib/app/` (same staging
+helper as the other two targets, plus the systemd unit template shared with
+cPanel, the nginx proxy example, and `run-migrations.mjs`).
+
+`meta.xml` declares `plesk_min_version` `18.0.29` (the Obsidian line, chosen
+as the conservative floor for the modern REST API v2 this project's Plesk
+adapter uses) and an open-ended `plesk_max_version` (`18.999.999`). **This
+floor has not been verified against a real Plesk instance** — see
+`src/platform/plesk/README.md` for the same caveat already documented for the
+REST endpoints this package's identity adapter calls (only
+`GET /api/v2/domains` is confirmed; the mail-accounts and server-probe
+endpoints are the most reasonable guess, not verified).
+
+### Install — run by Plesk itself, not by the operator directly
+
+Plesk runs these hooks as root as part of its own extension lifecycle:
+
+1. **`pre-install.php`** — checks `PHP_OS_FAMILY === 'Linux'` and Node.js ≥
+   26 (parsed from `node --version`). A non-zero exit aborts the install with
+   this script's stderr shown to the operator; nothing is written yet.
+2. **`post-install.php`** — the same steps as the cPanel `install.sh`, driven
+   from PHP: creates `.env` from `.env.example` if missing (hints at
+   `POSTGRES_*`), runs `npm ci --omit=dev` and the migration step, then
+   **always** creates the `gulogulo` system user if missing and installs +
+   enables + starts the systemd service — there is no interactive/`--yes`
+   distinction here, because this script runs with root privileges
+   unconditionally by construction of the Plesk extension mechanism. It also
+   writes (never applies) `gulogulo-proxy.conf.example`, an nginx directive
+   snippet rewritten to the configured port, applied manually via Plesk's
+   Websites & Domains → Apache & nginx Settings → "Additional nginx
+   directives".
+
+**No dedicated Plesk upgrade hook exists in this repository.** The packaging
+ships only `pre-install.php`, `post-install.php`, and `pre-uninstall.php` — no
+`upgrade.php`. Plesk's own extension update mechanism (installing a newer
+package version over an already-installed one) is assumed to re-run
+`pre-install.php`/`post-install.php` against the new files, which is the
+standard shape of a Plesk extension lifecycle, but **this has not been
+verified against a real Plesk host** and is a real open question, not a
+documented fact. See `doc/upgrade-and-migration.md` for how this affects the
+Plesk upgrade story.
+
+### Uninstall (`pre-uninstall.php`)
+
+Stops/disables the systemd service, removes the unit file, and removes the
+generated build/dependency directories (`node_modules/`, `dist/`,
+`web/dist/`). **Known risk, called out explicitly in the script's own
+comments:** once `pre-uninstall.php` returns successfully, Plesk deletes the
+extension's entire `plib/` directory itself — including `plib/app/.env`. This
+has not been verified against a real Plesk host. The script's own default
+(leaving `.env` in place unless `GULOGULO_PLESK_PURGE_ENV=1` is set) is the
+safer of the two possible outcomes, but if Plesk does delete `plib/`
+regardless, this script cannot prevent the loss of `.env` — **back up `.env`
+yourself before uninstalling if you want to keep it.**
+
+### Requirements
+
+Linux Plesk host, Node.js ≥ 26, PostgreSQL optional (same as the other
+targets), Plesk Obsidian (18.0.29+, floor unverified) with the modern REST
+API v2 reachable locally.
+
+### CI status
+
+**DONE — repository, structure only.** `package-plesk.yml` cannot install a
+real extension (no Plesk CLI, extension catalog, or panel-user PHP context on
+the `ubuntu-latest` runner, and no suitable official Plesk Docker image). It
+verifies the ZIP builds with the exact structure Plesk requires, that
+`meta.xml` is well-formed XML with the required fields, and that all three
+PHP scripts pass `php -l`. **VERIFY BEFORE USE, in full:** the actual
+extension install/upgrade/uninstall cycle on a real Plesk host, the assumed
+REST endpoints, the `plesk_min_version` floor, the systemd install, the nginx
+reverse-proxy wiring, and especially the `plib/` deletion behavior on
+uninstall.
+
+## 5. Cross-cutting known limitations
+
+- **Password authentication on cPanel and Plesk is fail-closed and not
+  implemented.** Neither cPanel's UAPI nor Plesk's REST API exposes a
+  generic, safe way to verify an arbitrary mail account's password from the
+  outside. Rather than build against an undocumented, unverifiable endpoint,
+  `authenticate()` on both the `cpanel` and `plesk` identity adapters
+  **always returns `false`** and logs why. **LDAP (standalone target only) is
+  the only identity source that actually authenticates users today.** Real
+  cPanel/Plesk login is future work; the most likely paths, per
+  `src/platform/cpanel/README.md` and `src/platform/plesk/README.md`, are a
+  direct IMAP/POP3 bind against the local mail server, or a dedicated
+  panel plugin/extension.
+- **MySQL/MariaDB is not implemented.** ADR-002 promises MySQL/MariaDB as the
+  primary data engine for cPanel and Plesk hosts, but today all three
+  targets — standalone, cpanel, and plesk — reuse the exact same
+  `createPostgresStore()`. A cPanel or Plesk host must have PostgreSQL
+  available and enabled for Gulo Gulo's own data, independent of whatever
+  MySQL the panel itself uses for its own purposes. Replicating PostgreSQL's
+  row-level-security-based tenant isolation on a different engine is
+  substantial work, tracked as backlog, not started.
+- **`CPANEL_API_*` / Plesk API settings exist in configuration but are not
+  wired up.** `.env.example` and `IntegrationConfig` (`src/integrations/
+  types.ts`) already carry `CpanelApiSettings` and `PleskApiSettings`, but
+  loading them into `src/runtime/config.ts` (which today only knows
+  `ldap`/`postgres`/`controlPanel`) has not landed. Until it does, the
+  cPanel and Plesk identity integrations stay disabled by default regardless
+  of what is set in `.env`.
+- **Sessions are in-memory on every target.** All three adapters use the same
+  in-memory session store — fine for a single process, but there is no
+  persistent or shared session store, so restarting the process invalidates
+  every session, and there is no multi-process/clustered deployment story
+  yet.
+- **Do not confuse the cPanel/Plesk *packaging targets* (Sections 2–4) with
+  the separate, optional "upstream tenant-tool" integration**
+  (`CONTROL_PANEL_*` in `.env.example`, documented in
+  `doc/control-panel-integration.md`). That is a different feature: Plesk or
+  cPanel acting as an *upstream* hosting-account/DNS tool in front of an
+  already-running Gulo Gulo instance (any target), not the mechanism by which
+  Gulo Gulo itself gets installed.
 
 ## Production-readiness map
 
-The following sections cover the complete production-readiness boundary. Every
-DONE line is intentionally marked as done at repository level. The indented
-verification notes are the work for the future provider, administrator, or
-tester.
+The following sections cover the production-readiness boundary as it stands
+after the ADR-002 packaging change. Every DONE line is intentionally marked
+as done at repository level. The indented verification notes are the work for
+the future provider, administrator, or tester. Items that only made sense
+under the superseded Docker/OCI model (container image policy, build
+provenance attestations, Docker/Kubernetes blue-green cutover) have been
+removed or replaced below; see ADR-002 for why.
+
+### Packaging and distribution
+
+- [x] **DONE — repository, real proof.** The standalone package builds,
+  installs non-interactively, starts, and answers `/health/ready` and `/` in
+  CI. Verify a real host: real traffic, PostgreSQL/LDAP enabled, and process
+  supervision (systemd/pm2) chosen and configured by the operator.
+- [x] **DONE — repository, dry-run only.** The cPanel package builds and its
+  installer's argument parsing, precondition handling, and non-destructive
+  steps are verified under `--dry-run`. Verify a real cPanel/WHM host: the
+  systemd unit, the dedicated system user, and the Apache reverse-proxy
+  wiring.
+- [x] **DONE — repository, structure only.** The Plesk package builds a
+  structurally valid extension ZIP and its PHP lifecycle scripts pass
+  `php -l`. Verify a real Plesk host: the actual install/upgrade/uninstall
+  cycle, the assumed REST endpoints, the `plesk_min_version` floor, and the
+  `plib/` deletion behavior on uninstall.
+- [ ] **OPEN CODE — MySQL/MariaDB data engine.** ADR-002's promise of a
+  MySQL/MariaDB engine for cPanel/Plesk hosts is not implemented; all three
+  targets require PostgreSQL today.
+- [ ] **OPEN CODE — cPanel/Plesk password authentication.** `authenticate()`
+  is fail-closed by design on both adapters; no real password check exists
+  yet for panel-native identity.
+- [ ] **OPEN CODE — cPanel/Plesk configuration wiring.** `CPANEL_API_*` and
+  Plesk API settings are defined in types and `.env.example` but not yet
+  loaded by `src/runtime/config.ts`.
 
 ### Security and identity
 
@@ -189,11 +397,12 @@ tester.
   default provider and a generic ACME profile is supported by contract. Verify
   DNS or HTTP challenge routing, firewall rules, rate limits, account-key
   protection, renewal, and rollback in the real network.
-- [x] **DONE — LDAP security boundary.** The adapter requires LDAPS or verified
-  StartTLS, uses a secret reference, limits requested attributes, builds a
-  tenant-aware filter, rejects ambiguous results, and never falls back to a
-  local password store. Verify the real CA, bind account permissions, directory
-  indexes, user lookup, password bind, timeout, retry, and outage behavior.
+- [x] **DONE — LDAP security boundary (standalone identity).** The adapter
+  requires LDAPS or verified StartTLS, uses a secret reference, limits
+  requested attributes, builds a tenant-aware filter, rejects ambiguous
+  results, and never falls back to a local password store. Verify the real
+  CA, bind account permissions, directory indexes, user lookup, password
+  bind, timeout, retry, and outage behavior.
 - [x] **DONE — PostgreSQL security boundary.** The adapter supports verified
   TLS, bounded pools and retries, advisory-locked checksummed migrations,
   forced tenant RLS, transaction tenant context, and fail-closed dependency
@@ -201,34 +410,30 @@ tester.
   RLS policy, migration permissions, connection limits, and outage behavior.
 - [x] **DONE — secret store and rotation boundary.** Configuration rejects
   plaintext secret values and the repository provides an allowlisted,
-  provider-neutral resolver plus managed versioned-file rotation/rollback and
-  read-only Docker/Kubernetes projected-secret adapters. Verify the selected
-  secret store, access policy, rotation cadence, revocation, restart behavior,
-  provider ACLs, and durable audit trail in the field.
+  provider-neutral resolver plus managed versioned-file rotation/rollback.
+  Verify the selected secret store, access policy, rotation cadence,
+  revocation, restart behavior, provider ACLs, and durable audit trail in the
+  field.
 - [x] **DONE — browser security contracts.** Secure cookies, session rotation,
   logout invalidation, CSRF tokens, security headers, HTML sanitization,
   attachment/SSRF restrictions, generic login failures, and abuse limits are
   implemented and tested. Verify them with browser/device testing, a security
-  review, and the provider reverse proxy.
+  review, and the operator's own reverse proxy on each target.
 - [x] **DONE — audit privacy.** Structured audit and operational events remove
   credentials, tokens, cookies, private keys, message bodies, and other
   content-like values. Verify redaction with representative logs and confirm
   that the chosen collector and retention policy do not reintroduce sensitive
   payloads.
-- [x] **DONE — release SBOM, field container, and signed digest workflow.** The
-  manual container-release workflow builds an amd64 field-test archive, emits
-  an SPDX JSON SBOM, and the automatic numeric-version-tag path builds the
-  final amd64 image directly, binds SBOM and build-provenance attestations to
-  the immutable digest, verifies the result through the GitHub CLI, and
-  creates or updates the matching GitHub Release. Verify GHCR
-  visibility/retention, vulnerability disposition, clean-consumer
-  verification, and field import before treating a release as operational.
+- [ ] **OPEN CODE — cPanel/Plesk panel-native password authentication.** See
+  the packaging section above; `authenticate()` is fail-closed on both
+  adapters today.
 
 ### Data, retention, backup, and deletion
 
-- [x] **DONE — source-of-truth separation.** LDAP owns identity, PostgreSQL
-  owns application state, the mail store owns mailbox data, and DAV storage
-  owns calendar/contact objects. Verify that the chosen adapters do not create
+- [x] **DONE — source-of-truth separation.** LDAP (or the panel's own
+  identity, on cPanel/Plesk) owns identity, PostgreSQL owns application
+  state, the mail store owns mailbox data, and DAV storage owns
+  calendar/contact objects. Verify that the chosen adapters do not create
   shadow passwords, duplicate mailbox content, or cross-tenant indexes.
 - [x] **DONE — gross and per-user quota ledger.** Tenant gross quota is
   immutable after bootstrap and allocations are checked atomically in the same
@@ -258,7 +463,8 @@ tester.
   machine, strong confirmation, recovery window, resource-by-resource cleanup
   plan, hold checks, idempotency, and metadata-only audit events are defined.
   The complete operator sequence is written below. Verify it with the real
-  LDAP, PostgreSQL, mailbox, DAV, alias, delegation, MFA, and backup adapters.
+  LDAP/panel identity, PostgreSQL, mailbox, DAV, alias, delegation, MFA, and
+  backup adapters.
 
 ### Mail, scanners, DAV, and client interoperability
 
@@ -284,7 +490,8 @@ tester.
   boundaries, and concurrency.
 - [x] **DONE — discovery and timezone behavior.** HTTPS-only well-known
   resources, autodiscovery, manual fallback, ICS/vCard validation, and sender
-  local-time presentation are defined. Verify DNS, reverse proxy paths,
+  local-time presentation are defined. Verify DNS, reverse proxy paths
+  (Apache on cPanel, nginx on Plesk, operator's own choice on standalone),
   browser locale, daylight-saving changes, and real client configuration.
 
 ### Operations and availability
@@ -292,39 +499,22 @@ tester.
 - [x] **DONE — health, readiness, metrics, logs, alerts, and queue views.**
   The repository has bounded contracts and sanitized payloads. Verify the
   deployed collector, dashboard, alert routing, paging, retention, Postfix
-  queue access, and on-call ownership.
-- [x] **DONE — dual-stack networking.** Local proof covers IPv4 and IPv6
-  bindings and an offline private network. Verify real DNS AAAA records,
-  firewall rules, reverse proxy behavior, SMTP policy, and client reachability
-  on both families.
-- [x] **DONE — external persistent storage.** Mail, DAV, runtime state,
-  PostgreSQL data, and backup references are kept outside disposable
-  containers. Verify volume creation, ownership, encryption, snapshots,
-  replacement, restore, and protection against accidental deletion.
-- [x] **DONE — Ubuntu 26.04 image policy.** The final version-tag release path
-  builds `linux/amd64` directly; the optional field archive remains
-  AMD64-only. Verify the actual runtime, base-image digest, package
-  compatibility, resource limits, and registry pull behavior.
-- [x] **DONE — build provenance attestations.** Trusted version-tag/manual
-  workflows generate and verify OCI build-provenance attestations. Verify the
-  final registry subject, consumer-side verification, retention, and release
-  tag.
-- [x] **DONE — container patch status and build-time patching.** Images run
-  Ubuntu update steps and the maintenance helper exposes sanitized status.
-  Verify the operator check/apply path, root boundary, maintenance window,
-  rollback image, alerting, and package-change record.
+  queue access, and on-call ownership on each target.
+- [x] **DONE — external persistent storage.** Mail, DAV, runtime state, and
+  PostgreSQL data are kept outside the install/extension directory on every
+  target. Verify volume/directory creation, ownership, encryption, snapshots,
+  and protection against accidental deletion for the chosen host.
 - [x] **DONE — external Rspamd and ClamAV definition boundary.** The scanner
-  readers, active-pointer layout, digest/freshness checks, read-only Compose
-  mounts, health metadata, atomic activation, and rollback-preserving
-  generation contract are implemented. The provider still has to install and
-  verify its host-side freshclam/map updater, feed permissions, alerting, and
-  filesystem policy; those are VERIFY BEFORE USE work, not container code.
-- [x] **DONE — Docker replacement and Kubernetes blue/green contract.** The
-  repository models plan, preflight, prepare, readiness, connection drain,
-  queue/IMAP IDLE continuity, cutover, rollback, observation, and finalize
-  while retaining external volumes. Verify real timings, traffic switching,
-  graceful termination, storage continuity, and rollback in the target
-  environment.
+  readers, active-pointer layout, digest/freshness checks, read-only mounts,
+  health metadata, atomic activation, and rollback-preserving generation
+  contract are implemented. The provider still has to install and verify its
+  host-side freshclam/map updater, feed permissions, alerting, and filesystem
+  policy; those are VERIFY BEFORE USE work, not packaging code.
+- [x] **DONE — per-target in-place upgrade scripts.** Each of the three
+  targets ships its own backup-then-replace upgrade script (or, for Plesk,
+  relies on Plesk's own package-replace mechanism); see
+  `doc/upgrade-and-migration.md`. Verify each target's real upgrade path end
+  to end, including rollback from the backup taken.
 - [x] **DONE — RPO/RTO and incident/DR contract shape.** Recovery objectives,
   integrity/privacy checks, sanitized evidence, and operator procedures are
   represented. Verify and approve measured objectives, escalation paths,
@@ -343,24 +533,22 @@ tester.
   health, readiness, metrics, and patch-status reads. Verify authentication,
   tenant scope, rate limits, no secret/content leakage, and read-only
   behavior.
-- [x] **DONE — provider migration vocabulary.** Docker and Kubernetes
-  plan/preflight/prepare/status/cutover/rollback/finalize names, idempotency,
-  allowlists, and audit metadata are documented. Verify the provider
-  controller and approval process once it exists.
-- [x] **DONE — optional upstream Plesk/cPanel tenant-tool boundary.** The
-  provider-neutral configuration, tenant binding, read-only capability matrix,
-  pull/webhook/hybrid vocabulary, secret-reference rules, and default-deny
-  behavior are implemented. Verify the selected panel API version, least-
-  privilege account, callback verification, DNS ownership, reconciliation,
-  rotation, and disable/rollback behavior in the real deployment.
-- [x] **DONE — ADRs, documentation, license, and artifact governance.** The
-  accepted TypeScript architecture, MIT/SPDX attribution, documentation
-  inventory, and trusted-push attestation policy are present. Verify owner
-  approvals, release retention, and consumer access.
+- [x] **DONE — optional upstream Plesk/cPanel tenant-tool boundary.** This is
+  the separate `CONTROL_PANEL_*` integration described in Section 5, not the
+  packaging targets. The provider-neutral configuration, tenant binding,
+  read-only capability matrix, pull/webhook/hybrid vocabulary, secret-
+  reference rules, and default-deny behavior are implemented. Verify the
+  selected panel API version, least-privilege account, callback verification,
+  DNS ownership, reconciliation, rotation, and disable/rollback behavior in
+  the real deployment.
+- [x] **DONE — ADRs, documentation, license, and artifact governance.**
+  ADR-001 and ADR-002, MIT/SPDX attribution, and the documentation inventory
+  are present. Verify owner approvals and release retention.
 - [ ] **OPEN CODE — provider-backed browser login and session wiring.** The
   HTTP shell and fixture authenticator are implemented, but the default
-  runtime does not yet wire the real LDAP adapter into the authenticated
-  login/session path. This remains repository work.
+  runtime does not yet wire the real LDAP adapter (standalone) into the
+  authenticated login/session path, and cPanel/Plesk authentication remains
+  fail-closed as described above. This remains repository work.
 
 ## Runbook definitions
 
@@ -385,8 +573,9 @@ that a workstation can perform them against someone else's infrastructure.
 7. After the recovery window, queue the purge only when no hold exists. The
    durable worker must use an idempotency key and a lease.
 8. Execute the cleanup plan separately for aliases, delegations, MFA factors,
-   backup links, mailbox data, DAV collections, PostgreSQL references, and LDAP
-   identity state. Record one sanitized result per resource.
+   backup links, mailbox data, DAV collections, PostgreSQL references, and
+   identity state (LDAP or the panel's own directory). Record one sanitized
+   result per resource.
 9. Complete the purge only when every planned resource reports purged. A
    partial result remains retryable and must not be reported as success.
 10. Retain the required audit metadata and verify that the 28-day trash policy,
@@ -402,7 +591,9 @@ tasks unless a provider-specific adapter is still absent.
 Plesk or cPanel may sit upstream of Gulo Gulo as the tenant's hosting-account
 and (where selected) DNS tool. It is optional and is not a second source of
 truth for users, quotas, aliases, mailbox content, calendars, contacts,
-authentication decisions, retention, or audit semantics.
+authentication decisions, retention, or audit semantics. This is the
+`CONTROL_PANEL_*` integration, distinct from the cPanel/Plesk packaging
+targets in Sections 3–4.
 
 1. Create a dedicated least-privilege panel account or API token and store the
    value in the provider secret store. Put only its reference in Gulo Gulo.
@@ -422,8 +613,8 @@ authentication decisions, retention, or audit semantics.
    monitoring remain usable. Record credential rotation and rollback evidence.
 
 The repository currently proves the safe configuration and binding contract.
-It does not claim a live Plesk/cPanel API adapter, automatic DNS mutation,
-Docker-socket access, SSH execution, or unrestricted panel command execution.
+It does not claim a live Plesk/cPanel API adapter, automatic DNS mutation, SSH
+execution, or unrestricted panel command execution.
 
 ### Backup and restore runbook
 
@@ -449,12 +640,13 @@ and measured restore timing remain OPEN CODE or provider integration work.
 
 ### Scanner definition publication runbook
 
-The scanner containers intentionally do not run a feed updater. They read
-verified generations from the provider-owned shared volume, mounted read-only.
-Do not describe the deterministic proof images as production Rspamd or ClamAV
-until the provider has completed the host-side feed rehearsal:
+The scanner containers/services intentionally do not run a feed updater. They
+read verified generations from the provider-owned shared volume, mounted
+read-only. Do not describe the deterministic proof images as production
+Rspamd or ClamAV until the provider has completed the host-side feed
+rehearsal:
 
-1. Pin the vendor image and package/definition source.
+1. Pin the vendor package/definition source.
 2. Update ClamAV definitions through freshclam or the supported equivalent, and
    update Rspamd maps, rules, fuzzy data, and reputation feeds.
 3. Verify signature/map freshness, health, disk space, update checksum, and
@@ -468,67 +660,25 @@ until the provider has completed the host-side feed rehearsal:
 
 The repository implements the reader, digest, freshness, atomic-pointer, and
 rollback-preserving boundary. The feed-specific host job and its operational
-evidence remain VERIFY BEFORE USE. A cron, systemd timer, Task Scheduler job,
-or Kubernetes maintenance job must be the single writer; it must never make
-the scanner containers writable or add a Docker-socket escape hatch.
-
-### Container patch and image release runbook
-
-1. Build the selected Ubuntu 26.04 image with the pinned source revision and
-   build-time apt-get update plus apt-get upgrade policy.
-2. Record the base-image digest, target architecture, package changes,
-   vulnerability scan, SBOM, and release subject digest.
-3. Run the repository gates and build the final `linux/amd64`
-   artifact directly for the version tag.
-4. Publish only immutable, signed registry subjects after the required release
-   checks pass; the workflow then creates or updates the matching GitHub
-   Release and uploads the SBOM and digest-bound evidence.
-5. Verify GitHub Artifact Attestation from a clean consumer context.
-6. Keep the previous image available for rollback and retain the evidence.
-
-Artifact provenance, SBOM generation, the amd64 field-container package, and
-digest-bound release attestations are implemented in
-`.github/workflows/container-release.yml`. Version-tag pushes automatically
-publish the GHCR image and GitHub Release; a trusted
-manual main-only publish path remains available. Registry policy, consumer
-verification, and field deployment evidence remain VERIFY BEFORE USE work.
-
-### Docker replacement and Kubernetes blue/green runbook
-
-1. Plan with source/target versions and immutable digests, architecture,
-   schema window, volume names, secret references, backup freshness, and
-   rollback feasibility.
-2. Run preflight without changing traffic. Check liveness, readiness, LDAP,
-   PostgreSQL, mail store, queue, certificate, scanner, and patch status.
-3. Prepare the green Docker container or Kubernetes Deployment with the same
-   external state references and an expand-compatible schema.
-4. Observe readiness, queue depth, delivery, IMAP IDLE reconnects, metrics,
-   error budget, and audit events.
-5. Cut over only after the green gate and explicit provider approval. Drain
-   HTTP, WebSocket, IMAP IDLE, SMTP, and DAV connections within the deadline.
-6. Keep blue available during the observation window. Roll back the traffic
-   target without copying or deleting mailbox data if any gate regresses.
-7. Finalize only after the observation window, backup/restore check, and
-   operator approval. Retire blue last.
-
-The state machine and rehearsal contracts are DONE in the repository. Live
-traffic, real external volumes, Kubernetes, and timing evidence are VERIFY
-BEFORE USE work.
+evidence remain VERIFY BEFORE USE. A cron, systemd timer, or Task Scheduler
+job must be the single writer; it must never make the scanner service
+writable from Gulo Gulo's own process.
 
 ### Incident and disaster-recovery runbook
 
 1. Declare the incident, affected tenant scope, correlation ID, operator, and
    current release without putting secrets or message content in the record.
-2. Classify the failure: LDAP, PostgreSQL, mail store, DAV, ACME, Rspamd,
-   ClamAV, storage, network, container, or deployment cutover.
+2. Classify the failure: LDAP/panel identity, PostgreSQL, mail store, DAV,
+   ACME, Rspamd, ClamAV, storage, network, or an in-place package upgrade.
 3. Apply the fail-closed policy for the affected dependency. Preserve the
-   current valid certificate, known-good scanner definitions, blue release,
-   queue, and durable state.
+   current valid certificate, known-good scanner definitions, the pre-upgrade
+   backup taken by the target's own upgrade script, queue, and durable state.
 4. Communicate impact and start the approved recovery objective clock.
-5. Restore or cut back in an isolated target, verify integrity and privacy,
-   and collect sanitized evidence.
-6. Record observed RPO/RTO, data loss, connection drain, queue handling,
-   customer impact, and the decision to resume service.
+5. Restore or roll back (from the upgrade script's own backup, on the
+   affected target) in an isolated target, verify integrity and privacy, and
+   collect sanitized evidence.
+6. Record observed RPO/RTO, data loss, queue handling, customer impact, and
+   the decision to resume service.
 7. Run a post-incident review, rotate exposed credentials if necessary, and
    update the runbook and release evidence.
 
@@ -543,24 +693,28 @@ release evidence system as sanitized records.
 
 ### Provider and deployment operator
 
-- Verify DNS, IPv4, IPv6, firewall, reverse proxy, ACME challenge, certificate
-  renewal, and expiry alert.
+- Verify DNS, firewall, reverse proxy (Apache on cPanel, nginx on Plesk, the
+  operator's own choice on standalone), ACME challenge, certificate renewal,
+  and expiry alert.
 - Verify the selected secret store, least-privilege access, rotation, revoke,
   restart, and recovery behavior.
 - Verify external LDAP TLS, bind privilege, directory filters, user login,
-  timeout/retry, and outage behavior.
+  timeout/retry, and outage behavior (standalone identity).
 - Verify PostgreSQL TLS, role grants, RLS, migrations, backups, restore, and
-  connection limits.
-- Verify external volume creation, encryption, snapshots, ownership, restore,
-  and replacement without data loss.
+  connection limits on every target.
+- Verify external volume/directory creation, encryption, snapshots, ownership,
+  restore, and replacement without data loss.
 - Verify vendor Postfix, Dovecot, Rspamd, ClamAV, freshclam, CalDAV, and
-  CardDAV images, versions, digests, configuration, and update sources.
-- Verify the optional Plesk/cPanel panel account, API version, TLS, tenant/domain
-  binding, webhook or pull policy, DNS ownership, and credential rotation.
+  CardDAV versions, configuration, and update sources.
+- Verify the optional Plesk/cPanel upstream tenant-tool account, API version,
+  TLS, tenant/domain binding, webhook or pull policy, DNS ownership, and
+  credential rotation.
 - Verify queue, scanner, certificate, storage, authentication, and dependency
   alerts reach the assigned operator.
-- Verify Docker replacement, Kubernetes cutover, connection drain, rollback,
-  and the observation window.
+- Verify each target's install, upgrade, and uninstall scripts on a real host
+  of that type — standalone on a plain server/VPS, cPanel on a real
+  cPanel/WHM server as root, Plesk through a real Plesk extension
+  install/update/remove cycle.
 
 ### Tenant master and user tester
 
@@ -577,22 +731,21 @@ release evidence system as sanitized records.
 
 ### Release and security tester
 
-- Verify immutable image digests, SBOM, signature, provenance, and consumer
-  attestation from a clean environment.
 - Run negative tests for open relay, forwarding, catch-all, spoofing, scanner
   failure, CSRF, session replay, cross-tenant access, path traversal, and
   secret leakage.
 - Exercise backup restore, account deletion, hold, rollback, and incident
   procedures with production-like data volume and sanitized evidence.
 - Measure latency, memory, queue depth, storage pressure, connection counts,
-  RPO, and RTO on both supported architectures where applicable.
+  RPO, and RTO on each of the three targets that will actually be deployed.
 
 ## Evidence hand-off rules
 
 Keep evidence small and useful:
 
-- record release commit, image digest, platform, environment class, operator,
-  start/end time, result, and an evidence checksum;
+- record release commit, package version (standalone/cpanel/plesk), target
+  host type, environment class, operator, start/end time, result, and an
+  evidence checksum;
 - keep credentials, private keys, cookies, raw logs, message bodies, archive
   contents, absolute workstation paths, and unrestricted command output out of
   the record;
@@ -606,17 +759,23 @@ Keep evidence small and useful:
 These are the remaining repository tasks. They are deliberately not disguised
 as tester work:
 
+- [ ] MySQL/MariaDB data engine behind the existing `PostgresPoolLike`/
+  `PostgresClientLike` abstraction, the multi-engine support ADR-002 promises
+  for cPanel/Plesk hosts;
+- [ ] real cPanel/Plesk panel-native password authentication (both adapters
+  are fail-closed today);
+- [ ] wiring `CPANEL_API_*` and Plesk API settings into
+  `src/runtime/config.ts` so those integrations can actually be enabled;
 - [ ] provider-backed authenticated login/session wiring that calls the real
-  LDAP adapter instead of the fixture authenticator;
+  LDAP adapter instead of the fixture authenticator (standalone);
 - [ ] production Postfix/Dovecot mail adapters, persistent DAV backend, and
   complete HTTP/WebDAV method and XML-report integration;
 - [ ] durable external backup, restore, account-deletion execution, and
   scheduled retention workers for volume, PostgreSQL, mailbox, DAV, and
   object-store adapters;
-- [ ] provider migration controller plus live provider API/MCP wiring for the
-  documented Docker and Kubernetes operations;
 - [ ] provider-specific Plesk/cPanel API adapter and idempotent reconciliation
-  behind the validated read-only tenant binding;
+  behind the validated read-only tenant binding (the optional upstream
+  tenant-tool integration);
 - [ ] provider ACME/DNS client integration and deployed log collector,
   alert-delivery, and paging adapters.
 
@@ -628,13 +787,16 @@ not accidental readiness gaps.
 
 Gulo Gulo can be called production-ready only when:
 
-1. every OPEN CODE item required by the selected deployment is implemented and
-   covered by repository gates;
-2. every VERIFY BEFORE USE item has a sanitized provider/tester record;
-3. backup, restore, account deletion, scanner updates, migration, rollback,
+1. every OPEN CODE item required by the selected deployment target is
+   implemented and covered by repository gates;
+2. every VERIFY BEFORE USE item has a sanitized provider/tester record —
+   including, for cPanel and Plesk, at least one real install on a real host
+   of that type;
+3. backup, restore, account deletion, scanner updates, upgrade, rollback,
    RPO/RTO, and incident/DR evidence has an owner and approval;
-4. the release evidence object contains the real commit and image subjects;
+4. the release evidence object contains the real commit and package version;
 5. the release evaluator reports productionReady as true.
 
 Until then, the honest description is a usable, tested repository contract
-preview with a clearly documented deployment hand-off.
+preview — with a real end-to-end proof for the standalone target only — and a
+clearly documented deployment hand-off for cPanel and Plesk.

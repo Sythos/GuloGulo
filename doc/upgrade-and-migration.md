@@ -1,239 +1,182 @@
 # Upgrade and migration operations
 
-> **⚠️ Documento in transizione.** Il modello di distribuzione container/Docker descritto in questo documento è stato rimosso dal repository. Il progetto sta migrando a tre pacchetti di distribuzione (cPanel, Plesk, archivio standalone) — vedi [ADR-002](../../ADR-002-gulogulo-packaging-and-distribution-targets.md). Questo documento verrà riscritto in una milestone successiva; nel frattempo le istruzioni Docker/compose qui sotto non sono più applicabili.
-
 <!--
 SPDX-License-Identifier: MIT
 SPDX-FileCopyrightText: 2026 Sythos (https://www.sythos.net)
 Author: Sythos (https://www.sythos.net)
 -->
 
-This is the operator manual for replacing a Gulo Gulo container with a newer
-image and for preparing the Kubernetes zero-downtime path. M9 established the
-dependency-light, deterministic contract boundary in `src/core/upgrade/`; LP7 carries
-that contract into a bounded synthetic Docker replacement and Kubernetes
-blue/green rehearsal. Together they validate the provider-only operation model,
-the expand/backfill/switch/contract schema window, shared external state, queue
-hand-off, connection draining, Docker replacement, Kubernetes readiness,
-rollback, and finalization gates.
+This is the operator manual for upgrading an existing Gulo Gulo install in
+place. Since [ADR-002](../../ADR-002-gulogulo-packaging-and-distribution-targets.md),
+there is no blue/green upgrade based on a container swap: each of the three
+packaging targets — standalone, cPanel, Plesk — defines its own in-place
+upgrade strategy (backup, then replace application files, then migrate,
+then restart), without an atomic image/container swap. This document covers
+that per-target procedure and the database migration discipline that
+underlies all three.
 
-The contract is deliberately not a claim that this checkout can already mutate
-a live Docker host or Kubernetes cluster. A deployment controller still has to
-connect these validated plans to the approved operator runtime and to real
-external stores. Keeping that boundary explicit makes the local and CI tests
-useful without pretending that a fixture is a production rollout.
+## Database schema migrations: expand / backfill / switch / contract
 
-## Two API surfaces, two trust levels
+Regardless of packaging target, every Gulo Gulo install shares one migration
+mechanism: sequential, checksummed SQL files under
+`src/core/db/migrations/` (currently just `0001_m2_foundation.sql`), applied
+by an advisory-locked migration runner (`createMigrationRunner` in
+`src/integrations/postgres-store.ts`) through `runMigrations.mjs`, the same
+script every target's install/upgrade path calls. This part of the original
+migration design is independent of the deployment/packaging model and remains
+valid unchanged: schema changes should still be authored using the
+**expand / backfill / switch / contract** discipline, because an in-place
+upgrade still has a window — between the backup and the service restart, and
+during the restart itself — where the schema must stay readable by whichever
+version of the application code is currently running:
 
-The tenant monitoring API and MCP remain read-only. They can report version,
-digest, health, queue state, patch status, and migration evidence, but they
-cannot start or cut over a deployment.
+1. **Expand** — add new tables/columns/indexes in a way the *currently
+   running* (old) version can still ignore safely. Never drop or rename
+   anything in this phase.
+2. **Backfill** — populate the new schema elements from existing data,
+   in a way that is safe to interrupt and re-run (idempotent).
+3. **Switch** — the new application code (deployed by the upgrade script,
+   started on `systemctl restart`/manual restart) starts reading and writing
+   the new schema elements instead of the old ones.
+4. **Contract** — once the switch is confirmed safe (i.e., a subsequent
+   migration, once nobody depends on the old shape anymore), drop the old
+   schema elements that expand/backfill/switch made obsolete.
 
-Upgrade execution belongs to a separate provider/operator control plane. It
-must have its own token audience, RBAC, approval workflow, audit stream,
-idempotency store, timeout, and rollback policy. It must never expose the
-Docker socket, accept arbitrary shell input, or forward unrestricted
-`kubectl` arguments.
+A migration file is not required to complete all four phases in one release;
+splitting a schema change into an expand+backfill migration in one release
+and a contract migration in a later one is the normal, safer pattern,
+especially since none of the three targets currently roll back schema
+changes automatically — the only rollback mechanism is restoring the
+pre-upgrade backup each target's upgrade script takes (see below).
 
-The operation contract is:
+**Honesty note on `src/core/upgrade/`:** the repository still contains a
+formal TypeScript module (`src/core/upgrade/compatibility.ts`,
+`rollout.ts`, `control-plane.ts`, `rehearsal.ts`) that models this same
+`MIGRATION_PHASES` vocabulary plus a full provider-only HTTP/MCP API
+(`/provider/upgrade/{capabilities,plan,preflight,prepare,status,cutover,
+rollback,finalize}`) for orchestrating a Docker-to-Docker or Kubernetes
+blue/green cutover, with digest-pinned source/target versions and an
+idempotent operation state machine. **None of the three packaged upgrade
+paths described below call into that module.** It predates ADR-002 and
+modeled the container-swap upgrade approach ADR-001 originally specified;
+ADR-002 replaced that with the simple in-place scripts in this document.
+Treat `rollout.ts`, `control-plane.ts`, and `rehearsal.ts` as legacy code
+describing a superseded deployment model — only the phase vocabulary
+(`MIGRATION_PHASES`: `expand`/`backfill`/`switch`/`contract`) is still
+directly relevant migration-authoring guidance today. Do not build new
+tooling against the Docker/Kubernetes control-plane API surface without
+first confirming it is still wanted; nothing in the current packaging
+(`packaging/{standalone,cpanel,plesk}/`) depends on it.
 
-| Operation | HTTP | MCP | Mutates deployment? |
-|---|---|---|---:|
-| Capabilities | `GET /provider/upgrade/capabilities` | `gulogulo.upgrade.capabilities` | No |
-| Plan | `POST /provider/upgrade/plan` | `gulogulo.upgrade.plan` | No |
-| Preflight | `POST /provider/upgrade/preflight` | `gulogulo.upgrade.preflight` | No |
-| Prepare green | `POST /provider/upgrade/prepare` | `gulogulo.upgrade.prepare` | Yes |
-| Status | `GET /provider/upgrade/status/{operationId}` | `gulogulo.upgrade.status` | No |
-| Cutover | `POST /provider/upgrade/cutover` | `gulogulo.upgrade.cutover` | Yes |
-| Rollback | `POST /provider/upgrade/rollback` | `gulogulo.upgrade.rollback` | Yes |
-| Finalize | `POST /provider/upgrade/finalize` | `gulogulo.upgrade.finalize` | Yes |
+## Standalone: `upgrade.sh <new-tarball.tar.gz> <install-dir> [--non-interactive]`
 
-The mutating operations require `provider/operator` authorization and a
-structured request containing:
+1. **Backup.** Tars the entire current install directory to
+   `<install-dir>.backup-<timestamp>.tar.gz` before touching anything.
+2. **Extract.** Extracts the new tarball into a temporary directory.
+3. **Copy in place, preserving local state.** Uses `rsync -a --exclude .env
+   --exclude node_modules` if available, or a manual per-entry copy
+   otherwise, so `.env` and anything not shipped by the package survive.
+   External data — the PostgreSQL database, the LDAP directory, and mailbox
+   storage — all live outside the install directory and are never touched.
+4. **Reinstall dependencies:** `npm ci --omit=dev --no-audit --no-fund`.
+5. **Migrate:** runs `run-migrations.mjs` against the new code (applies any
+   pending migration files, no-op while `POSTGRES_ENABLED=false`).
+6. **Does not restart the service.** By design — this target has no
+   installed service of its own; whatever process manager the operator
+   chose (systemd, pm2, or a manual foreground process) restarts the
+   service on its own schedule. The script prints the reminder
+   (`systemctl restart gulogulo` / `pm2 restart gulogulo`) but never runs
+   it.
 
-```json
-{
-  "sourceVersion": "0.3.0",
-  "sourceDigest": "sha256:source-image-digest",
-  "targetVersion": "0.4.0",
-  "targetDigest": "sha256:target-image-digest",
-  "platform": "docker",
-  "strategy": "blue_green",
-  "deadlineSeconds": 1800,
-  "idempotencyKey": "upgrade-2026-08-22-gulogulo-0001"
-}
-```
+Rollback: restore `<install-dir>.backup-<timestamp>.tar.gz` over the install
+directory and restart the service manually. No automatic rollback exists.
 
-The controller returns an `operationId`, state, sanitized checks, and a
-correlation ID. It does not return secrets, registry credentials, message
-content, or raw deployment command output. Repeating an idempotency key returns
-the original operation state instead of starting a second rollout.
+## cPanel: `upgrade.sh <new-tarball.tar.gz> <install-dir> [--non-interactive] [--dry-run]`
 
-## Canonical M9 contract and LP7 rehearsal
+Same backup/extract/copy/`npm ci`/migrate sequence as standalone (the copy
+step additionally preserves `gulogulo.service.rendered` if present), but
+with one difference:
 
-The implementation is split into three small modules:
+- **Automatically restarts the service:** `systemctl restart gulogulo`,
+  because this target installs and manages a dedicated systemd unit itself
+  — it is not a process the operator runs under their own supervisor, so
+  there is no ambiguity about who owns the restart. Under `--dry-run`, every
+  prior step (backup, extract, copy, `npm ci`, migrations) still runs for
+  real — none of it touches host system configuration — but the final
+  `systemctl restart gulogulo` is skipped and only printed.
 
-- `src/core/upgrade/compatibility.ts` owns version/digest validation, the
-  expand/backfill/switch/contract sequence, forward-compatible checkpoints,
-  and the rollback-safe schema window;
-- `src/core/upgrade/rollout.ts` owns external-state references, queue hand-off,
-  connection drain/reconnect behavior, Docker replacement plans, Kubernetes
-  blue/green readiness, and the action allowlist;
-- `src/core/upgrade/control-plane.ts` owns provider/operator authorization,
-  idempotency, the operation state machine, sanitized status, and audit events.
+Rollback: restore the backup tarball over the install directory, run
+`npm ci`, and `systemctl restart gulogulo` again. Apache reverse-proxy
+configuration and the optional WHM AppConfig registration are untouched by
+upgrade — they were applied manually at install time and are not
+reapplied or removed by `upgrade.sh`.
 
-The canonical public barrel is `src/core/upgrade/index.ts`. There are no
-`.mjs` compatibility bridges left in this directory; callers import the
-TypeScript module directly. Run the focused contract suite with:
+## Plesk: analogous to cPanel, through Plesk's own update mechanism
 
-```text
-npm run test:m9
-```
+There is no dedicated `upgrade.php` lifecycle hook shipped in
+`packaging/plesk/scripts/` — only `pre-install.php`, `post-install.php`, and
+`pre-uninstall.php`. Updating the extension to a new version relies on
+Plesk's own extension update mechanism: installing a newer package
+(`gulogulo-<version>-plesk.zip`, with a higher `<version>`/`<release>` in
+`meta.xml`) over an already-installed one. The most likely and standard
+behavior for a Plesk extension without a separate upgrade hook is that Plesk
+re-runs `pre-install.php` and `post-install.php` against the new `plib/`
+contents — which would give the same practical steps as cPanel's
+`upgrade.sh` (`npm ci`, run pending migrations, `systemctl restart` via
+`systemctl enable --now gulogulo` again since `post-install.php` always
+performs that step) but **without an explicit backup step**, since
+`post-install.php` has no equivalent of `upgrade.sh`'s tar-before-replace
+logic.
 
-The state machine is intentionally boring and easy to inspect:
+**This has not been verified against a real Plesk host and should be treated
+as an assumption, not a documented fact**, consistent with the other
+unverified Plesk specifics called out in `doc/READ_BEFORE_USE.md` and
+`src/platform/plesk/README.md`. Before relying on this in production:
 
-```text
-planned
-  -> preflight_passed
-  -> prepared
-  -> serving_green
-  -> finalized
-
-prepared or serving_green -> rolled_back -> finalized
-any pre-cutover failure   -> failed      -> rolled_back
-```
-
-The controller refuses a tenant, master, user, or monitoring role; only the
-provider/operator audience can execute it. The tenant monitoring API and MCP
-remain read-only. Mutating provider calls require an idempotency key, the
-expected source version and digest, a target digest, a bounded deadline, and a
-validated platform. The returned objects contain no secret, raw shell text,
-Docker socket path, unrestricted `kubectl`, mailbox content, or registry
-credential.
-
-The M9 contract tests cover:
-
-- strict request and digest validation, including unsafe command rejection;
-- idempotent plans and provider-versus-tenant authorization;
-- forward-compatible schema phases and checkpoint evidence;
-- persistent queue and duplicate-delivery protection;
-- HTTP, WebSocket, IMAP IDLE, SMTP, and DAV drain ordering;
-- Docker external-volume replacement without mailbox copying;
-- Kubernetes readiness, zero `maxUnavailable`, PDB, and rollback readiness;
-- preflight, prepare, cutover, rollback, and observation/restore finalization.
-
-LP7 adds the strict TypeScript rehearsal in `src/core/upgrade/rehearsal.ts` and its
-five direct tests. The rehearsal models Docker replacement and Kubernetes
-blue/green state transitions without invoking a host runtime: external
-PostgreSQL/LDAP references and named volumes remain shared, readiness gates the
-switch, queue entries are deduplicated and handed off, IMAP IDLE reconnect
-sequence numbers continue, and rollback keeps blue serving while retaining
-green metadata for audit. Its Compose proof is documented in
-`doc/lp7-local-upgrade.md` and is intentionally synthetic and offline.
-
-## Docker-to-Docker replacement
-
-The important detail is what does not move: mailbox and control-plane data are
-not copied through the application container. The target uses the same
-external `runtime-state`, `mail-data`, `dav-data`, and `backup-data` volumes,
-plus the same external PostgreSQL and LDAP services. On a different Docker
-host, the provider first makes those stores available through the approved
-storage/backup mechanism, verifies their checksums, and only then prepares the
-target.
-
-### Declarative sequence
-
-1. **Plan** — verify target image digest, Ubuntu 26.04 architecture support,
-   schema compatibility, volume names, secret references, backup freshness,
-   and rollback feasibility.
-2. **Preflight** — start the target on an isolated port. Check liveness,
-   readiness, LDAP/PostgreSQL connectivity, mail-store access, queue state,
-   certificate health, and patch status. No public traffic changes.
-3. **Prepare** — start green beside blue using the same external stores and an
-   expand-compatible database schema.
-4. **Observe** — monitor health, queue depth, LMTP outcomes, IMAP IDLE
-   reconnects, error rates, metrics, and audit events.
-5. **Cut over** — switch the edge/reverse-proxy target, drain old connections,
-   and keep blue available for rollback.
-6. **Rollback** — return traffic to blue when an SLO, dependency, queue, or
-   data-integrity gate fails. Do not delete or overwrite mailbox data.
-7. **Finalize** — retire blue only after the observation window and a restore
-   check in an isolated environment.
-
-An implementation may use Compose, systemd, or a container runtime underneath,
-but the API/MCP request remains declarative. The controller allowlist must
-validate image digest, platform, project name, volume names, network names,
-timeouts, and the expected source version before it invokes the runtime.
-
-## Kubernetes blue/green, zero-downtime path
-
-The Kubernetes driver uses `gulogulo-blue` and `gulogulo-green` Deployments and
-a stable Service or Gateway. Both versions use external PostgreSQL, LDAP, DAV,
-mail, backup, and queue state. The mail queue and mailbox data are never held
-only in a Pod filesystem.
-
-Green is eligible for cutover only when all of these are true:
-
-- startup, liveness, and readiness probes are healthy;
-- the expanded schema is readable by both versions;
-- `maxUnavailable: 0` and a bounded `maxSurge` are in force;
-- the PodDisruptionBudget and topology-spread constraints are satisfied;
-- pre-stop drain and termination grace are configured for HTTP, SMTP, IMAP
-  IDLE, and WebSocket reconnects;
-- image digest, schema-window, and configuration compatibility checks pass;
-- queue, dependency, smoke, and audit checks are green.
-
-The controller may use an internal command allowlist equivalent to:
-
-```text
-kubectl apply -f gulogulo-green.yaml
-kubectl rollout status deployment/gulogulo-green --namespace gulogulo --timeout=10m
-kubectl get endpoints gulogulo-web --namespace gulogulo
-kubectl patch service gulogulo-web --namespace gulogulo --type=merge --patch '{"spec":{"selector":{"track":"green"}}}'
-kubectl rollout undo deployment/gulogulo-green --namespace gulogulo
-```
-
-Those strings are not accepted from the caller. Namespace, resource names,
-selectors, image digests, and timeout bounds come from validated deployment
-configuration. The controller refuses volume deletion, readiness bypass, an
-unverified image, a second concurrent cutover, or a tenant token attempting to
-invoke an operator command.
-
-Blue remains scaled and rollback-ready until the observation window ends. A
-successful cutover is a routing change over shared durable state, not a blind
-file copy. The sequence is therefore safe to rehearse repeatedly and can be
-rolled back without destroying forward-compatible data.
+- confirm on a real Plesk instance whether an extension update actually
+  re-runs `post-install.php`, runs some other hook, or requires a manual
+  uninstall-then-reinstall cycle;
+- if it does re-run `post-install.php`, consider adding an explicit backup
+  step there (mirroring `upgrade.sh`'s tar-before-replace) before this
+  target is treated as production-ready, since today an interrupted or
+  failed Plesk extension update has no automatic rollback path;
+- back up `plib/app/.env` yourself before triggering any Plesk extension
+  update, for the same reason called out for uninstall in
+  `doc/READ_BEFORE_USE.md` — the exact conditions under which Plesk touches
+  or removes `plib/` around an update are unverified.
 
 ## Audit and failure behavior
 
-Every operation records its operation ID, source/target versions and digests,
-platform, actor, tenant/provider scope, correlation ID, timestamps, decision,
-and sanitized failure reason. Never record registry credentials, pull-secret
-contents, Kubernetes tokens, raw command output, mailbox data, or message
-bodies.
+None of the three upgrade scripts emit structured audit events of their own
+today — they log to stdout only (`[upgrade] ...` / `[gulogulo post-install]
+...`). An operator building evidence for a real upgrade should capture that
+log output alongside the backup path, source/target versions, and the
+migration runner's own summary line (`schema at <version> (<n> migration(s)
+applied this run)`), and retain it per the evidence hand-off rules in
+`doc/READ_BEFORE_USE.md`.
 
-The controller fails closed when LDAP, PostgreSQL, mail storage, the persistent
-queue, certificate state, or readiness checks are unavailable. A failed green
-deployment leaves blue serving. A rollback is not considered complete until
-traffic points to blue and the status endpoint confirms healthy dependencies.
+All three scripts fail closed on error (`set -euo pipefail` in the bash
+scripts; explicit non-zero exits with `fail()` in the PHP hooks) — a failed
+`npm ci` or a failed migration stops the script before it restarts (or,
+for standalone, before it prints the restart reminder for) the service, so
+a partially-upgraded install is left in place rather than silently brought
+back up on old code with a new (possibly incompatible) schema, or vice
+versa.
 
-## M9 acceptance evidence
+## Acceptance evidence still needed
 
-Before these commands are enabled against a real deployment, M9 must
-demonstrate:
+Before any of these three upgrade paths is treated as production-ready:
 
-- Docker-to-Docker replacement with external volumes and no mailbox loss;
-- blue/green Compose or equivalent cutover and rollback;
-- Kubernetes green readiness, Service cutover, drain, and rollback;
-- N-to-N+1 expand/backfill/switch/contract compatibility;
-- queue and IMAP IDLE reconnect behavior without duplicate delivery;
-- operation idempotency, RBAC, audit, rate limiting, and redaction;
-- negative tests for arbitrary command, volume deletion, readiness bypass,
-  unverified digest, and tenant-token escalation;
-- workflow artefacts showing the full rehearsal and its restore check.
-
-The current M9 milestone records the deterministic contract and all local/CI
-quality gates. Live CA/DNS, Postfix/Dovecot session behavior, a real external
-volume snapshot, Docker-host replacement, Kubernetes traffic switching, and a
-measured zero-downtime rehearsal remain operational evidence for the final
-release path.
+- a real upgrade rehearsal on each target's real host type (a running
+  standalone install upgraded in place; a real cPanel/WHM host upgraded and
+  its systemd service confirmed to restart cleanly; a real Plesk extension
+  update exercised end to end, resolving the open question above);
+- a rollback rehearsal from each target's backup (standalone/cPanel) and a
+  decision on what Plesk's rollback path even is, given it has no backup
+  step today;
+- at least one real expand/backfill/switch/contract migration exercised
+  across an upgrade, not just the single foundational migration that exists
+  today;
+- confirmation that `.env` and any other operator-edited files genuinely
+  survive the upgrade on a real host, not just under the `rsync --exclude`
+  logic verified by unit/CI testing alone.
