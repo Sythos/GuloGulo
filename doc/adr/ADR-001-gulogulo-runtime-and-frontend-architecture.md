@@ -7,10 +7,13 @@ Author: Sythos (https://www.sythos.net)
 # ADR-001: Gulo Gulo Runtime and Frontend Architecture
 
 > **Superseded in part by [ADR-002](ADR-002-gulogulo-packaging-and-distribution-targets.md)**:
-> il modello di distribuzione container/OCI descritto in questo documento è
-> stato abbandonato in favore di pacchetti cPanel/Plesk/standalone. Le
-> decisioni su stack TypeScript, assenza di PHP, e boundary di sicurezza
-> browser-backend restano valide.
+> the container/OCI distribution model described in this document was
+> abandoned in favor of cPanel/Plesk/standalone OS-native packages. The
+> decisions on the TypeScript stack, the absence of PHP, and the browser-backend
+> security boundary remain valid and governing. Every reference in this
+> document to Docker, OCI images, or a specific Ubuntu base image describes
+> that retired model; see ADR-002 for the current packaging and distribution
+> targets.
 
 - **Status:** Accepted
 - **Date:** 2026-08-22
@@ -30,10 +33,9 @@ Gulo Gulo will use:
 - external LDAP for identity;
 - external PostgreSQL for application state;
 - Postfix, Dovecot, CalDAV, and CardDAV for protocol services.
-- Ubuntu 26.04 LTS as the base target for Gulo Gulo-owned OCI images on
-  linux/amd64 and linux/arm64, with build-time APT security updates.
 
-PHP is not part of the baseline architecture.
+PHP is not part of the baseline architecture. The base OS target and package
+build matrix are decided per distribution target in ADR-002, not here.
 
 ## Reference architecture
 
@@ -61,7 +63,7 @@ Using TypeScript for both the browser client and Gulo Gulo backend provides:
 - native support for asynchronous I/O and streaming HTTP;
 - a natural implementation path for IMAP IDLE notifications;
 - straightforward WebSocket or Server-Sent Events integration;
-- fewer runtime families in the OCI deployment;
+- fewer runtime families to operate on the host;
 - a smaller operational surface than introducing PHP-FPM and a separate
   FastCGI-oriented runtime.
 
@@ -119,7 +121,7 @@ before the API, session, tenant, and security contracts are stable.
 ### Positive consequences
 
 - Consistent TypeScript tooling across frontend and Gulo Gulo API.
-- Fewer application runtimes in Docker.
+- Fewer application runtimes to install and patch on the host.
 - Natural support for realtime mail and calendar updates.
 - Clear separation between browser, API, identity, state, and protocol
   services.
