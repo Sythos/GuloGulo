@@ -1,0 +1,138 @@
+# SPDX-License-Identifier: MIT
+# SPDX-FileCopyrightText: 2026 Sythos (https://www.sythos.net)
+# Author: Sythos (https://www.sythos.net)
+
+name: Package Plesk archive
+
+# Unlike package-standalone.yml, this workflow cannot actually install the
+# extension: `plesk bin extension -i gulogulo-<version>-plesk.zip` requires a
+# real Plesk host (the Plesk CLI, the extension catalog database, PHP
+# running under Plesk's own panel user, etc.), none of which the
+# ubuntu-latest runner provides, and there is no official Plesk Docker image
+# suitable for CI here either. What this workflow verifies instead: the ZIP
+# archive builds, has the exact structure Plesk's extension mechanism
+# requires (meta.xml at the archive root, well-formed XML; plib/scripts/
+# with all three lifecycle hooks), and that every PHP lifecycle script is at
+# least syntactically valid (`php -l`) - it does NOT exercise pre-install.php
+# / post-install.php / pre-uninstall.php's actual logic, since that needs
+# root on a real Linux host with systemd (post-install.php enables/starts a
+# systemd unit; nothing here does). All of that - and the plesk_min_version/
+# plesk_max_version values and the assumed REST API endpoints documented in
+# src/platform/plesk/README.md - needs field verification against a real
+# Plesk instance before a production release.
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: package-plesk-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-and-verify-package:
+    name: Build the Plesk package and verify its structure
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: latest
+          check-latest: true
+
+      - name: Install dependencies
+        shell: bash
+        run: npm ci --no-audit --no-fund
+
+      - name: Build web and server bundles
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm run build:web
+          npm run build:server
+
+      - name: Build the Plesk package
+        shell: bash
+        env:
+          GULOGULO_SKIP_BUILD: "1"
+        run: node --experimental-strip-types packaging/plesk/build-plesk-package.ts
+
+      - name: Extract the ZIP into a clean directory
+        shell: bash
+        run: |
+          set -euo pipefail
+          ARCHIVE="$(ls packaging/dist/gulogulo-*-plesk.zip)"
+          EXTRACT_DIR="$RUNNER_TEMP/gulogulo-plesk-extension"
+          mkdir -p "$EXTRACT_DIR"
+          unzip -q "$ARCHIVE" -d "$EXTRACT_DIR"
+          echo "EXTRACT_DIR=$EXTRACT_DIR" >> "$GITHUB_ENV"
+
+          # meta.xml MUST be at the archive root - this is what makes the
+          # ZIP a valid Plesk extension package rather than an arbitrary
+          # archive of the staged application.
+          test -f "$EXTRACT_DIR/meta.xml"
+          test -f "$EXTRACT_DIR/plib/scripts/pre-install.php"
+          test -f "$EXTRACT_DIR/plib/scripts/post-install.php"
+          test -f "$EXTRACT_DIR/plib/scripts/pre-uninstall.php"
+          test -f "$EXTRACT_DIR/plib/app/dist/server/src/runtime/index.js"
+          test -f "$EXTRACT_DIR/plib/app/web/index.html"
+          test -f "$EXTRACT_DIR/plib/app/web/dist/app.js"
+          test -f "$EXTRACT_DIR/plib/app/assets/gulo-gulo-calendar-mail.png"
+          test -f "$EXTRACT_DIR/plib/app/src/core/db/migrations/0001_m2_foundation.sql"
+          test -f "$EXTRACT_DIR/plib/app/.env.example"
+          test -f "$EXTRACT_DIR/plib/app/VERSION"
+          test -f "$EXTRACT_DIR/plib/app/package.json"
+          test -f "$EXTRACT_DIR/plib/app/run-migrations.mjs"
+          test -f "$EXTRACT_DIR/plib/app/gulogulo.service.template"
+          test -f "$EXTRACT_DIR/plib/app/gulogulo-proxy.conf.example"
+
+          # meta.xml must not still contain the unsubstituted @VERSION@
+          # placeholder, and must declare the fields this workflow's
+          # structural checks below assume.
+          if grep -q '@VERSION@' "$EXTRACT_DIR/meta.xml"; then
+            echo "meta.xml still contains an unsubstituted @VERSION@ placeholder." >&2
+            exit 1
+          fi
+          for field in '<id>' '<name>' '<version>' '<release>' '<vendor>' '<url>' '<plesk_min_version>' '<plesk_max_version>' '<os>'; do
+            grep -qF "$field" "$EXTRACT_DIR/meta.xml" || { echo "meta.xml is missing $field" >&2; exit 1; }
+          done
+
+      - name: Verify meta.xml is well-formed XML
+        shell: bash
+        run: |
+          set -euo pipefail
+          # python3 ships on the ubuntu-latest runner image; its stdlib
+          # xml.etree.ElementTree is a minimal, dependency-free well-
+          # formedness check (this does not validate against a schema -
+          # Plesk does not publish one - only that the XML itself parses).
+          python3 -c "import xml.etree.ElementTree as ET; ET.parse('$EXTRACT_DIR/meta.xml'); print('meta.xml is well-formed XML')"
+
+      - name: Lint the PHP lifecycle scripts (php -l)
+        shell: bash
+        run: |
+          set -euo pipefail
+          if command -v php >/dev/null 2>&1; then
+            echo "php $(php -v | head -n1) found; linting lifecycle scripts."
+            for script in "$EXTRACT_DIR"/plib/scripts/*.php; do
+              php -l "$script"
+            done
+          else
+            echo "::warning::php is not available on this runner - pre-install.php/post-install.php/pre-uninstall.php were NOT syntax-checked here. Run 'php -l' on packaging/plesk/scripts/*.php locally or on a real Plesk host before relying on this package."
+          fi
+
+      - name: Upload the Plesk package artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: gulogulo-plesk-package
+          path: packaging/dist/gulogulo-*-plesk.zip
+          if-no-files-found: error

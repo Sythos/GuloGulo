@@ -13,11 +13,19 @@
  * `.tar.gz`. Target-specific bits (which operator scripts to copy in, which
  * systemd unit, which reverse-proxy config) stay in each target's own build
  * script.
+ *
+ * `createZipArchive` below is also shared infrastructure (used today by
+ * `packaging/plesk/build-plesk-package.ts`, which needs a real ZIP container
+ * with `meta.xml` at its root rather than a tarball): it is a minimal,
+ * dependency-free ZIP writer built on `node:zlib`'s `deflateRawSync`/`crc32`
+ * (both available in the Node >=26 this project already requires - no new
+ * npm dependency needed just to produce a ZIP).
  */
 
 import { spawnSync } from 'node:child_process';
-import { cp, mkdir, readFile, rm, stat, writeFile } from 'node:fs/promises';
-import { dirname, join } from 'node:path';
+import { cp, mkdir, readFile, readdir, rm, stat, writeFile } from 'node:fs/promises';
+import { dirname, join, relative } from 'node:path';
+import { crc32, deflateRawSync } from 'node:zlib';
 
 export function humanFileSize(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
@@ -170,4 +178,140 @@ export async function createTarball(options: {
 
 export async function cleanupStagingParent(stagingParent: string): Promise<void> {
   await rm(stagingParent, { recursive: true, force: true });
+}
+
+interface ZipFileEntry {
+  archivePath: string;
+  content: Buffer;
+}
+
+async function collectFilesRecursively(root: string, currentDir: string, out: ZipFileEntry[]): Promise<void> {
+  const entries = await readdir(currentDir, { withFileTypes: true });
+  // Sort for deterministic archive contents regardless of filesystem order.
+  entries.sort((a, b) => a.name.localeCompare(b.name));
+  for (const entry of entries) {
+    const absolutePath = join(currentDir, entry.name);
+    if (entry.isDirectory()) {
+      await collectFilesRecursively(root, absolutePath, out);
+    } else if (entry.isFile()) {
+      const content = await readFile(absolutePath);
+      const archivePath = relative(root, absolutePath).split('\\').join('/');
+      out.push({ archivePath, content });
+    }
+    // Symlinks and other special files are not expected in staged packaging
+    // output and are intentionally skipped.
+  }
+}
+
+function toDosDateTime(date: Date): { dosTime: number; dosDate: number } {
+  const year = Math.max(1980, date.getFullYear());
+  const dosTime = (date.getHours() << 11) | (date.getMinutes() << 5) | (Math.floor(date.getSeconds() / 2) & 0x1f);
+  const dosDate = ((year - 1980) << 9) | ((date.getMonth() + 1) << 5) | date.getDate();
+  return { dosTime, dosDate };
+}
+
+// Regular file, permission bits 0644, stored in a ZIP central directory
+// entry's "external file attributes" the way Unix-aware tools (and Plesk's
+// own extractor) expect: (unix mode << 16).
+const ZIP_UNIX_FILE_EXTERNAL_ATTRS = (0o100644 << 16) >>> 0;
+
+/**
+ * Creates a real ZIP archive (local file headers + central directory + end
+ * of central directory record - the format Plesk's extension installer
+ * requires) from every file under `sourceRoot`, with archive-relative paths
+ * matching each file's path relative to `sourceRoot`. Deflates each entry
+ * with `zlib.deflateRawSync`, falling back to "stored" (uncompressed) if
+ * deflating did not actually shrink the file. No external `zip` binary and
+ * no npm dependency - pure `node:zlib` + `node:buffer`.
+ */
+export async function createZipArchive(options: {
+  sourceRoot: string;
+  archivePath: string;
+  log: (message: string) => void;
+}): Promise<string> {
+  const { sourceRoot, archivePath, log } = options;
+
+  log(`Collecting files under ${sourceRoot} for the ZIP archive...`);
+  const files: ZipFileEntry[] = [];
+  await collectFilesRecursively(sourceRoot, sourceRoot, files);
+
+  const { dosTime, dosDate } = toDosDateTime(new Date());
+  const UTF8_NAMES_FLAG = 0x0800;
+
+  const localChunks: Buffer[] = [];
+  const centralChunks: Buffer[] = [];
+  let offset = 0;
+
+  for (const file of files) {
+    const nameBuffer = Buffer.from(file.archivePath, 'utf8');
+    const crc = crc32(file.content) >>> 0;
+    const deflated = deflateRawSync(file.content);
+    const useDeflate = deflated.length < file.content.length;
+    const method = useDeflate ? 8 : 0;
+    const storedContent = useDeflate ? deflated : file.content;
+
+    const localHeader = Buffer.alloc(30);
+    localHeader.writeUInt32LE(0x04034b50, 0);
+    localHeader.writeUInt16LE(20, 4); // version needed to extract
+    localHeader.writeUInt16LE(UTF8_NAMES_FLAG, 6);
+    localHeader.writeUInt16LE(method, 8);
+    localHeader.writeUInt16LE(dosTime, 10);
+    localHeader.writeUInt16LE(dosDate, 12);
+    localHeader.writeUInt32LE(crc, 14);
+    localHeader.writeUInt32LE(storedContent.length, 18);
+    localHeader.writeUInt32LE(file.content.length, 22);
+    localHeader.writeUInt16LE(nameBuffer.length, 26);
+    localHeader.writeUInt16LE(0, 28); // extra field length
+
+    localChunks.push(localHeader, nameBuffer, storedContent);
+
+    const centralHeader = Buffer.alloc(46);
+    centralHeader.writeUInt32LE(0x02014b50, 0);
+    centralHeader.writeUInt16LE((3 << 8) | 20, 4); // version made by: unix host, version 20
+    centralHeader.writeUInt16LE(20, 6); // version needed to extract
+    centralHeader.writeUInt16LE(UTF8_NAMES_FLAG, 8);
+    centralHeader.writeUInt16LE(method, 10);
+    centralHeader.writeUInt16LE(dosTime, 12);
+    centralHeader.writeUInt16LE(dosDate, 14);
+    centralHeader.writeUInt32LE(crc, 16);
+    centralHeader.writeUInt32LE(storedContent.length, 20);
+    centralHeader.writeUInt32LE(file.content.length, 24);
+    centralHeader.writeUInt16LE(nameBuffer.length, 28);
+    centralHeader.writeUInt16LE(0, 30); // extra field length
+    centralHeader.writeUInt16LE(0, 32); // file comment length
+    centralHeader.writeUInt16LE(0, 34); // disk number start
+    centralHeader.writeUInt16LE(0, 36); // internal file attributes
+    centralHeader.writeUInt32LE(ZIP_UNIX_FILE_EXTERNAL_ATTRS, 38);
+    centralHeader.writeUInt32LE(offset, 42);
+
+    centralChunks.push(centralHeader, nameBuffer);
+
+    offset += localHeader.length + nameBuffer.length + storedContent.length;
+  }
+
+  const centralDirectorySize = centralChunks.reduce((sum, chunk) => sum + chunk.length, 0);
+  const centralDirectoryOffset = offset;
+
+  const endOfCentralDirectory = Buffer.alloc(22);
+  endOfCentralDirectory.writeUInt32LE(0x06054b50, 0);
+  endOfCentralDirectory.writeUInt16LE(0, 4); // disk number
+  endOfCentralDirectory.writeUInt16LE(0, 6); // disk with central directory
+  endOfCentralDirectory.writeUInt16LE(files.length, 8);
+  endOfCentralDirectory.writeUInt16LE(files.length, 10);
+  endOfCentralDirectory.writeUInt32LE(centralDirectorySize, 12);
+  endOfCentralDirectory.writeUInt32LE(centralDirectoryOffset, 16);
+  endOfCentralDirectory.writeUInt16LE(0, 20); // comment length
+
+  const archiveBuffer = Buffer.concat([...localChunks, ...centralChunks, endOfCentralDirectory]);
+
+  await mkdir(dirname(archivePath), { recursive: true });
+  await writeFile(archivePath, archiveBuffer);
+
+  const archiveStats = await stat(archivePath);
+  log('Package build complete.');
+  log(`  archive: ${archivePath}`);
+  log(`  size:    ${humanFileSize(archiveStats.size)} (${archiveStats.size} bytes)`);
+  log(`  entries: ${files.length}`);
+
+  return archivePath;
 }

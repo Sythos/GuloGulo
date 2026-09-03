@@ -1,0 +1,37 @@
+# SPDX-License-Identifier: MIT
+# SPDX-FileCopyrightText: 2026 Sythos (https://www.sythos.net)
+# Author: Sythos (https://www.sythos.net)
+#
+# Gulo Gulo reverse proxy - nginx example, for the Plesk target. Plesk owns
+# and regenerates its own nginx/Apache vhost configuration; editing it
+# directly on disk is unsafe (Plesk overwrites manual edits on the next
+# "Apply" from its own UI/API). post-install.php NEVER applies this file
+# automatically - copy the block below into Plesk's own supported extension
+# point yourself, review it, and apply it when ready:
+#
+#   1. Plesk > Websites & Domains > <domain> > Apache & nginx Settings >
+#      "Additional nginx directives" (applies only to that domain). Paste
+#      the `location` block below there and click "OK"/"Apply".
+#   2. Or, scripted/repeatable installs via the Plesk CLI:
+#        plesk bin domain --update <domain> \
+#          -nginx-directives "$(cat gulogulo-proxy.conf.example)"
+#      (check `plesk bin domain --help` for the exact flag name on this
+#      Plesk version - it has moved between releases).
+#
+# Replace example.com with the real domain/subdomain that should serve
+# Gulo Gulo, and adjust the upstream port below if PORT in .env is not the
+# default 8080 (post-install.php writes a copy of this file into the
+# extension's app directory with the configured port substituted, as a
+# convenience only - it never touches Plesk's real nginx/Apache
+# configuration).
+
+location / {
+    proxy_pass http://127.0.0.1:8080/;
+    proxy_http_version 1.1;
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    proxy_set_header Upgrade $http_upgrade;
+    proxy_set_header Connection "upgrade";
+}
