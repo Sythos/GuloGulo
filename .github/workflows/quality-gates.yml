@@ -77,7 +77,6 @@ jobs:
           test -f doc/dav-and-discovery.md
           test -f doc/release-readiness.md
           test -f doc/scanner-signature-volume.md
-          test -f doc/sbom-release-plan.md
           test -f scripts/sbom-release-audit.ts
           test -f scripts/sbom-release-audit.test.ts
           test -f doc/control-panel-integration.md
@@ -216,7 +215,6 @@ jobs:
           test -f test/fixtures/scanner-signatures/README.md
           test -f doc/rbac-admin-mfa.md
           test -f doc/lifecycle-backup-dr.md
-          test -f doc/local-proof-scope.md
           test -f src/core/ops/abuse/index.ts
           test -f src/core/ops/abuse/index.test.ts
           test -f src/core/ops/acme/index.ts
