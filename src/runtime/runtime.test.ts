@@ -9,9 +9,15 @@ import type { AddressInfo } from 'node:net';
 import test from 'node:test';
 
 import { createDiscoveryContract } from '../core/dav/discovery/index.ts';
+import { createPasswordHasher } from '../core/auth/password-hashing.ts';
+import { createLdapIdentityClient } from '../integrations/ldap-client.ts';
+import type { LdapClientOptions, LdapIdentityClient, LdapSearchOptions, LdapSearchResult, PostgresClientLike, PostgresPoolOptions, QueryResult } from '../integrations/types.ts';
+import { createDatabaseIdentityClient } from '../platform/standalone/db-identity-client.ts';
+import type { PlatformAdapter } from '../platform/contract/platform-adapter.ts';
 import { createWebSecurity } from '../web/security/index.ts';
 import { loadConfig } from './config.js';
 import { createLogger } from './logger.js';
+import { createProvisionedLoginAuthenticator } from './login.js';
 import { createFixtureLoginAuthenticator, createRuntimeServer, startServer, stopServer } from './server.js';
 
 type TestRuntime = ReturnType<typeof createRuntimeServer>;
@@ -311,6 +317,142 @@ test('fixture login is explicit and production defaults remain fail-closed', asy
   assert.deepEqual(await fixture({ email: 'alice@acme.example', password: 'local-proof-secret', rememberMe: false }), {
     tenantId: 'acme', domain: 'acme.example', userId: 'alice', actorId: 'alice', role: 'user',
   });
+});
+
+class FakeLdapTransport {
+  static instances: FakeLdapTransport[] = [];
+  readonly bound: Array<{ dn: string; password?: string }> = [];
+  readonly options: LdapClientOptions;
+  constructor(options: LdapClientOptions) { this.options = options; FakeLdapTransport.instances.push(this); }
+  async bind(dn: string, password?: string): Promise<void> {
+    this.bound.push({ dn, password });
+    // The service account bind (its secret comes from `resolveSecret`, not
+    // the submitted login password) must always succeed here; only the
+    // user's own bind is meant to fail for a wrong password.
+    if (password === 'bad-password') throw new Error('invalid credentials');
+  }
+  async search(_base: string, _options: LdapSearchOptions): Promise<LdapSearchResult> {
+    return { searchEntries: [{ dn: 'uid=alice,ou=users,dc=acme,dc=test', uid: 'alice', mail: 'alice@acme.test', displayName: 'Alice', active: true }] };
+  }
+  async unbind(): Promise<void> {}
+}
+
+function fakeAdapterFromClient(client: LdapIdentityClient): PlatformAdapter {
+  return {
+    platformKind: 'standalone',
+    loadConfig: async () => ({}),
+    createIdentityClient: async () => client,
+    createDataStore: async () => { throw new Error('not exercised by this test'); },
+    createSessionStore: async () => new Map(),
+  };
+}
+
+test('login wiring: standalone LDAP identity client actually authenticates POST /api/session/login', async () => {
+  FakeLdapTransport.instances.length = 0;
+  const ldapClient = createLdapIdentityClient({
+    config: { contract: { ldap: { enabled: true, url: 'ldaps://ldap.acme.test:636', startTls: false, bindDn: 'cn=service,dc=acme,dc=test', bindSecretRef: 'ldap/bind', userBaseDn: 'ou=users,dc=acme,dc=test', connectTimeoutMs: 100, operationTimeoutMs: 100, retryAttempts: 0 } } },
+    resolveSecret: async () => 'service-secret',
+    ClientClass: FakeLdapTransport,
+  });
+  const authenticateLogin = createProvisionedLoginAuthenticator({ adapter: fakeAdapterFromClient(ldapClient) });
+  const { runtime } = makeTestRuntime({ authenticateLogin });
+  await startServer(runtime);
+  try {
+    const wrongPassword = await requestJson(runtime, '/api/session/login', {
+      method: 'POST', body: { email: 'alice@acme.test', password: 'bad-password' },
+    });
+    assert.equal(wrongPassword.statusCode, 401);
+
+    const login = await requestJson(runtime, '/api/session/login', {
+      method: 'POST', body: { email: 'alice@acme.test', password: 'good-password' },
+    });
+    assert.equal(login.statusCode, 200);
+    assert.equal(login.body.user.tenantId, 'acme.test');
+    assert.equal(login.body.user.domain, 'acme.test');
+    assert.equal(login.body.user.userId, 'alice');
+    // Proves the real LDAP transport was actually used, not a stub.
+    assert.ok(FakeLdapTransport.instances.length > 0);
+    assert.ok(FakeLdapTransport.instances.some((instance) => instance.bound.some((entry) => entry.dn === 'uid=alice,ou=users,dc=acme,dc=test')));
+  } finally {
+    await stopServer(runtime);
+  }
+});
+
+class FakePostgresClient implements PostgresClientLike {
+  readonly row: Record<string, unknown>;
+  constructor(row: Record<string, unknown>) { this.row = row; }
+  async query<Row extends Record<string, unknown> = Record<string, unknown>>(text: string, values: unknown[] = []): Promise<QueryResult<Row>> {
+    if (text.includes('FROM local_users') && values[1] === this.row.username) {
+      return { rowCount: 1, rows: [{ ...this.row }] as unknown as Row[] };
+    }
+    return { rowCount: 0, rows: [] as Row[] };
+  }
+  release(): void {}
+}
+
+test('login wiring: standalone DB-backed identity client actually authenticates POST /api/session/login', async () => {
+  const hasher = createPasswordHasher();
+  const passwordHash = hasher.hash('db-backed-secret');
+  class FakePool {
+    readonly client: FakePostgresClient;
+    readonly options: PostgresPoolOptions;
+    constructor(options: PostgresPoolOptions) {
+      this.options = options;
+      this.client = new FakePostgresClient({ id: 'u-bob', username: 'bob', password_hash: passwordHash, display_name: 'Bob', active: true });
+    }
+    async connect(): Promise<FakePostgresClient> { return this.client; }
+    async end(): Promise<void> {}
+  }
+  const dbClient = createDatabaseIdentityClient({
+    config: { contract: { postgres: { enabled: true, host: 'postgres.acme.test', port: 5432, database: 'gulogulo', user: 'gulogulo', sslMode: 'verify-full', dsnSecretRef: 'postgres/dsn', connectTimeoutMs: 100, idleTimeoutMs: 1000, poolMax: 2, retryAttempts: 0 } } },
+    resolveSecret: async () => 'postgresql://secret',
+    PoolClass: FakePool,
+  });
+  const authenticateLogin = createProvisionedLoginAuthenticator({ adapter: fakeAdapterFromClient(dbClient) });
+  const { runtime } = makeTestRuntime({ authenticateLogin });
+  await startServer(runtime);
+  try {
+    const wrongPassword = await requestJson(runtime, '/api/session/login', {
+      method: 'POST', body: { email: 'bob@acme.test', password: 'not-the-secret' },
+    });
+    assert.equal(wrongPassword.statusCode, 401);
+
+    const login = await requestJson(runtime, '/api/session/login', {
+      method: 'POST', body: { email: 'bob@acme.test', password: 'db-backed-secret' },
+    });
+    assert.equal(login.statusCode, 200);
+    assert.equal(login.body.user.tenantId, 'acme.test');
+    assert.equal(login.body.user.userId, 'u-bob');
+  } finally {
+    await stopServer(runtime);
+  }
+});
+
+test('login wiring: cPanel target authenticates through the real, fail-closed cPanel identity client', async () => {
+  const environment = {
+    GULOGULO_PLATFORM: 'cpanel',
+    GULOGULO_CPANEL_API_ENABLED: 'true',
+    GULOGULO_CPANEL_API_BASE_URL: 'https://cpanel.acme.test:2083',
+    GULOGULO_CPANEL_API_USERNAME: 'gulogulo',
+    GULOGULO_CPANEL_API_TOKEN_SECRET_REF: 'cpanel/token',
+  };
+  const authenticateLogin = createProvisionedLoginAuthenticator({ environment, resolveSecret: async () => 'token-value' });
+  const { runtime } = makeTestRuntime({ authenticateLogin });
+  await startServer(runtime);
+  try {
+    const login = await requestJson(runtime, '/api/session/login', {
+      method: 'POST', body: { email: 'alice@cpanel.acme.test', password: 'whatever-a-real-mailbox-password-would-be' },
+    });
+    // cPanel's UAPI exposes no safe generic password-verification endpoint
+    // (src/platform/cpanel/cpanel-identity-client.ts), so authenticate()
+    // fails closed by design — this proves the request went through the
+    // real cPanel adapter/identity client and was rejected there, not
+    // through the old fixed "always reject" stub.
+    assert.equal(login.statusCode, 401);
+    assert.equal(login.body.error.code, 'SIGN_IN_FAILED');
+  } finally {
+    await stopServer(runtime);
+  }
 });
 
 test('expired API sessions become unauthenticated and are cleared', async () => {

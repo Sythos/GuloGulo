@@ -6,7 +6,8 @@
 
 import { loadConfig } from './config.js';
 import { createLogger } from './logger.js';
-import { createRuntimeServer, startServer, stopServer } from './server.js';
+import { createProvisionedLoginAuthenticator } from './login.js';
+import { createFixtureLoginAuthenticator, createRuntimeServer, startServer, stopServer } from './server.js';
 
 let runtime;
 let stopping = false;
@@ -20,10 +21,26 @@ function loggerOptions(config) {
   };
 }
 
+/**
+ * `GULOGULO_FIXTURE_MODE=true` keeps using the explicit local-proof fixture
+ * authenticator, unchanged, so existing fixture-driven tests/smoke checks
+ * keep working. Every other run resolves the real `PlatformAdapter` for the
+ * configured target (`GULOGULO_PLATFORM`, default `standalone`) and calls its
+ * real identity client instead of the fixed "always reject" stub this used to
+ * fall back to.
+ */
+function resolveLoginAuthenticator(config, logger, environment = process.env) {
+  if (environment.GULOGULO_FIXTURE_MODE === 'true') {
+    return createFixtureLoginAuthenticator(environment);
+  }
+  return createProvisionedLoginAuthenticator({ environment, config, logger });
+}
+
 async function main() {
   const config = loadConfig();
   const logger = createLogger(loggerOptions(config));
-  runtime = createRuntimeServer({ config, logger });
+  const authenticateLogin = resolveLoginAuthenticator(config, logger);
+  runtime = createRuntimeServer({ config, logger, authenticateLogin });
   await startServer(runtime);
 
   const shutdown = async (signal) => {
