@@ -12,7 +12,11 @@
 # `systemctl daemon-reload && systemctl enable --now gulogulo`.
 #
 # Placeholders substituted by postinst: @INSTALL_DIR@, @SERVICE_USER@,
-# @SERVICE_GROUP@, @NODE_BIN@, @READ_WRITE_PATH@
+# @SERVICE_GROUP@, @RUNTIME_BIN@, @READ_WRITE_PATH@
+#
+# @RUNTIME_BIN@ resolves to either the Node.js or the Bun binary, per the
+# install's own choice recorded in .runtime (see install.sh/switch-runtime.sh)
+# - both accept the same --env-file flag used below.
 #
 # Lives under packaging/shared/ (rather than packaging/cpanel/) because it
 # is conceptually the same systemd unit gulogulo-rpm.service describes, just
@@ -30,7 +34,7 @@ Type=simple
 User=@SERVICE_USER@
 Group=@SERVICE_GROUP@
 WorkingDirectory=@INSTALL_DIR@
-ExecStart=@NODE_BIN@ --env-file=@INSTALL_DIR@/.env @INSTALL_DIR@/dist/server/src/runtime/index.js
+ExecStart=@RUNTIME_BIN@ --env-file=@INSTALL_DIR@/.env @INSTALL_DIR@/dist/server/src/runtime/index.js
 Restart=on-failure
 RestartSec=5
 NoNewPrivileges=true

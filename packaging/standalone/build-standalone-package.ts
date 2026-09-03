@@ -67,12 +67,29 @@ async function main(): Promise<void> {
   try {
     await stageCommonApplicationFiles({ repoRoot, stagingRoot, version, log });
 
-    log('Staging operator scripts (install.sh, upgrade.sh, uninstall.sh, run-migrations.mjs)...');
-    for (const scriptName of ['install.sh', 'upgrade.sh', 'uninstall.sh', 'run-migrations.mjs', 'gulogulo.service.example']) {
+    log('Staging operator scripts (install.sh, upgrade.sh, uninstall.sh, switch-runtime.sh, run-migrations.mjs)...');
+    for (const scriptName of [
+      'install.sh',
+      'upgrade.sh',
+      'uninstall.sh',
+      'switch-runtime.sh',
+      'switch-to-node.sh',
+      'switch-to-bun.sh',
+      'run-migrations.mjs',
+      'gulogulo.service.example',
+    ]) {
       await cp(join(packagingScriptsDirectory, scriptName), join(stagingRoot, scriptName));
     }
 
-    for (const executable of ['install.sh', 'upgrade.sh', 'uninstall.sh', 'run-migrations.mjs']) {
+    for (const executable of [
+      'install.sh',
+      'upgrade.sh',
+      'uninstall.sh',
+      'switch-runtime.sh',
+      'switch-to-node.sh',
+      'switch-to-bun.sh',
+      'run-migrations.mjs',
+    ]) {
       await chmod(join(stagingRoot, executable), 0o755);
     }
 

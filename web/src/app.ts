@@ -862,10 +862,36 @@ function createWebApplication(documentRef = globalThis.document, windowRef = glo
     }
   }
 
+  async function loadSystemInfo() {
+    // /healthz is public and deliberately safe (see doc/observability.md):
+    // no credential, token, path, or mailbox content ever appears in it, so
+    // this is fetched directly rather than through api.request (which
+    // targets /api and adds a CSRF token this unauthenticated endpoint does
+    // not need).
+    try {
+      const response = await windowRef.fetch('/healthz', { headers: { accept: 'application/json' } });
+      const payload = await response.json();
+      const runtimeLabel = payload.runtime === 'bun' ? 'Bun' : 'Node.js';
+      const runtimeText = payload.runtime_version ? `${runtimeLabel} ${payload.runtime_version}` : runtimeLabel;
+      const badge = get('#runtime-badge-label');
+      if (badge) badge.textContent = runtimeLabel;
+      const version = get('#about-version');
+      if (version) version.textContent = asString(payload.version, '—');
+      const build = get('#about-build');
+      if (build) build.textContent = asString(payload.build_digest, '—');
+      const runtime = get('#about-runtime');
+      if (runtime) runtime.textContent = runtimeText;
+    } catch {
+      // Best-effort only: an unreachable /healthz never blocks the rest of
+      // the app, it just leaves the badge/dialog at their placeholder text.
+    }
+  }
+
   function bindEvents() {
     get('#login-form')?.addEventListener('submit', submitLogin);
     get('#compose-button')?.addEventListener('click', () => get('#compose-dialog')?.showModal());
     get('#preferences-button')?.addEventListener('click', () => get('#preferences-dialog')?.showModal());
+    get('#about-button')?.addEventListener('click', () => get('#about-dialog')?.showModal());
     get('#compose-form')?.addEventListener('submit', submitCompose);
     get('#preferences-form')?.addEventListener('submit', submitPreferences);
     get('#logout-button')?.addEventListener('click', async () => {
@@ -918,6 +944,7 @@ function createWebApplication(documentRef = globalThis.document, windowRef = glo
   async function start() {
     renderTimeZone();
     bindEvents();
+    void loadSystemInfo();
     setLoginBusy(true);
     documentRef.body.dataset.authState = 'checking';
     try {

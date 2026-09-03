@@ -108,7 +108,20 @@ async function main(): Promise<void> {
     }
     await cp(join(standaloneScriptsDirectory, 'run-migrations.mjs'), join(stagingRoot, 'run-migrations.mjs'));
 
-    for (const executable of ['install.sh', 'upgrade.sh', 'uninstall.sh', 'run-migrations.mjs']) {
+    log('Staging the shared runtime-switch scripts (packaging/shared/switch-runtime.sh + wrappers)...');
+    for (const scriptName of ['switch-runtime.sh', 'switch-to-node.sh', 'switch-to-bun.sh']) {
+      await cp(join(sharedDirectory, scriptName), join(stagingRoot, scriptName));
+    }
+
+    for (const executable of [
+      'install.sh',
+      'upgrade.sh',
+      'uninstall.sh',
+      'run-migrations.mjs',
+      'switch-runtime.sh',
+      'switch-to-node.sh',
+      'switch-to-bun.sh',
+    ]) {
       await chmod(join(stagingRoot, executable), 0o755);
     }
 

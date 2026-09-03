@@ -137,6 +137,9 @@ jobs:
             install.sh \
             upgrade.sh \
             uninstall.sh \
+            switch-runtime.sh \
+            switch-to-node.sh \
+            switch-to-bun.sh \
             run-migrations.mjs \
             gulogulo.service.template \
             gulogulo-proxy.conf.example \
@@ -150,7 +153,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          for script in install.sh upgrade.sh uninstall.sh; do
+          for script in install.sh upgrade.sh uninstall.sh switch-runtime.sh switch-to-node.sh switch-to-bun.sh; do
             bash -n "$INSTALL_DIR/$script"
             echo "$script: syntax OK"
           done
@@ -161,6 +164,7 @@ jobs:
           grep -q 'npm ci'              "$INSTALL_DIR/install.sh"
           grep -q 'systemctl disable --now' "$INSTALL_DIR/uninstall.sh"
           grep -q 'node_modules'        "$INSTALL_DIR/uninstall.sh"
+          grep -q '@RUNTIME_BIN@'       "$INSTALL_DIR/gulogulo.service.template"
           echo "operator script content checks: OK"
 
       - name: Stub systemctl (no running init system in this container)
@@ -181,10 +185,14 @@ jobs:
           GULOGULO_NON_INTERACTIVE: "1"
         run: |
           set -euo pipefail
-          chmod +x "$INSTALL_DIR"/install.sh "$INSTALL_DIR"/upgrade.sh "$INSTALL_DIR"/uninstall.sh "$INSTALL_DIR"/run-migrations.mjs
+          chmod +x "$INSTALL_DIR"/install.sh "$INSTALL_DIR"/upgrade.sh "$INSTALL_DIR"/uninstall.sh "$INSTALL_DIR"/run-migrations.mjs \
+            "$INSTALL_DIR"/switch-runtime.sh "$INSTALL_DIR"/switch-to-node.sh "$INSTALL_DIR"/switch-to-bun.sh
           "$INSTALL_DIR/install.sh" --non-interactive
 
           id gulogulo
+          test -f "$INSTALL_DIR/.runtime"
+          [ "$(cat "$INSTALL_DIR/.runtime")" = "node" ]
+          grep -q '^ExecStart=/usr/bin/node ' /etc/systemd/system/gulogulo.service
           test -f "$INSTALL_DIR/.env"
           STAT="$(stat -c '%a %U:%G' "$INSTALL_DIR/.env")"
           [ "$STAT" = "640 root:gulogulo" ] || { echo "Unexpected .env mode/owner: $STAT" >&2; exit 1; }

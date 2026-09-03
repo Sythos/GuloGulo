@@ -53,20 +53,21 @@ trap 'rm -rf "$EXTRACT_DIR"' EXIT
 log "Extracting new package to $EXTRACT_DIR"
 tar --force-local -xzf "$NEW_TARBALL" -C "$EXTRACT_DIR" --strip-components=1
 
-log "Copying application files, preserving .env and any other local files"
+log "Copying application files, preserving .env, .runtime, and any other local files"
 if command -v rsync >/dev/null 2>&1; then
-  rsync -a --exclude '.env' --exclude 'node_modules' "$EXTRACT_DIR"/ "$INSTALL_DIR"/
+  rsync -a --exclude '.env' --exclude '.runtime' --exclude 'node_modules' "$EXTRACT_DIR"/ "$INSTALL_DIR"/
 else
   # No rsync available: replace only the directories/files the package ships.
   for entry in dist web assets src package.json package-lock.json LICENSE VERSION \
                .env.example install.sh upgrade.sh uninstall.sh run-migrations.mjs \
-               gulogulo.service.example; do
+               gulogulo.service.example switch-runtime.sh switch-to-node.sh switch-to-bun.sh; do
     [ -e "$EXTRACT_DIR/$entry" ] || continue
     rm -rf "${INSTALL_DIR:?}/${entry}"
     cp -r "$EXTRACT_DIR/$entry" "$INSTALL_DIR/$entry"
   done
 fi
-chmod +x "$INSTALL_DIR"/install.sh "$INSTALL_DIR"/upgrade.sh "$INSTALL_DIR"/uninstall.sh "$INSTALL_DIR"/run-migrations.mjs
+chmod +x "$INSTALL_DIR"/install.sh "$INSTALL_DIR"/upgrade.sh "$INSTALL_DIR"/uninstall.sh "$INSTALL_DIR"/run-migrations.mjs \
+  "$INSTALL_DIR"/switch-runtime.sh "$INSTALL_DIR"/switch-to-node.sh "$INSTALL_DIR"/switch-to-bun.sh
 
 cd "$INSTALL_DIR"
 log "Installing production dependencies (npm ci --omit=dev)..."
@@ -75,8 +76,12 @@ npm ci --omit=dev --no-audit --no-fund
 log "Applying database migrations..."
 node --env-file=.env "$INSTALL_DIR/run-migrations.mjs"
 
+RUNTIME="node"
+[ -f "$INSTALL_DIR/.runtime" ] && RUNTIME="$(cat "$INSTALL_DIR/.runtime")"
+
 log "Upgrade files staged in $INSTALL_DIR."
-log "Restart the service to run the new version, e.g.:"
+log "Restart the service to run the new version under $RUNTIME (unchanged from before this upgrade;"
+log "run ./switch-to-node.sh or ./switch-to-bun.sh first if you want to change it), e.g.:"
 log "  systemctl restart gulogulo   # if managed by systemd"
 log "  pm2 restart gulogulo         # if managed by pm2"
 log "This script never restarts the process itself."

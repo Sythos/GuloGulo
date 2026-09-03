@@ -59,6 +59,13 @@ INSTALL_DIR="${ARGS[1]%/}"
 command -v node >/dev/null 2>&1 || fail "Node.js is required but was not found in PATH."
 command -v tar >/dev/null 2>&1 || fail "tar is required but was not found in PATH."
 
+# Keep using whichever runtime this install already chose (see
+# switch-runtime.sh to change it); Node.js above is always required
+# regardless, since npm and the migration runner never run under bun.
+RUNTIME="node"
+[ -f "$INSTALL_DIR/.runtime" ] && RUNTIME="$(cat "$INSTALL_DIR/.runtime")"
+command -v "$RUNTIME" >/dev/null 2>&1 || fail "$RUNTIME (this install's configured runtime, see .runtime) was not found in PATH."
+
 TIMESTAMP="$(date +%Y%m%d%H%M%S)"
 BACKUP_PATH="${INSTALL_DIR}.backup-${TIMESTAMP}.tar.gz"
 
@@ -71,19 +78,21 @@ trap 'rm -rf "$EXTRACT_DIR"' EXIT
 log "Extracting new package to $EXTRACT_DIR"
 tar --force-local -xzf "$NEW_TARBALL" -C "$EXTRACT_DIR" --strip-components=1
 
-log "Copying application files, preserving .env and any other local files"
+log "Copying application files, preserving .env, .runtime, and any other local files"
 if command -v rsync >/dev/null 2>&1; then
-  rsync -a --exclude '.env' --exclude 'node_modules' "$EXTRACT_DIR"/ "$INSTALL_DIR"/
+  rsync -a --exclude '.env' --exclude '.runtime' --exclude 'node_modules' "$EXTRACT_DIR"/ "$INSTALL_DIR"/
 else
   for entry in dist web assets src package.json package-lock.json LICENSE VERSION \
                .env.example install.sh upgrade.sh uninstall.sh run-migrations.mjs \
-               gulogulo.service.template gulogulo-proxy.conf.example; do
+               gulogulo.service.template gulogulo-proxy.conf.example \
+               switch-runtime.sh switch-to-node.sh switch-to-bun.sh; do
     [ -e "$EXTRACT_DIR/$entry" ] || continue
     rm -rf "${INSTALL_DIR:?}/${entry}"
     cp -r "$EXTRACT_DIR/$entry" "$INSTALL_DIR/$entry"
   done
 fi
-chmod +x "$INSTALL_DIR"/install.sh "$INSTALL_DIR"/upgrade.sh "$INSTALL_DIR"/uninstall.sh "$INSTALL_DIR"/run-migrations.mjs
+chmod +x "$INSTALL_DIR"/install.sh "$INSTALL_DIR"/upgrade.sh "$INSTALL_DIR"/uninstall.sh "$INSTALL_DIR"/run-migrations.mjs \
+  "$INSTALL_DIR"/switch-runtime.sh "$INSTALL_DIR"/switch-to-node.sh "$INSTALL_DIR"/switch-to-bun.sh
 
 cd "$INSTALL_DIR"
 log "Installing production dependencies (npm ci --omit=dev)..."
@@ -92,8 +101,8 @@ npm ci --omit=dev --no-audit --no-fund
 log "Applying database migrations..."
 node --env-file=.env "$INSTALL_DIR/run-migrations.mjs"
 
-log "Re-rendering and re-enabling the systemd unit (postinst's own behavior, run unconditionally on every configure)..."
-NODE_BIN="$(command -v node)"
+log "Re-rendering and re-enabling the systemd unit for $RUNTIME (postinst's own behavior, run unconditionally on every configure)..."
+RUNTIME_BIN="$(command -v "$RUNTIME")"
 if ! id "$SERVICE_USER" >/dev/null 2>&1; then
   useradd --system --no-create-home --shell /usr/sbin/nologin "$SERVICE_USER"
   log "Created system user '$SERVICE_USER'."
@@ -102,7 +111,7 @@ sed \
   -e "s#@INSTALL_DIR@#$INSTALL_DIR#g" \
   -e "s#@SERVICE_USER@#$SERVICE_USER#g" \
   -e "s#@SERVICE_GROUP@#$SERVICE_GROUP#g" \
-  -e "s#@NODE_BIN@#$NODE_BIN#g" \
+  -e "s#@RUNTIME_BIN@#$RUNTIME_BIN#g" \
   -e "s#@READ_WRITE_PATH@#$READ_WRITE_PATH#g" \
   "$INSTALL_DIR/gulogulo.service.template" > "$UNIT_PATH"
 chmod 0644 "$UNIT_PATH"

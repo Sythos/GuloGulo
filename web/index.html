@@ -114,6 +114,9 @@ Author: Sythos (https://www.sythos.net)
           <p class="connection-state" id="connection-state" role="status" aria-live="polite">
             Connecting…
           </p>
+          <button class="button button-quiet runtime-badge" id="about-button" type="button" title="About Gulo Gulo">
+            <span id="runtime-badge-label">…</span>
+          </button>
           <button class="button button-quiet" id="preferences-button" type="button">
             Preferences
           </button>
@@ -402,6 +405,29 @@ Author: Sythos (https://www.sythos.net)
           <button class="button button-primary" type="submit">Save preferences</button>
         </div>
       </form>
+    </dialog>
+
+    <dialog class="modal" id="about-dialog" aria-labelledby="about-heading">
+      <div class="modal-form">
+        <div class="modal-heading">
+          <div>
+            <p class="eyebrow">Gulo Gulo</p>
+            <h2 id="about-heading">About</h2>
+          </div>
+          <button class="icon-button" type="button" data-close-dialog="about-dialog" aria-label="Close about dialog">×</button>
+        </div>
+        <dl class="about-details">
+          <div><dt>Version</dt><dd id="about-version">—</dd></div>
+          <div><dt>Build</dt><dd id="about-build">—</dd></div>
+          <div><dt>Runtime</dt><dd id="about-runtime">—</dd></div>
+        </dl>
+        <p class="form-hint">
+          This panel never includes a credential, token, or secret. Copy it when opening an issue.
+        </p>
+        <div class="modal-actions">
+          <button class="button button-quiet" type="button" data-close-dialog="about-dialog">Close</button>
+        </div>
+      </div>
     </dialog>
 
     <noscript>

@@ -121,11 +121,24 @@ const API_GET_ROUTES = new Map<string, ApiResourceName>([
   ['/api/discovery', 'discovery'],
 ]);
 
+// process.versions.bun only exists when the process is actually running
+// under Bun (https://bun.com), never under Node.js - this is Bun's own
+// documented way to detect itself at runtime, not a Gulo Gulo convention.
+// Safe to expose: it is build/runtime metadata, the same trust level as
+// version/build_digest below, never a secret or a path.
+function runtimeMetadata() {
+  const bunVersion = (process.versions as Record<string, string | undefined>).bun;
+  return bunVersion
+    ? { runtime: 'bun', runtime_version: bunVersion }
+    : { runtime: 'node', runtime_version: process.versions.node };
+}
+
 function buildMetadata(config: RuntimeConfig) {
   const contract = config?.contract ?? config ?? {};
   return {
     version: contract.buildVersion ?? config?.buildVersion ?? '0.1.5',
     build_digest: contract.buildDigest ?? config?.buildDigest ?? 'development',
+    ...runtimeMetadata(),
   };
 }
 
