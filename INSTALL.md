@@ -1,4 +1,4 @@
-# Read before using Gulo Gulo
+# Gulo Gulo Installation Guide
 
 <!--
 SPDX-License-Identifier: MIT
@@ -19,7 +19,7 @@ configured or exercised the item in the field. The field work belongs here and
 in the release evidence record.
 
 Gulo Gulo's distribution model is defined by
-[ADR-002](../../ADR-002-gulogulo-packaging-and-distribution-targets.md), which
+[ADR-002](../ADR-002-gulogulo-packaging-and-distribution-targets.md), which
 superseded the Docker/OCI-native model of ADR-001. Read ADR-002 first if you
 need the rationale; this document only covers the practical hand-off.
 
@@ -107,6 +107,16 @@ compiled server (`dist/server/`), web assets (`web/`), static assets
 `package.json`/`package-lock.json`/`LICENSE`/`.env.example`, a `VERSION`
 file, and the operator scripts below.
 
+Also writes a `gulogulo-<version>-standalone.tar.gz.sha256` sidecar file
+next to the archive (standard `sha256sum` format) and updates the
+aggregated `packaging/dist/checksums.txt` covering every package currently
+in that directory. Verify a downloaded/generated archive before trusting it:
+
+```bash
+cd packaging/dist
+sha256sum -c gulogulo-<version>-standalone.tar.gz.sha256
+```
+
 ### Install (`install.sh [--non-interactive]`)
 
 1. Requires `node` in `PATH` and Node.js ≥ 26 (checked from
@@ -159,6 +169,14 @@ node --experimental-strip-types packaging/cpanel/build-cpanel-package.ts
 
 Same staging mechanism as standalone, plus the cPanel-specific operator
 scripts. Produces `packaging/dist/gulogulo-<version>-cpanel.tar.gz`.
+
+Also writes a `.sha256` sidecar and updates `packaging/dist/checksums.txt`,
+same as standalone. Verify the archive before trusting it:
+
+```bash
+cd packaging/dist
+sha256sum -c gulogulo-<version>-cpanel.tar.gz.sha256
+```
 
 ### Install (`install.sh [--non-interactive] [--dry-run] [--yes]`)
 
@@ -244,6 +262,14 @@ floor has not been verified against a real Plesk instance** — see
 REST endpoints this package's identity adapter calls (only
 `GET /api/v2/domains` is confirmed; the mail-accounts and server-probe
 endpoints are the most reasonable guess, not verified).
+
+Also writes a `.sha256` sidecar and updates `packaging/dist/checksums.txt`,
+same as the other two targets. Verify the ZIP before uploading it to Plesk:
+
+```bash
+cd packaging/dist
+sha256sum -c gulogulo-<version>-plesk.zip.sha256
+```
 
 ### Install — run by Plesk itself, not by the operator directly
 

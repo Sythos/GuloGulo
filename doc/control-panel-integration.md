@@ -1,7 +1,5 @@
 # Optional Plesk and cPanel integration
 
-> **⚠️ Documento in transizione.** Le sezioni di questo documento che descrivono deployment container/Docker/Kubernetes (volumi, socket, sidecar, rollout blue/green) si riferiscono al modello precedente, abbandonato — vedi [ADR-002](../../ADR-002-gulogulo-packaging-and-distribution-targets.md). Il contenuto su protocolli, sicurezza applicativa, e logica di business resta valido; gli aspetti di deployment container-specifici non sono più applicabili e saranno riscritti quando necessario.
-
 <!--
 SPDX-License-Identifier: MIT
 SPDX-FileCopyrightText: 2026 Sythos (https://www.sythos.net)
@@ -64,7 +62,7 @@ CONTROL_PANEL_SYNC_MODE=pull      # pull, webhook, or hybrid
 When enabled, the provider, HTTPS base URL, external account reference, and
 credential secret reference are required. `webhook` and `hybrid` also require
 a webhook secret reference. URLs cannot contain userinfo, query strings, or
-fragments. Secret values never belong in Compose, JSON configuration, source,
+fragments. Secret values never belong in `.env`, JSON configuration, source,
 logs, API payloads, or MCP output.
 
 `src/integrations/control-panel.ts` is the provider-neutral contract. It
@@ -121,7 +119,7 @@ Before enabling a real panel integration, the provider should:
 7. verify that disabling the integration leaves Gulo Gulo policy and content
    fully usable;
 8. record a rollback and credential-rotation procedure in
-   `READ_BEFORE_USE.md`.
+   `../INSTALL.md`.
 
 The repository currently proves the configuration and binding boundary only.
 It does not claim a live Plesk/cPanel API connector or automatic DNS mutation.

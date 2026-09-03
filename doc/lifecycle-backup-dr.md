@@ -1,7 +1,5 @@
 # Retention, backups, restore, and operational observability
 
-> **⚠️ Documento in transizione.** Le sezioni di questo documento che descrivono deployment container/Docker/Kubernetes (volumi, socket, sidecar, rollout blue/green) si riferiscono al modello precedente, abbandonato — vedi [ADR-002](../../ADR-002-gulogulo-packaging-and-distribution-targets.md). Il contenuto su protocolli, sicurezza applicativa, e logica di business resta valido; gli aspetti di deployment container-specifici non sono più applicabili e saranno riscritti quando necessario.
-
 <!--
 SPDX-License-Identifier: MIT
 SPDX-FileCopyrightText: 2026 Sythos (https://www.sythos.net)
@@ -12,7 +10,7 @@ M7 is the point where Gulo Gulo starts treating deletion, recovery, and
 operations as first-class product behavior. The modules in this guide are
 deliberately adapter-friendly contracts. They can be tested on a workstation
 without mounting a user's mailbox, while still making the dangerous decisions
-explicit before a PostgreSQL, object-storage, Docker, or Kubernetes adapter is
+explicit before a PostgreSQL, object-storage, or platform-specific adapter is
 connected.
 
 ## The M7 map
@@ -26,7 +24,8 @@ src/core/backup/
 └── backup-contract.ts         user/provider scope, encrypted manifests, restore
 
 src/core/observability/
-├── log-policy.ts               bounded Docker/journald/sidecar rotation
+├── log-policy.ts               bounded log-rotation policy (Docker json-file
+│                                driver, journald, or a sidecar collector)
 ├── structured-event.ts         redacted audit and operational envelopes
 └── alert-policy.ts             deterministic health and capacity alerts
 ```
@@ -113,9 +112,11 @@ the raw key is never serialized in the manifest. A user download is represented
 by an opaque HTTPS link with a short expiry and revocation state. The link is a
 capability for the already-authorized archive, not a new login mechanism.
 
-The storage adapter should place archives outside the live container filesystem
-and apply its own encryption-at-rest, access logging, lifecycle, and malware
-scanning policy. A failed checksum or expired/revoked link must fail closed.
+The storage adapter should place archives outside the live application
+process's own filesystem (outside the install/extension directory on any of
+the three packaging targets) and apply its own encryption-at-rest, access
+logging, lifecycle, and malware scanning policy. A failed checksum or
+expired/revoked link must fail closed.
 
 ## Provider backup and restore
 
@@ -134,8 +135,9 @@ The initial operational objectives are recorded as data rather than hidden in a
 runbook: RPO and RTO are supplied, retention is at least 28 days, and a DR
 rehearsal record must show integrity and privacy checks before it is marked
 passed. Production operations still need to connect this evidence to the actual
-external volume, object store, PostgreSQL dump, mailbox snapshot, and Kubernetes
-cutover process.
+external volume/directory, object store, PostgreSQL dump, mailbox snapshot, and
+each packaging target's real restore/upgrade-rollback procedure (see
+`doc/upgrade-and-migration.md`).
 
 ## Log rotation and audit-safe events
 
@@ -151,9 +153,13 @@ tokens, cookies, bodies, payloads, private key material, and other content-like
 fields while retaining request IDs, tenant/user scope, actor role, operation,
 result, and timestamps. These events are metadata, not a second mailbox.
 
-When Docker is used, the deployment may render the bounded `json-file`
-options, forward structured records to journald, or use a sidecar. The choice
-belongs to the deployment profile; the application contract stays the same.
+On a Docker-based deployment, the profile may render the bounded `json-file`
+options, forward structured records to journald, or use a sidecar. On any of
+the three current packaging targets (standalone, cPanel, Plesk), the process
+runs under systemd (or the operator's own supervisor on standalone) and the
+same policy shape applies to journald or file-based log rotation instead. The
+choice belongs to the deployment profile; the application contract stays the
+same.
 
 ## Alerts and monitoring
 
@@ -168,36 +174,51 @@ state, metrics, backup rehearsal status, retention lag, and patch status inside
 the caller's tenant scope. It must not expose archive bodies, passwords, session
 cookies, raw log lines, factor secrets, or a provider's other tenant data.
 
-## External volume and container lifecycle
+## External storage and install-directory lifecycle
 
-The live container is disposable. Mailbox data, DAV data, PostgreSQL data,
+The application's own install/extension directory is disposable and must not
+be where user data lives. Mailbox data, DAV data, PostgreSQL data,
 configuration exports, and backup archives belong on explicitly configured
-external volumes or external services. A replacement container must mount the
-same validated volume set and pass readiness checks before it receives traffic.
+external volumes/directories or external services, entirely outside the
+directory that each target's install/upgrade script backs up, replaces, or
+(on uninstall) removes — see `../INSTALL.md` and
+`doc/upgrade-and-migration.md` for what each of the three packaging targets
+actually replaces in place.
 
-For a Docker deployment, the restore rehearsal should prove:
+For any of the three targets, the restore rehearsal should prove:
 
-1. a fresh container can be started with no user data in its writable layer;
-2. the external volume is mounted with the expected owner and permissions;
+1. a fresh install can be started with no user data inside its own
+   install/extension directory;
+2. the external storage (mailbox, DAV, PostgreSQL) is mounted or reachable
+   with the expected owner and permissions;
 3. an archive or database snapshot can be verified before import;
 4. tenant/user scope remains unchanged after restore;
-5. the old container can be drained and removed without deleting the volume.
+5. the previous install can be rolled back to (from its own pre-upgrade
+   backup) without deleting the external storage.
 
-Kubernetes blue/green migration and zero-downtime cutover remain a later
-deployment milestone. M7 supplies the retention, backup, integrity, and
-observability contracts that the migration controller will call.
+A Docker or Kubernetes deployment remains a separately justified,
+non-baseline option per ADR-002 and would follow the equivalent
+container/rolling-update version of the same proof. M7 supplies the
+retention, backup, integrity, and observability contracts that any of these
+restore or upgrade procedures call.
 
 ## Still requiring production adapters
 
 The following work is intentionally visible rather than implied:
 
-- external-volume snapshots and encryption-key management;
-- PostgreSQL, LDAP, mailbox, DAV, and object-store backup connectors;
+- external-volume/directory snapshots and encryption-key management;
+- PostgreSQL, LDAP/panel identity, mailbox, DAV, and object-store backup
+  connectors;
 - a scheduled worker with durable lease storage;
-- Docker log driver/journald or sidecar installation and retention rehearsal;
+- log rotation/retention installation and rehearsal for the target's actual
+  log destination (journald/systemd on cPanel and Plesk, the operator's own
+  choice on standalone, or Docker's log driver on a non-baseline container
+  deployment);
 - alert delivery, paging, and incident ownership;
-- a real restore rehearsal with measured RPO/RTO;
-- Kubernetes blue/green migration, rollback, and zero-downtime verification.
+- a real restore rehearsal with measured RPO/RTO on each of the three
+  packaging targets;
+- each target's real in-place upgrade and rollback rehearsal (see
+  `doc/upgrade-and-migration.md`).
 
 This keeps M7 honest: the repository now has executable boundaries for deletion,
 backup, restore, logs, and alerts, while the infrastructure-specific evidence

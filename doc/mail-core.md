@@ -1,7 +1,5 @@
 # M3 mail core and delivery safety
 
-> **⚠️ Documento in transizione.** Le sezioni di questo documento che descrivono deployment container/Docker/Kubernetes (volumi, socket, sidecar, rollout blue/green) si riferiscono al modello precedente, abbandonato — vedi [ADR-002](../../ADR-002-gulogulo-packaging-and-distribution-targets.md). Il contenuto su protocolli, sicurezza applicativa, e logica di business resta valido; gli aspetti di deployment container-specifici non sono più applicabili e saranno riscritti quando necessario.
-
 <!--
 SPDX-License-Identifier: MIT
 SPDX-FileCopyrightText: 2026 Sythos (https://www.sythos.net)
@@ -218,8 +216,8 @@ and `monitor` contexts and is always metadata-only; a master cannot use it to
 read a user's mailbox or message body.
 
 The production queue adapter must be persistent on the external mail volume.
-Replacing the application container or switching blue/green slots must not
-discard the Postfix queue.
+An in-place upgrade on any of the three packaging targets (see
+`doc/upgrade-and-migration.md`) must not discard the Postfix queue.
 
 ## IMAP IDLE notifications
 
@@ -300,7 +298,9 @@ rehearsals remain operational verification work.
 1. Select current stable, architecture-compatible Postfix, Dovecot, Rspamd, and
    ClamAV images or packages and record their immutable digests.
 2. Mount the external `mail-data` volume and persistent Postfix queue outside
-   the application container lifecycle.
+   the Gulo Gulo application's own install/extension directory lifecycle, so
+   an in-place upgrade or reinstall on any packaging target never touches
+   mail data.
 3. Configure Dovecot as the mailbox/UID/quota source of truth and expose only
    LMTP/IMAP interfaces required by the deployment.
 4. Configure Postfix submission authentication against LDAP through the

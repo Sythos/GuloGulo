@@ -1,7 +1,5 @@
 # API and MCP operations
 
-> **⚠️ Documento in transizione.** Le sezioni di questo documento che descrivono deployment container/Docker/Kubernetes (volumi, socket, sidecar, rollout blue/green) si riferiscono al modello precedente, abbandonato — vedi [ADR-002](../../ADR-002-gulogulo-packaging-and-distribution-targets.md). Il contenuto su protocolli, sicurezza applicativa, e logica di business resta valido; gli aspetti di deployment container-specifici non sono più applicabili e saranno riscritti quando necessario.
-
 <!--
 SPDX-License-Identifier: MIT
 SPDX-FileCopyrightText: 2026 Sythos (https://www.sythos.net)
@@ -78,14 +76,31 @@ operator-only control endpoint is needed, it gets its own threat model,
 allowlist, authentication, approval/audit trail, idempotency key, timeout,
 rollback behavior, and negative tests before it becomes callable.
 
-## Upgrade and migration command contract
+## Upgrade and migration command contract (removed, pre-ADR-002)
 
-M9 now provides a deterministic provider-only migration control-plane contract.
-It is intentionally separate from the tenant monitoring API/MCP described
-above. The tenant surface stays read-only; the provider surface may execute
-only the allowlisted deployment operations below after a real deployment
-controller supplies its own threat model, approval workflow, and runtime
-credentials.
+**⚠️ This section describes the Docker/Kubernetes blue-green control-plane
+API that `src/core/upgrade/{rollout,control-plane,rehearsal}.ts` used to
+model in code. Those three files predate
+[ADR-002](adr/ADR-002-gulogulo-packaging-and-distribution-targets.md) and
+have since been **removed** from the repository.**
+None of the three current packaging targets (standalone, cPanel, Plesk) ever
+called into this module or exposed these routes; each defines its own simple
+in-place upgrade script (backup, replace files, migrate, restart) instead —
+see `doc/upgrade-and-migration.md` for the actual, current upgrade mechanism
+and its own honesty note on this same removed code. The provider-only
+HTTP/MCP contract below is kept only as historical documentation of that
+removed module, not as a claim that a Docker-to-Docker or Kubernetes
+blue/green upgrade path is wired into any shipped package today. Only
+`src/core/upgrade/compatibility.ts` (the `expand`/`backfill`/`switch`/
+`contract` migration-phase vocabulary) remains a valid reference.
+
+M9 provided a deterministic provider-only migration control-plane contract
+for that superseded container-swap model. It was intentionally separate from
+the tenant monitoring API/MCP described above. The tenant surface stays
+read-only; a provider surface built on this removed module could have
+executed only the allowlisted deployment operations below, and would still
+need a real deployment controller supplying its own threat model, approval
+workflow, and runtime credentials before any of this could be resurrected.
 
 The command names are stable across Docker Compose and Kubernetes. A controller
 behind the API/MCP maps them to the selected deployment driver; it never passes
@@ -148,7 +163,10 @@ gulogulo.upgrade.plan({
 The tool must return a plan or a non-revealing validation error. It must not
 start an upgrade merely because a plan was requested.
 
-## Docker-to-Docker replacement
+## Docker-to-Docker replacement (removed, pre-ADR-002)
+
+Part of the same removed control-plane module described above — not the
+current upgrade mechanism for any packaging target.
 
 The deployment controller uses the external `runtime-state`, `mail-data`,
 `dav-data`, and `backup-data` volumes plus external PostgreSQL and LDAP. It
@@ -178,7 +196,10 @@ The controller may internally use a deployment-specific Compose or container
 runtime command, but the public API/MCP request contains declarative fields
 only. Every action is idempotent and audited.
 
-## Kubernetes zero-downtime preparation
+## Kubernetes zero-downtime preparation (removed, pre-ADR-002)
+
+Also part of the same removed control-plane module — not the current
+upgrade mechanism for any packaging target.
 
 The Kubernetes driver uses two Deployments, `gulogulo-blue` and
 `gulogulo-green`, and one stable Service/Gateway target. Both versions share

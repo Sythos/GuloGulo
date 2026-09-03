@@ -1,6 +1,6 @@
 # Shared scanner-signature volume
 
-> **⚠️ Documento in transizione.** Le sezioni di questo documento che descrivono deployment container/Docker/Kubernetes (volumi, socket, sidecar, rollout blue/green) si riferiscono al modello precedente, abbandonato — vedi [ADR-002](../../ADR-002-gulogulo-packaging-and-distribution-targets.md). Il contenuto su protocolli, sicurezza applicativa, e logica di business resta valido; gli aspetti di deployment container-specifici non sono più applicabili e saranno riscritti quando necessario.
+> **⚠️ Documento in transizione.** Le sezioni di questo documento che descrivono deployment container/Docker/Kubernetes (volumi, socket, sidecar, rollout blue/green) si riferiscono al modello precedente, abbandonato — vedi [ADR-002](adr/ADR-002-gulogulo-packaging-and-distribution-targets.md). Il contenuto su protocolli, sicurezza applicativa, e logica di business resta valido; gli aspetti di deployment container-specifici non sono più applicabili e saranno riscritti quando necessario.
 
 <!--
 SPDX-License-Identifier: MIT
@@ -131,4 +131,4 @@ offline fixture. A provider still has to choose the supported Rspamd/ClamAV
 feed sources, verify their licensing and signatures, implement the host-side
 single-writer job, rehearse rollback, set filesystem ownership/SELinux or
 AppArmor policy, and wire alert delivery. Those checks belong in
-`READ_BEFORE_USE.md`; they are not hidden inside the container image.
+`../INSTALL.md`; they are not hidden inside the container image.

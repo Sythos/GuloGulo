@@ -172,7 +172,7 @@ The normal `npm test` command runs the same suite before the rest of the
 repository gates. The tests prove policy behavior and redaction. They do not
 claim that LDAP, PostgreSQL, a live authenticator, or a live mail queue is
 available; those integrations belong to their own disposable contract and
-Docker/Actions checks.
+GitHub Actions checks.
 
 ## API and MCP guidance
 

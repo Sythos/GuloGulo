@@ -1,7 +1,5 @@
 # Release readiness and the M10 boundary
 
-> **⚠️ Documento in transizione.** Il workflow `container-release.yml` descritto nella sezione "Artifact provenance in GitHub Actions" qui sotto non esiste più nel repository — è stato rimosso in una milestone precedente. Le sezioni di questo documento che descrivono deployment container/Docker/Kubernetes (volumi, socket, sidecar, rollout blue/green) si riferiscono al modello precedente, abbandonato — vedi [ADR-002](../../ADR-002-gulogulo-packaging-and-distribution-targets.md). Il contenuto su protocolli, sicurezza applicativa, e logica di business resta valido; gli aspetti di deployment container-specifici non sono più applicabili e saranno riscritti quando necessario.
-
 <!--
 SPDX-License-Identifier: MIT
 SPDX-FileCopyrightText: 2026 Sythos (https://www.sythos.net)
@@ -30,7 +28,7 @@ The M10 gate covers five evidence domains:
 | Security | tenant/RBAC boundaries, session and CSRF contracts, MFA primitives, HTML sanitization, abuse limits, secret-free audit events, and the SBOM/digest release workflow | provider secret rotation, real TLS/LDAP/DB configuration, vulnerability disposition, registry policy, and clean-consumer release verification |
 | Data | quota allocation, 28-day purge, backup authorization, encrypted archive shape, idempotent lifecycle operations | an actual restore, deletion runbook execution, external-volume snapshots, measured RPO/RTO |
 | Interoperability | SMTP/IMAP/IDLE, Sieve, DAV object semantics, discovery, ICS/vCard, and timezone contracts | vendor client matrix and real protocol endpoints |
-| Operations | health, metrics, logging, alerts, queue visibility, Docker/Kubernetes migration contracts, and the shared read-only scanner-signature boundary | host-side scanner feed publication, Docker host replacement, Kubernetes cutover, rollback, and incident tabletop |
+| Operations | health, metrics, logging, alerts, queue visibility, each target's per-package in-place upgrade script, and the shared read-only scanner-signature boundary | host-side scanner feed publication, a real upgrade/rollback rehearsal on each of the three packaging targets, and incident tabletop |
 | Governance | role and delegation policy, default-deny master access, optional Plesk/cPanel tenant-tool boundary, read-only API/MCP, ADRs, documentation inventory, and GitHub Artifact Attestations/SBOM workflow for trusted releases | owner approval of the deployment and disaster-recovery runbooks plus any provider-specific panel adapter |
 
 The source of truth for the checklist remains Section 30 of `GULOGULO.md`.
@@ -38,53 +36,37 @@ The repository copy is deliberately an evidence boundary, not a second product
 specification.
 The root README now tracks repository implementation only: checked entries have
 code or a tested contract, while deployment and consumer verification are
-listed in [READ_BEFORE_USE.md](READ_BEFORE_USE.md). The release evidence object
+listed in [INSTALL.md](../INSTALL.md). The release evidence object
 continues to distinguish verified, contract, conditional, and deferred
 external evidence.
 
-LP8 packages this boundary in
+LP8 packaged this boundary in
 [`release/lp8-local-proof-bundle.json`](../release/lp8-local-proof-bundle.json)
-and [`doc/lp8-evidence-operator.md`](lp8-evidence-operator.md). The bundle
-indexes the local proof manifests, fixtures, operator notes, and CI
-provenance. It remains safe to share because it contains
-synthetic references and sanitized links only; live provider evidence and
-provider-specific Plesk/cPanel adapters remain outside this checkout. The
-repository now contains the manual field lane plus an automatic numeric-tag
-SBOM/container release lane; its field, registry, and clean-consumer
-verification still belongs to the operator.
+and a `doc/lp8-evidence-operator.md` operator note. That note has since been
+archived to `old_docs/lp-proof-records/lp8-evidence-operator.md` as part of the
+ADR-002 packaging move; the JSON bundle still exists but several of its
+indexed `doc/...` paths (including `lp8-evidence-operator.md`,
+`local-proof-scope.md`, and `local-proof-topology.md`) are now stale pointers
+into files that no longer live under `doc/`. Live provider evidence and
+provider-specific Plesk/cPanel adapters remain outside this checkout.
 
-## Artifact provenance in GitHub Actions
+## Artifact provenance: retired GHCR/container release lane
 
-Trusted push builds generate signed GitHub Artifact Attestations for every OCI
-tar archive produced by the image build gate. The reusable quality
-workflow uses `actions/attest-build-provenance@v4` (the build-provenance wrapper
-around `actions/attest`) with the minimum OIDC and attestation permissions, then
-verifies every generated subject with the GitHub CLI before
-the remaining release checks continue. Pull-request validation still runs all
-tests and image checks, but does not mint attestations from untrusted PR code.
-
-The workflow intentionally attests the exact OCI archive produced by Buildx,
-not a floating tag. This binds the provenance record to the immutable digest of
-the tested artifact. A maintainer can verify a downloaded archive from a
-connected checkout with:
-
-```text
-gh attestation verify PATH/TO/gulogulo-<image>-ubuntu-26.04.oci.tar --repo Sythos/GuloGulo
-```
-
-The `container-release.yml` workflow generates an SPDX SBOM with
-`anchore/sbom-action@v0.24.0`, binds it to the exact GHCR digest with
-`actions/attest@v4`, and keeps the separate build-provenance wrapper
-`actions/attest-build-provenance@v4`. A numeric semver tag whose value matches
-`package.json.version` starts the final `linux/amd64` build directly;
-after verification the workflow creates or updates the matching GitHub Release
-with the SBOM and digest-bound evidence. The trusted manual `main` publish path
-remains available for rehearsals. Verify a registry subject with the OCI form
-documented by GitHub (`gh attestation verify
-oci://REGISTRY/IMAGE@sha256:DIGEST --repo Sythos/GuloGulo
---predicate-type https://spdx.dev/Document/v2.3`). Artifact attestations do not
-replace image vulnerability scanning, SBOM review, signatures, or the external
-deployment rehearsal.
+**⚠️ This section describes a mechanism that no longer exists.**
+`.github/workflows/container-release.yml` has been removed from the
+repository, along with the GHCR image publication, SBOM/attestation, and
+numeric-tag release automation it used to run. See the archived
+`old_docs/lp-proof-records/sbom-release-plan.md` for the retired mechanism and
+the security principles (checksum, provenance, attestation, least-privilege
+permissions) that still need to be readapted to the cPanel/Plesk/standalone
+packages — that readaptation has not happened yet, and none of the three
+current package workflows (`.github/workflows/package-{standalone,cpanel,
+plesk}.yml`) produce an SBOM or a signed attestation today. The current, real
+CI gates for a release are `.github/workflows/quality-gates.yml` (repository
+entry points, MIT/SPDX headers, and the full test suite) plus the three
+packaging workflows, which build and — for standalone only — actually install
+and boot the package; see `../INSTALL.md` for the exact verification
+depth of each target.
 
 ## Running the gate
 
@@ -217,16 +199,18 @@ records to the release commit or release system:
 
 The detailed hand-off procedure and the account-deletion, backup/restore,
 scanner, migration, rollback, and incident/DR runbooks are collected in
-[READ_BEFORE_USE.md](READ_BEFORE_USE.md).
+[INSTALL.md](../INSTALL.md).
 
-1. Docker `linux/amd64` image digest, SBOM, and signature.
+1. Package build evidence per target: the standalone install-and-boot proof
+   from `package-standalone.yml`, and the cPanel/Plesk dry-run/structural
+   package checks (see `../INSTALL.md`).
 2. TLS/ACME issuance, renewal, expiry alert, LDAP bind, and PostgreSQL backup
    evidence.
 3. Postfix, Rspamd, ClamAV, Dovecot, Sieve, CalDAV, CardDAV, and autodiscovery
    client results.
 4. Encrypted backup, tenant/user restore, purge, and account deletion records.
-5. Docker replacement and Kubernetes blue/green timings, including rollback
-   and connection-drain evidence.
+5. Each target's real in-place upgrade and rollback rehearsal timings (see
+   `doc/upgrade-and-migration.md`), including the pre-upgrade backup restore.
 6. Approved RPO/RTO, incident, and disaster-recovery runbooks.
 
 When these records exist, replace the corresponding `deferred` or `contract`

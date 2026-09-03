@@ -12,12 +12,17 @@ testing, or operating Gulo Gulo, not for a generated API catalogue. Every new
 component gets its own practical notes here before it is treated as part of the
 normal workflow.
 
+## Getting started
+
+For install, setup, and deployment hand-off instructions across the
+standalone, cPanel, and Plesk targets, see the root
+[INSTALL.md](../INSTALL.md) — the production hand-off sheet: repository code
+that is done, field verification that belongs to providers and testers,
+runbook definitions, evidence rules, and the remaining implementation
+backlog.
+
 ## What is documented today
 
-- [Read before use](READ_BEFORE_USE.md) — the production hand-off sheet:
-  repository code that is done, field verification that belongs to providers
-  and testers, runbook definitions, evidence rules, and the remaining
-  implementation backlog.
 - [Configuration](configuration.md) — the versioned configuration contract,
   precedence rules, safe defaults, and secret references.
 - [Secret store and rotation](secret-store-and-rotation.md) — allowlisted
@@ -50,9 +55,10 @@ normal workflow.
   Let's Encrypt and generic ACME configuration, renewal/reload health,
   metadata-only rate and abuse controls, and fail-closed Compose readiness.
 - [Upgrade and migration operations](upgrade-and-migration.md) — the
-  provider-only API/MCP command contract, expand/backfill/switch/contract
-  compatibility window, Docker-to-Docker replacement, connection drain, and
-  Kubernetes blue/green cutover and rollback runbook.
+  expand/backfill/switch/contract database-migration discipline shared by all
+  three packaging targets, and each target's own in-place upgrade script
+  (standalone, cPanel, Plesk) since ADR-002 replaced the earlier
+  Docker-to-Docker/Kubernetes blue-green cutover model.
 - [Web foundation](web-foundation.md) — the HTML5/TypeScript shell, secure
   session and CSRF contracts, message sanitization, attachment policy,
   timezone display, realtime events, and browser/API boundaries.
@@ -63,45 +69,19 @@ normal workflow.
 - [Release readiness](release-readiness.md) — the Section 30 evidence object,
   hardening review matrix, sanitized provider API/MCP read surface, and the
   honest boundary between a usable contract preview and a production service.
-- [LP0 local proof scope](local-proof-scope.md) — the reserved local names,
-  synthetic-data rule, offline runtime boundary, disposable service inventory,
-  architecture targets, and the explicit deferral of the external phase.
-- [LP1 isolated local topology](local-proof-topology.md) — the private dual-stack
-  Compose network, disposable CA/DNS utilities, IPv4/IPv6 loopback-only
-  application bindings, external-capable named volumes, restart continuity
-  check, and Docker proof harness.
-- [LP2 local LDAP and PostgreSQL proof](lp2-local-services.md) — the
-  offline dual-stack dependency lab, verified LDAPS and PostgreSQL TLS,
-  deterministic fixtures, disposable volumes, and the Compose rehearsal.
-- [LP3 local mail proof](lp3-local-mail.md) — the offline Postfix, Dovecot,
-  Rspamd, and ClamAV boundary with IMAP IDLE, LMTP, Sieve, queue/retry/bounce,
-  explicit aliases, and persistent restart-safe volumes.
-- [LP4 local web, DAV, and discovery proof](lp4-local-web.md) — the
-  authenticated HTML5 shell, secure session and CSRF boundary, tenant-scoped
-  CalDAV/CardDAV contracts, discovery resources, dual-stack Compose proof,
-  runtime credentials, and restart continuity checks.
-- [LP5 local operations and capacity proof](lp5-local-operations-capacity.md) —
-  fail-closed patch status, typed abuse and observability controls, bounded
-  web/DAV/mail/IMAP-IDLE measurements, resource limits, and the AMD64 CI
-  workflow.
-- [LP6 local backup and disaster-recovery proof](lp6-local-backup-dr.md) —
-  deterministic encrypted backup metadata, isolated restore, 28-day retention,
-  holds, idempotent purge, and the provider evidence boundary.
-- [LP7 local upgrade proof](lp7-local-upgrade.md) — Docker replacement and
-  Kubernetes blue/green rehearsal, readiness and drain gates, queue/IDLE
-  continuity, rollback, external volumes, and the AMD64-first workflow.
-- [LP8 evidence bundle and operator handbook](lp8-evidence-operator.md) — the
-  reproducible hand-off manifest, exact base digest, checksums, safe-sharing
-  rules, API/MCP examples, CI provenance, and the temporary TypeScript bridge
-  inventory owned by LP9.
 - [Server TypeScript boundary](server-typescript.md) — compiler settings,
   build and test commands, compiled production startup, and the temporary
   compatibility-bridge rule.
-- [SBOM and signed-image release workflow](sbom-release-plan.md) — retired
-  GHCR/container mechanism kept as a historical reference for its release
-  security principles (checksum, provenance, attestations, permissions,
-  consumer verification) to be readapted to the cPanel/Plesk/standalone
-  packages.
+
+The LP0–LP9 local-proof documents (`local-proof-scope.md`,
+`local-proof-topology.md`, `lp2-local-services.md` through
+`lp9-local-release.md`, `compose-and-fixtures.md`, `container-patching.md`)
+and the retired `sbom-release-plan.md` GHCR/container-release write-up
+described the earlier Docker/OCI-native deployment model (ADR-001). They have
+been archived to `old_docs/lp-proof-records/` now that
+[ADR-002](adr/ADR-002-gulogulo-packaging-and-distribution-targets.md) has
+replaced that model with the standalone/cPanel/Plesk packages; see
+`../INSTALL.md` for the current, real deployment and verification story.
 
 The project is still intentionally small. The documents describe real behavior
 only: DAV, administration, lifecycle, backup, observability, ACME, abuse, and
@@ -109,5 +89,6 @@ upgrade are deterministic contract boundaries until their external adapters and
 rehearsals are in place. The release-readiness guide collects those limits in a
 machine-checkable decision, but production deployment still needs a persistent
 DAV backend, authenticated HTTP method adapter, real ACME/DNS operations,
-measured RPO/RTO, an actual Docker/Kubernetes cutover, and standard-client
+measured RPO/RTO, a real in-place upgrade rehearsal on each of the three
+packaging targets (see `doc/upgrade-and-migration.md`), and standard-client
 interoperability rehearsal before it is treated as a complete external service.

@@ -1,7 +1,5 @@
 # External identity and application state
 
-> **⚠️ Documento in transizione.** Le sezioni di questo documento che descrivono deployment container/Docker/Kubernetes (volumi, socket, sidecar, rollout blue/green) si riferiscono al modello precedente, abbandonato — vedi [ADR-002](../../ADR-002-gulogulo-packaging-and-distribution-targets.md). Il contenuto su protocolli, sicurezza applicativa, e logica di business resta valido; gli aspetti di deployment container-specifici non sono più applicabili e saranno riscritti quando necessario.
-
 <!--
 SPDX-License-Identifier: MIT
 SPDX-FileCopyrightText: 2026 Sythos (https://www.sythos.net)
@@ -84,9 +82,9 @@ issued; PostgreSQL RLS is the second, database-side boundary.
 The tenant's gross quota is immutable after bootstrap. User allocations are
 locked and summed in the same transaction that creates or changes an
 allocation. An allocation is rejected when the sum would exceed the gross
-quota. This check is performed by the Gulo Gulo container's application-state
-adapter and repeated by PostgreSQL constraints/RLS; it is not delegated to a
-client or a host-side script.
+quota. This check is performed by the Gulo Gulo application's state adapter
+and repeated by PostgreSQL constraints/RLS; it is not delegated to a client or
+a host-side script.
 
 ## Failure behavior
 

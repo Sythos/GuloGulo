@@ -7,7 +7,7 @@ Author: Sythos (https://www.sythos.net)
 -->
 
 This is the operator manual for upgrading an existing Gulo Gulo install in
-place. Since [ADR-002](../../ADR-002-gulogulo-packaging-and-distribution-targets.md),
+place. Since [ADR-002](adr/ADR-002-gulogulo-packaging-and-distribution-targets.md),
 there is no blue/green upgrade based on a container swap: each of the three
 packaging targets — standalone, cPanel, Plesk — defines its own in-place
 upgrade strategy (backup, then replace application files, then migrate,
@@ -49,24 +49,22 @@ especially since none of the three targets currently roll back schema
 changes automatically — the only rollback mechanism is restoring the
 pre-upgrade backup each target's upgrade script takes (see below).
 
-**Honesty note on `src/core/upgrade/`:** the repository still contains a
-formal TypeScript module (`src/core/upgrade/compatibility.ts`,
-`rollout.ts`, `control-plane.ts`, `rehearsal.ts`) that models this same
-`MIGRATION_PHASES` vocabulary plus a full provider-only HTTP/MCP API
+**Honesty note on `src/core/upgrade/`:** the repository used to also contain
+a formal TypeScript module (`rollout.ts`, `control-plane.ts`,
+`rehearsal.ts`) that modeled this same `MIGRATION_PHASES` vocabulary plus a
+full provider-only HTTP/MCP API
 (`/provider/upgrade/{capabilities,plan,preflight,prepare,status,cutover,
 rollback,finalize}`) for orchestrating a Docker-to-Docker or Kubernetes
 blue/green cutover, with digest-pinned source/target versions and an
-idempotent operation state machine. **None of the three packaged upgrade
-paths described below call into that module.** It predates ADR-002 and
-modeled the container-swap upgrade approach ADR-001 originally specified;
-ADR-002 replaced that with the simple in-place scripts in this document.
-Treat `rollout.ts`, `control-plane.ts`, and `rehearsal.ts` as legacy code
-describing a superseded deployment model — only the phase vocabulary
-(`MIGRATION_PHASES`: `expand`/`backfill`/`switch`/`contract`) is still
-directly relevant migration-authoring guidance today. Do not build new
-tooling against the Docker/Kubernetes control-plane API surface without
-first confirming it is still wanted; nothing in the current packaging
-(`packaging/{standalone,cpanel,plesk}/`) depends on it.
+idempotent operation state machine. None of the three packaged upgrade
+paths described below ever called into that module — it predated ADR-002
+and modeled the container-swap upgrade approach ADR-001 originally
+specified; ADR-002 replaced that with the simple in-place scripts in this
+document. `rollout.ts`, `control-plane.ts`, and `rehearsal.ts` have since
+been **removed** as dead code describing that superseded deployment model.
+Only `src/core/upgrade/compatibility.ts` remains: it still provides the
+`MIGRATION_PHASES` vocabulary (`expand`/`backfill`/`switch`/`contract`) and
+is the directly relevant migration-authoring guidance today.
 
 ## Standalone: `upgrade.sh <new-tarball.tar.gz> <install-dir> [--non-interactive]`
 
@@ -130,7 +128,7 @@ logic.
 
 **This has not been verified against a real Plesk host and should be treated
 as an assumption, not a documented fact**, consistent with the other
-unverified Plesk specifics called out in `doc/READ_BEFORE_USE.md` and
+unverified Plesk specifics called out in `../INSTALL.md` and
 `src/platform/plesk/README.md`. Before relying on this in production:
 
 - confirm on a real Plesk instance whether an extension update actually
@@ -142,7 +140,7 @@ unverified Plesk specifics called out in `doc/READ_BEFORE_USE.md` and
   failed Plesk extension update has no automatic rollback path;
 - back up `plib/app/.env` yourself before triggering any Plesk extension
   update, for the same reason called out for uninstall in
-  `doc/READ_BEFORE_USE.md` — the exact conditions under which Plesk touches
+  `../INSTALL.md` — the exact conditions under which Plesk touches
   or removes `plib/` around an update are unverified.
 
 ## Audit and failure behavior
@@ -153,7 +151,7 @@ today — they log to stdout only (`[upgrade] ...` / `[gulogulo post-install]
 log output alongside the backup path, source/target versions, and the
 migration runner's own summary line (`schema at <version> (<n> migration(s)
 applied this run)`), and retain it per the evidence hand-off rules in
-`doc/READ_BEFORE_USE.md`.
+`../INSTALL.md`.
 
 All three scripts fail closed on error (`set -euo pipefail` in the bash
 scripts; explicit non-zero exits with `fail()` in the PHP hooks) — a failed

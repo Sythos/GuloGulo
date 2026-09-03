@@ -1,7 +1,5 @@
 # Web foundation: browser shell, sessions, and realtime contracts
 
-> **⚠️ Documento in transizione.** Le sezioni di questo documento che descrivono deployment container/Docker/Kubernetes (volumi, socket, sidecar, rollout blue/green) si riferiscono al modello precedente, abbandonato — vedi [ADR-002](../../ADR-002-gulogulo-packaging-and-distribution-targets.md). Il contenuto su protocolli, sicurezza applicativa, e logica di business resta valido; gli aspetti di deployment container-specifici non sono più applicabili e saranno riscritti quando necessario.
-
 <!--
 SPDX-License-Identifier: MIT
 SPDX-FileCopyrightText: 2026 Sythos (https://www.sythos.net)
@@ -39,10 +37,13 @@ npm run test:web
 ```
 
 `typescript` is an exact, lockfile-resolved development dependency. The build
-emits `web/dist/app.js`; `dist/` is ignored by Git and is rebuilt in CI and in
-the Docker image. The runtime image installs development dependencies only
-long enough to compile the browser asset, then runs `npm prune --omit=dev`.
-The source is intentionally JavaScript-compatible while API types settle, so
+emits `web/dist/app.js`; `dist/` is ignored by Git and is rebuilt in CI and by
+each packaging build (`packaging/{standalone,cpanel,plesk}/build-*-package.ts`,
+via the shared `packaging/shared/stage-application.ts`). The browser asset is
+compiled during packaging, before the package is installed, so the installed
+package never needs development dependencies on the target host; `install.sh`
+(or the Plesk PHP hooks) runs `npm ci --omit=dev` directly. The source is
+intentionally JavaScript-compatible while API types settle, so
 the initial file has a narrowly documented `@ts-nocheck` marker. That marker is
 not a licence to skip API design: shared request and response types are a
 follow-up hardening task once the server routes are implemented.

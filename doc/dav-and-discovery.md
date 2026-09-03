@@ -259,10 +259,12 @@ node --experimental-strip-types web/test/web-shell.test.ts
 ```
 
 `npm test` includes all of the above contract tests. The GitHub quality gate
-also checks the explicit entry points, MIT/SPDX headers, tenant-scope denial
-markers, and the Ubuntu 26.04 LTS amd64 Docker build. Docker is not required
-for the focused Node checks, but the Compose gate remains authoritative for
-the image.
+(`.github/workflows/quality-gates.yml`) also checks the explicit repository
+entry points, MIT/SPDX headers, and tenant-scope denial markers, on an Ubuntu
+`ubuntu-latest` runner. There is no Docker build or Compose gate in the
+current packaging model; the standalone, cPanel, and Plesk package workflows
+(`.github/workflows/package-{standalone,cpanel,plesk}.yml`) are the
+authoritative install/build checks — see `../INSTALL.md`.
 
 ## What is deliberately still ahead
 

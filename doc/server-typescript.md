@@ -26,8 +26,11 @@ npm run test:lp2
 
 `build:server` writes generated JavaScript and declarations below
 `dist/server/`. That directory is build output and is deliberately ignored by
-Git. The production Docker image performs this build before development
-dependencies are pruned, then starts the compiled runtime with:
+Git. Each of the three packaging builds
+(`packaging/{standalone,cpanel,plesk}/build-*-package.ts`, via the shared
+`packaging/shared/stage-application.ts`) performs this build and ships the
+compiled output; the installer then runs `npm ci --omit=dev` and starts the
+compiled runtime with:
 
 ```text
 node dist/server/src/runtime/index.js
