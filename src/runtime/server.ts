@@ -66,11 +66,13 @@ export interface RuntimeServer {
 const JSON_HEADERS = {
   'cache-control': 'no-store',
   'content-type': 'application/json; charset=utf-8',
+  'cross-origin-resource-policy': 'same-origin',
   'x-content-type-options': 'nosniff',
 };
 const METRICS_HEADERS = {
   'cache-control': 'no-store',
   'content-type': 'text/plain; version=0.0.4; charset=utf-8',
+  'cross-origin-resource-policy': 'same-origin',
   'x-content-type-options': 'nosniff',
 };
 const STATIC_SECURITY_HEADERS = {
