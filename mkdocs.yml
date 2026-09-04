@@ -16,6 +16,32 @@ copyright: MIT licensed
 docs_dir: docs
 site_dir: site
 
+nav:
+  - Home: index.md
+  - Install and setup: install.md
+  - Guide:
+      - Overview: guide/index.md
+      - Configuration: guide/configuration.md
+      - Server TypeScript boundary: guide/server-typescript.md
+      - Web foundation: guide/web-foundation.md
+      - External identity and PostgreSQL: guide/identity-and-postgres.md
+      - Mail core and delivery safety: guide/mail-core.md
+      - CalDAV, CardDAV, and discovery: guide/dav-and-discovery.md
+      - RBAC, administration, and MFA: guide/rbac-admin-mfa.md
+      - Storage and quotas: guide/storage-and-quotas.md
+      - Retention, backup, and restore: guide/lifecycle-backup-dr.md
+      - Runtime and observability: guide/observability.md
+      - Secret store and rotation: guide/secret-store-and-rotation.md
+      - Scanner signature volume: guide/scanner-signature-volume.md
+      - Abuse controls and production readiness: guide/abuse-deployment.md
+      - Optional Plesk and cPanel integration: guide/control-panel-integration.md
+      - API and MCP operations: guide/api-and-mcp.md
+      - Upgrade and migration operations: guide/upgrade-and-migration.md
+      - Release readiness: guide/release-readiness.md
+  - Architecture Decision Records:
+      - "ADR-001: Runtime and frontend architecture": adr/ADR-001-gulogulo-runtime-and-frontend-architecture.md
+      - "ADR-002: Packaging and distribution targets": adr/ADR-002-gulogulo-packaging-and-distribution-targets.md
+
 theme:
   name: material
   custom_dir: overrides
@@ -28,6 +54,10 @@ theme:
   features:
     - navigation.instant
     - navigation.tracking
+    - navigation.sections
+    - navigation.top
+    - navigation.indexes
+    - toc.follow
     - content.code.copy
     - search.suggest
     - search.share
@@ -37,4 +67,7 @@ extra_css:
 
 markdown_extensions:
   - admonition
+  - toc:
+      permalink: true
   - pymdownx.superfences
+  - tables
