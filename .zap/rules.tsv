@@ -16,4 +16,4 @@
 # is enforced server-side (src/web/security/csrf.ts, CSRF_HEADER_NAME) and
 # is exercised by src/web/security/security.test.ts - a hidden input on a
 # form that never POSTs would be decorative, not a real second control.
-10202	IGNORE
+10202	IGNORE	.*
