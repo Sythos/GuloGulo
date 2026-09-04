@@ -21,10 +21,9 @@ Author: Sythos (https://www.sythos.net)
 
 Gulo Gulo is a mail-first, tenant-isolated groupware platform, distributed as
 cPanel, Plesk, and standalone packages built from the same TypeScript core
-(see [ADR-002](doc/adr/ADR-002-gulogulo-packaging-and-distribution-targets.md)).
-The guiding animal is the wolverine (*Gulo gulo*). Human-facing text uses
-**Gulo Gulo**; file names, paths, package names, and other machine-facing
-identifiers use **gulogulo** without spaces.
+(see ADR-002). The guiding animal is the wolverine (*Gulo gulo*).
+Human-facing text uses **Gulo Gulo**; file names, paths, package names, and
+other machine-facing identifiers use **gulogulo** without spaces.
 
 The complete license text is available in [LICENSE](LICENSE).
 
@@ -81,9 +80,6 @@ being re-enabled once a signing key exists (see
   distro's native package for a target that isn't distro-specific. This
   target was never RPM/DEB-based, so it is unaffected by the signing-key
   gap above.
-
-See [ADR-002](doc/adr/ADR-002-gulogulo-packaging-and-distribution-targets.md)
-for the full architectural rationale.
 
 ## Quickstart
 

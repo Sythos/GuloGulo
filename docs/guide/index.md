@@ -77,10 +77,9 @@ The LP0–LP9 local-proof documents (`local-proof-scope.md`,
 `lp9-local-release.md`, `compose-and-fixtures.md`, `container-patching.md`)
 and the retired `sbom-release-plan.md` GHCR/container-release write-up
 described the earlier Docker/OCI-native deployment model (ADR-001). They have
-been archived to `old_docs/lp-proof-records/` now that
-[ADR-002](../adr/ADR-002-gulogulo-packaging-and-distribution-targets.md) has
-replaced that model with the standalone/cPanel/Plesk packages; see
-`../INSTALL.md` for the current, real deployment and verification story.
+been archived to `old_docs/lp-proof-records/` now that ADR-002 has replaced
+that model with the standalone/cPanel/Plesk packages; see `../INSTALL.md` for
+the current, real deployment and verification story.
 
 The project is still intentionally small. The documents describe real behavior
 only: DAV, administration, lifecycle, backup, observability, abuse, and

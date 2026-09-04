@@ -7,13 +7,12 @@ Author: Sythos (https://www.sythos.net)
 -->
 
 This is the operator manual for upgrading an existing Gulo Gulo install in
-place. Since [ADR-002](adr/ADR-002-gulogulo-packaging-and-distribution-targets.md),
-there is no blue/green upgrade based on a container swap: each of the three
-packaging targets — standalone, cPanel, Plesk — defines its own in-place
-upgrade strategy (backup, then replace application files, then migrate,
-then restart), without an atomic image/container swap. This document covers
-that per-target procedure and the database migration discipline that
-underlies all three.
+place. Since ADR-002, there is no blue/green upgrade based on a container
+swap: each of the three packaging targets — standalone, cPanel, Plesk —
+defines its own in-place upgrade strategy (backup, then replace application
+files, then migrate, then restart), without an atomic image/container swap.
+This document covers that per-target procedure and the database migration
+discipline that underlies all three.
 
 ## Database schema migrations: expand / backfill / switch / contract
 

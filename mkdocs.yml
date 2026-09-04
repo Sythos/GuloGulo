@@ -38,9 +38,6 @@ nav:
       - API and MCP operations: guide/api-and-mcp.md
       - Upgrade and migration operations: guide/upgrade-and-migration.md
       - Release readiness: guide/release-readiness.md
-  - Architecture Decision Records:
-      - "ADR-001: Runtime and frontend architecture": adr/ADR-001-gulogulo-runtime-and-frontend-architecture.md
-      - "ADR-002: Packaging and distribution targets": adr/ADR-002-gulogulo-packaging-and-distribution-targets.md
 
 theme:
   name: material

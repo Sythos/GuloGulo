@@ -9,7 +9,6 @@ Gulo Gulo is a self-hosted webmail, calendar, and contacts platform (the guiding
 - [README](https://github.com/Sythos/GuloGulo/blob/main/README.md): project overview, the three-package model and why it exists, production readiness checklist
 - [INSTALL](https://github.com/Sythos/GuloGulo/blob/main/INSTALL.md): install, upgrade, and field-verification guide for all three targets
 - [Documentation index](https://github.com/Sythos/GuloGulo/blob/main/doc/README.md): the complete doc/ directory
-- [Architecture Decision Records](https://github.com/Sythos/GuloGulo/tree/main/doc/adr): the runtime/frontend and packaging/distribution decisions this project is built on
 - [Security policy](https://github.com/Sythos/GuloGulo/blob/main/SECURITY.md): how to report a vulnerability
 
 ## Source

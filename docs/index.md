@@ -15,9 +15,7 @@ is the wolverine (*Gulo gulo*).
 
 This site mirrors the project's own `doc/` directory — see **Guide** in the
 navigation for the full technical documentation (configuration, mail core,
-DAV, identity, observability, upgrade/migration, and every other subsystem),
-plus the two [Architecture Decision Records](adr/ADR-001-gulogulo-runtime-and-frontend-architecture.md)
-the project is built on.
+DAV, identity, observability, upgrade/migration, and every other subsystem).
 
 ## Why three packages
 

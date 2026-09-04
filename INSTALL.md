@@ -18,10 +18,11 @@ the repository gate for it passes. It does not mean that a provider has already
 configured or exercised the item in the field. The field work belongs here and
 in the release evidence record.
 
-Gulo Gulo's distribution model is defined by
-[ADR-002](doc/adr/ADR-002-gulogulo-packaging-and-distribution-targets.md), which
-superseded the Docker/OCI-native model of ADR-001. Read ADR-002 first if you
-need the rationale; this document only covers the practical hand-off.
+Gulo Gulo's distribution model is defined by ADR-002, which superseded the
+Docker/OCI-native model of ADR-001: three packaging targets (standalone,
+cPanel, Plesk), each with its own in-place upgrade strategy, replacing the
+earlier container-swap deployment model. This document only covers the
+practical hand-off.
 
 ## Status model
 
