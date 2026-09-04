@@ -75,7 +75,9 @@ const METRICS_HEADERS = {
 };
 const STATIC_SECURITY_HEADERS = {
   'content-security-policy': "default-src 'self'; base-uri 'none'; object-src 'none'; frame-ancestors 'none'; form-action 'self'; connect-src 'self'; img-src 'self' data: blob:; style-src 'self'; script-src 'self'",
+  'cross-origin-embedder-policy': 'require-corp',
   'cross-origin-opener-policy': 'same-origin',
+  'cross-origin-resource-policy': 'same-origin',
   'permissions-policy': 'camera=(), geolocation=(), microphone=(), payment=(), usb=()',
   'referrer-policy': 'no-referrer',
   'x-content-type-options': 'nosniff',

@@ -1,0 +1,19 @@
+# SPDX-License-Identifier: MIT
+# SPDX-FileCopyrightText: 2026 Sythos (https://www.sythos.net)
+# Author: Sythos (https://www.sythos.net)
+#
+# ZAP baseline alert-filter rules for .github/workflows/zap-baseline.yml.
+# Format: <rule id>	<action: IGNORE|WARN|FAIL|INFO>	<url regex, optional>	# comment
+#
+# 10202 (Absence of Anti-CSRF Tokens) is a confirmed false positive here:
+# ZAP's passive scanner only recognizes CSRF protection as a hidden token
+# field inside a <form>. web/index.html's #compose-form and
+# #preferences-form are method="dialog" forms - they never submit over
+# HTTP at all; <dialog> forms only close the dialog. The actual submission
+# goes through web/src/app.ts's api.request(), which attaches the real
+# CSRF token as an x-csrf-token header on every non-GET/HEAD fetch (see
+# createApiClient()'s csrfToken()/setCsrfToken()). That header-based check
+# is enforced server-side (src/web/security/csrf.ts, CSRF_HEADER_NAME) and
+# is exercised by src/web/security/security.test.ts - a hidden input on a
+# form that never POSTs would be decorative, not a real second control.
+10202	IGNORE

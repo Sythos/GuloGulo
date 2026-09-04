@@ -14,14 +14,14 @@
 # is uploaded to a third-party service: ZAP runs entirely inside the runner
 # and the report is kept as a workflow artifact.
 #
-# fail_action is deliberately false for this first rollout: unlike the
-# ESLint adoption (which reviewed every real finding before deciding what
-# blocks CI), no baseline run against this app has happened yet, so there is
-# no triaged data to decide a fail threshold from. The workflow always
-# completes and always uploads the report; treat the first few real runs as
-# the triage pass, then flip fail_action (or add a ZAP alert-filter rules
-# file to allow specific reviewed findings) once what a clean run actually
-# looks like here is known - not before.
+# fail_action is true: the first real baseline run's medium/low findings
+# have been triaged (see .zap/rules.tsv) - the one genuine false positive
+# (10202, absence of a hidden CSRF token field on forms that never submit
+# over HTTP) is explicitly ignored there with its reasoning, and the two
+# real gaps it found (missing Cross-Origin-Embedder-Policy and
+# Cross-Origin-Resource-Policy response headers) are fixed in
+# src/runtime/server.ts's STATIC_SECURITY_HEADERS. A fresh medium/high
+# finding from here on is real and should fail the build, not slide by.
 name: OWASP ZAP baseline scan
 
 on:
@@ -93,11 +93,14 @@ jobs:
           # alerts out of the pass/fail decision, kept for visibility in the
           # report without failing the job on pure noise.
           cmd_options: '-a -j -I'
+          # See .zap/rules.tsv for the one alert ignored here (10202, a
+          # confirmed false positive) and why.
+          rules_file_name: '.zap/rules.tsv'
           # The scanning container needs to reach the runner's own bridge
           # network, not just localhost inside itself.
           docker_name: 'ghcr.io/zaproxy/zaproxy:stable'
           allow_issue_writing: false
-          fail_action: false
+          fail_action: true
 
       - name: Stop the server
         if: always()
