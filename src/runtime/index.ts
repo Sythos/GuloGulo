@@ -16,7 +16,7 @@ function loggerOptions(config) {
   const contract = config?.contract ?? config ?? {};
   return {
     ...config,
-    version: contract.buildVersion ?? config?.buildVersion ?? '0.1.7',
+    version: contract.buildVersion ?? config?.buildVersion ?? '0.1.8',
     build: contract.buildDigest ?? config?.buildDigest ?? 'development',
   };
 }

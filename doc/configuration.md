@@ -132,7 +132,7 @@ placeholders. Copy it for local work, but never commit a populated `.env` file.
 Set these values from the package build or deployment pipeline:
 
 ```powershell
-$env:GULOGULO_VERSION = '0.1.7'
+$env:GULOGULO_VERSION = '0.1.8'
 $env:GULOGULO_BUILD_DIGEST = 'sha256:example'
 ```
 
