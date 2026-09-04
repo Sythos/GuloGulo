@@ -76,8 +76,10 @@ being re-enabled once a signing key exists (see
   already exists and is verified to build correctly, but is not published
   while unsigned.
 - **Standalone → `.tar.gz`, built and tested on Ubuntu.** No panel, no OS
-  constraint - this is the "any Linux host with Node.js 26+" target, so it
-  stays the simplest, most portable format rather than picking one
+  constraint - this is the "any Linux host with Node.js 26+" target (Bun
+  1.4.0+ is also supported as the runtime, interchangeable with Node.js
+  anytime after install via `switch-runtime.sh`), so it stays the
+  simplest, most portable format rather than picking one
   distro's native package for a target that isn't distro-specific. This
   target was never RPM/DEB-based, so it is unaffected by the signing-key
   gap above.
@@ -87,36 +89,44 @@ being re-enabled once a signing key exists (see
 Full instructions, requirements, and known gaps for each target are in
 [INSTALL.md](INSTALL.md) - this is the short version.
 
-**Standalone** (any Linux host, Node.js 26+):
+**Standalone** (any Linux host, Node.js 26+ - Bun 1.4.0+ also supported as
+the runtime, interchangeable with Node.js anytime after install; the build
+step below always uses Node.js regardless of which runtime you pick):
 
 ```bash
 node --experimental-strip-types packaging/standalone/build-standalone-package.ts
 mkdir -p /opt/gulogulo
 tar xzf packaging/dist/gulogulo-<version>-standalone.tar.gz -C /opt/gulogulo --strip-components=1
 cd /opt/gulogulo && ./install.sh
+# or, to run the server under Bun instead of Node.js: ./install.sh --runtime=bun
 ```
 
 **cPanel** (RHEL-family host - AlmaLinux/CloudLinux/RHEL - with root/WHM
 access; ships as a `.tar.gz` while the RPM pipeline is unsigned - see "Why
 three packages" above - and Node.js 26+ must already be installed, see
-INSTALL.md):
+INSTALL.md; Bun 1.4.0+ is also supported as the runtime, interchangeable
+with Node.js anytime after install):
 
 ```bash
 node --experimental-strip-types packaging/cpanel/build-cpanel-package.ts
 sudo mkdir -p /opt/gulogulo
 sudo tar xzf packaging/dist/gulogulo-<version>_cpanel_.tar.gz -C /opt/gulogulo --strip-components=1
 cd /opt/gulogulo && sudo ./install.sh
+# or, to run the server under Bun instead of Node.js: sudo ./install.sh --runtime=bun
 ```
 
 **Plesk** (Debian/Ubuntu host; ships as a `.tar.gz` while the DEB pipeline
 is unsigned - see "Why three packages" above - root access required, and
-Node.js 26+ must already be installed, see INSTALL.md):
+Node.js 26+ must already be installed, see INSTALL.md; Bun 1.4.0+ is also
+supported as the runtime, interchangeable with Node.js anytime after
+install):
 
 ```bash
 node --experimental-strip-types packaging/plesk/build-plesk-package.ts
 sudo mkdir -p /opt/gulogulo
 sudo tar xzf packaging/dist/gulogulo-<version>_plesk_.tar.gz -C /opt/gulogulo --strip-components=1
 cd /opt/gulogulo && sudo ./install.sh
+# or, to run the server under Bun instead of Node.js: sudo ./install.sh --runtime=bun
 ```
 
 All three archives now get a real end-to-end install-and-health-check

@@ -73,7 +73,11 @@ server side of Gulo Gulo has a single canonical TypeScript build boundary, and
 
 ## Runtime and dependency notes
 
-Node.js 26 is the supported runtime for the current checkout. `@types/node`
+Node.js 26 is the supported runtime for the current checkout (Bun 1.4.0+ is
+also supported as an interchangeable alternative runtime for the compiled
+server - see `switch-runtime.sh` - though Node.js itself remains required
+for the build/npm toolchain regardless of which one runs the server).
+`@types/node`
 and TypeScript are locked in `package-lock.json`; normal dependency updates
 must use the latest stable releases and rerun the complete package test suite.
 The browser output remains generated JavaScript, and shell, PowerShell, SQL,

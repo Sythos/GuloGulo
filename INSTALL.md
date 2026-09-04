@@ -173,21 +173,31 @@ sha256sum -c gulogulo-<version>-standalone.tar.gz.sha256
 ### Install (`install.sh [--non-interactive]`)
 
 1. Requires `node` in `PATH` and Node.js ≥ 26 (checked from
-   `process.versions.node`).
+   `process.versions.node`), regardless of `--runtime` — `npm` and
+   `run-migrations.mjs` below always run under Node.js. Pass
+   `--runtime=bun` to also require `bun` in `PATH` (Bun ≥ 1.4.0) and run
+   the compiled server itself under Bun instead; the default is
+   `--runtime=node`. Already installed under one? Switch anytime after
+   install with `./switch-runtime.sh <node|bun>` (or the
+   `switch-to-node.sh`/`switch-to-bun.sh` shortcuts) — no reinstall needed.
 2. Copies `.env.example` to `.env` if `.env` does not already exist; leaves an
    existing `.env` untouched.
 3. Runs `npm ci --omit=dev --no-audit --no-fund`.
 4. Runs `run-migrations.mjs`, which is a clean no-op while
    `POSTGRES_ENABLED=false` (the packaged default) and otherwise applies
    pending PostgreSQL migrations.
-5. Prints the manual start command
-   (`node --env-file=.env dist/server/src/runtime/index.js`) and points at
-   `gulogulo.service.example` as an optional systemd unit — **the installer
-   never starts the service and never installs a systemd unit itself.**
+5. Prints the manual start command (`node --env-file=.env
+   dist/server/src/runtime/index.js`, or the `bun` equivalent if
+   `--runtime=bun` was chosen) and points at `gulogulo.service.example` as
+   an optional systemd unit — **the installer never starts the service and
+   never installs a systemd unit itself.**
 
 ### Requirements
 
-- Node.js ≥ 26.
+- Node.js ≥ 26 (always required, for `npm`/migrations) — Bun ≥ 1.4.0 is
+  also supported as an interchangeable alternative runtime for the
+  compiled server itself, switchable anytime after install; see step 1
+  above.
 - PostgreSQL — optional. Disabled by default (`POSTGRES_ENABLED=false`); the
   operator enables it and provides `POSTGRES_DSN_SECRET_REF` plus a
   `GULOGULO_POSTGRES_DSN` environment variable before running migrations for
@@ -271,7 +281,12 @@ A shell translation of `gulogulo.spec`'s `%pre` and `%post` (first-install
 branch):
 
 1. Requires `node` in `PATH` and Node.js ≥ 26 (checked from
-   `process.versions.node`), same check as `%post`.
+   `process.versions.node`), same check as `%post`, regardless of
+   `--runtime` — `npm` and migrations always run under Node.js. Pass
+   `--runtime=bun` to also require `bun` in `PATH` (Bun ≥ 1.4.0) and
+   render the systemd unit's `ExecStart=` against it instead; default is
+   `--runtime=node`. Switch an already-installed instance anytime with
+   `./switch-runtime.sh <node|bun>` — no reinstall needed.
 2. Creates the dedicated `gulogulo` system user/group if neither already
    exists (`%pre`'s equivalent).
 3. Copies `.env.example` to `.env` if `.env` does not already exist, and
@@ -328,9 +343,12 @@ AppConfig registration (only prints reminders for those two, same as
 
 ### Requirements
 
-Same as standalone (Node.js ≥ 26, PostgreSQL optional, LDAP not applicable
-since identity comes from cPanel's own UAPI — see Section 5 for the current
-`authenticate()` limitation), plus root access on a real RHEL-family
+Same as standalone (Node.js ≥ 26, always required for `npm`/migrations —
+Bun ≥ 1.4.0 also supported as an interchangeable alternative runtime for
+the compiled server, switchable anytime after install; PostgreSQL
+optional; LDAP not applicable since identity comes from cPanel's own UAPI
+— see Section 5 for the current `authenticate()` limitation), plus root
+access on a real RHEL-family
 cPanel/WHM host.
 
 ### CI status
@@ -401,7 +419,12 @@ tar tzf gulogulo-<version>_plesk_.tar.gz            # file listing
 A shell translation of `DEBIAN/postinst`:
 
 1. Requires `node` in `PATH` and Node.js ≥ 26 (checked from
-   `process.versions.node`), same check as `postinst`.
+   `process.versions.node`), same check as `postinst`, regardless of
+   `--runtime` — `npm` and migrations always run under Node.js. Pass
+   `--runtime=bun` to also require `bun` in `PATH` (Bun ≥ 1.4.0) and
+   render the systemd unit's `ExecStart=` against it instead; default is
+   `--runtime=node`. Switch an already-installed instance anytime with
+   `./switch-runtime.sh <node|bun>` — no reinstall needed.
 2. Copies `.env.example` to `.env` if `.env` does not already exist (hints
    at `POSTGRES_*`); leaves an existing `.env` untouched. Unlike the cPanel
    script, this does **not** lock down `.env` permissions — same as
@@ -452,8 +475,11 @@ the dedicated system user — same caution as the cPanel target's
 ### Requirements
 
 Debian/Ubuntu host, Node.js ≥ 26 pre-installed (`install.sh` checks for it
-but does not install it), PostgreSQL optional (same as the other targets),
-root access. Plesk itself is not required to be installed on the host at
+but does not install it) — always required for `npm`/migrations; Bun ≥
+1.4.0 is also supported as an interchangeable alternative runtime for the
+compiled server, switchable anytime after install — PostgreSQL optional
+(same as the other targets), root access. Plesk itself is not required to
+be installed on the host at
 all for this to work; the Plesk REST API identity adapter
 (`src/platform/plesk/`) is only relevant if the host is also Plesk-managed
 and you intend to use it for identity.
