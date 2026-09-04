@@ -995,6 +995,21 @@ img.brand-mark {
   text-align: center;
 }
 
+.idle-notice {
+  position: fixed;
+  bottom: 1rem;
+  left: 1rem;
+  z-index: 6;
+  max-width: 20rem;
+  padding: 0.65rem 0.9rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface-raised);
+  color: var(--muted);
+  font-size: 0.82rem;
+  line-height: 1.4;
+}
+
 @media (max-width: 70rem) {
   .main-panel {
     grid-template-columns: minmax(17rem, 0.9fr) minmax(20rem, 1.1fr);

@@ -15,7 +15,8 @@ import { createRateLimiter } from '../core/ops/abuse/index.ts';
 import { parsePatchStatus, type PatchStatusDto } from '../core/ops/patch/status.ts';
 import { CSRF_HEADER_NAME, createWebSecurity } from '../web/security/index.ts';
 import type { SessionIdentity, WebSecurity, WebSession } from '../web/security/index.ts';
-import type { DavStore } from '../platform/contract/platform-adapter.ts';
+import { createLocalMailClients, type DavStore } from '../platform/contract/platform-adapter.ts';
+import { probeImapIdleAvailability } from '../core/mail/imap-idle-probe.ts';
 
 // eslint-disable-next-line @typescript-eslint/no-redundant-type-constituents -- loadConfig's inferred return already carries `any` from config.ts's tracked @ts-nocheck waiver, not from the Record here
 type RuntimeConfig = ReturnType<typeof loadConfig> & Record<string, unknown>;
@@ -59,6 +60,10 @@ export interface RuntimeServer {
   authenticateLogin: LoginAuthenticator;
   apiResources: ApiResources;
   loginFailures: Map<string, { startedAt: number; count: number }>;
+  /** The mail address submitted at login, per active session — not secret, kept separately from `webSecurity.mailCredentials`'s encrypted password so the IMAP IDLE capability probe (`/api/mail/idle-status`) never needs to guess a login username from `session.userId`, which is not a reliable full mail address on every target. */
+  sessionMailAddress: Map<string, string>;
+  /** Cached result of the lazy IMAP IDLE capability probe, per active session. Computed once on first `/api/mail/idle-status` read; cleared alongside `sessionMailAddress`/`webSecurity.mailCredentials` on logout. */
+  imapIdleAvailability: Map<string, boolean>;
   davStore: DavStore | undefined;
   server: Server;
 }
@@ -140,7 +145,7 @@ function runtimeMetadata() {
 function buildMetadata(config: RuntimeConfig) {
   const contract = config?.contract ?? config ?? {};
   return {
-    version: contract.buildVersion ?? config?.buildVersion ?? '0.1.7',
+    version: contract.buildVersion ?? config?.buildVersion ?? '0.1.8',
     build_digest: contract.buildDigest ?? config?.buildDigest ?? 'development',
     ...runtimeMetadata(),
   };
@@ -1031,9 +1036,12 @@ export function createRuntimeServer({
     authenticateLogin,
     apiResources: { ...defaultApiResources(), ...apiResources },
     loginFailures: new Map(),
+    sessionMailAddress: new Map(),
+    imapIdleAvailability: new Map(),
     davStore,
     server: undefined as unknown as Server,
   };
+  const mailClients = createLocalMailClients(config ?? {}, { logger });
 
   const handleRequest = async (request: IncomingMessage, response: ServerResponse): Promise<void> => {
     const path = requestPath(request);
@@ -1173,9 +1181,15 @@ export function createRuntimeServer({
         return;
       }
       try {
-        if (session !== null) runtime.webSecurity.logout(cookieHeader);
+        if (session !== null) {
+          runtime.webSecurity.logout(cookieHeader);
+          runtime.sessionMailAddress.delete(session.sessionId);
+          runtime.imapIdleAvailability.delete(session.sessionId);
+        }
         const authenticated = runtime.webSecurity.createAuthenticatedSession(identity);
         const csrfToken = runtime.webSecurity.csrf.issue(authenticated.session).token;
+        runtime.webSecurity.mailCredentials.set(authenticated.session.sessionId, password, authenticated.session.expiresAt);
+        runtime.sessionMailAddress.set(authenticated.session.sessionId, email);
         runtime.loginFailures.delete(loginKey);
         response.setHeader('set-cookie', authenticated.setCookie);
         finish(200, responsePayload(runtime, 'ok', requestDetails, {
@@ -1227,8 +1241,30 @@ export function createRuntimeServer({
         return;
       }
       const result = runtime.webSecurity.logout(cookieHeader);
+      runtime.sessionMailAddress.delete(session.sessionId);
+      runtime.imapIdleAvailability.delete(session.sessionId);
       response.setHeader('set-cookie', result.clearCookie);
       finish(200, responsePayload(runtime, 'ok', requestDetails, { authenticated: false }));
+      return;
+    }
+
+    if (path === '/api/mail/idle-status') {
+      if (method !== 'GET' && method !== 'HEAD') {
+        response.setHeader('allow', 'GET, HEAD');
+        finish(405, responsePayload(runtime, 'method_not_allowed', requestDetails, { allow: ['GET', 'HEAD'] }));
+        return;
+      }
+      if (session === null) { unauthorized(); return; }
+      let imapIdleAvailable = runtime.imapIdleAvailability.get(session.sessionId);
+      if (imapIdleAvailable === undefined) {
+        const mailAddress = runtime.sessionMailAddress.get(session.sessionId);
+        const password = runtime.webSecurity.mailCredentials.get(session.sessionId);
+        imapIdleAvailable = mailAddress === undefined || password === null
+          ? false
+          : await probeImapIdleAvailability({ createImapClient: mailClients.createImapClient, mailAddress, password, logger: scopedLogger });
+        runtime.imapIdleAvailability.set(session.sessionId, imapIdleAvailable);
+      }
+      finish(200, responsePayload(runtime, 'ok', requestDetails, { imapIdleAvailable }));
       return;
     }
 

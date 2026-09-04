@@ -359,6 +359,10 @@ Author: Sythos (https://www.sythos.net)
       </div>
     </div>
 
+    <div class="idle-notice" id="idle-notice" role="status" aria-live="polite" hidden>
+      Live inbox updates are unavailable for this mailbox. Refresh manually, or set an auto-refresh interval in Preferences.
+    </div>
+
     <dialog class="modal" id="compose-dialog" aria-labelledby="compose-heading">
       <form class="modal-form" id="compose-form" method="dialog">
         <div class="modal-heading">
@@ -404,6 +408,9 @@ Author: Sythos (https://www.sythos.net)
         </label>
         <label for="vacation-message">Vacation message</label>
         <textarea id="vacation-message" name="vacationMessage" rows="4" maxlength="4000" placeholder="I am away and will reply when I return."></textarea>
+        <label for="mail-refresh-interval-input">Inbox auto-refresh (minutes)</label>
+        <input id="mail-refresh-interval-input" name="mailRefreshIntervalMinutes" type="number" min="1" max="60" step="1" placeholder="5">
+        <p class="form-hint" id="mail-refresh-interval-help">Only used when live IMAP IDLE updates are unavailable for this mailbox (see the notice at the bottom of the screen). Has no effect otherwise. Kept for this browser only.</p>
         <div class="modal-actions">
           <button class="button button-quiet" type="button" data-close-dialog="preferences-dialog">Cancel</button>
           <button class="button button-primary" type="submit">Save preferences</button>

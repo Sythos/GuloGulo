@@ -5,6 +5,8 @@
 import { assertTenantContext } from '../../integrations/tenant-context.ts';
 import { createCpanelApiClient } from './cpanel-api-client.ts';
 import type { CpanelApiClientLike, CpanelApiClientOptions } from './cpanel-api-client.ts';
+import { authenticateWithImapLogin } from '../contract/platform-adapter.ts';
+import type { MailClientFactories } from '../contract/platform-adapter.ts';
 import type {
   CpanelApiSettings,
   EnabledLdapIdentityClient,
@@ -29,6 +31,8 @@ interface CpanelIdentityClientOptions {
   readonly logger?: IntegrationLogger;
   /** Injectable for tests: overrides how the underlying UAPI client is built. */
   readonly createApiClient?: (options: CpanelApiClientOptions) => CpanelApiClientLike;
+  /** Required when `enabled`: how `authenticate()` opens an IMAP LOGIN against this target's local mail server. Callers pass `createLocalMailClients(config).createImapClient` (see `cpanel-adapter.ts`); tests inject a fake. */
+  readonly createImapClient?: MailClientFactories['createImapClient'];
 }
 
 interface UapiResult {
@@ -83,6 +87,7 @@ export function createCpanelIdentityClient({
   resolveSecret,
   logger = console,
   createApiClient = createCpanelApiClient,
+  createImapClient,
 }: CpanelIdentityClientOptions = {}): LdapIdentityClient {
   const settings = readSettings(config);
   if (!settings.enabled) {
@@ -103,8 +108,12 @@ export function createCpanelIdentityClient({
   if (settings.username.length === 0) {
     throw cpanelIdentityError('username is required', 'CONFIGURATION');
   }
+  if (typeof createImapClient !== 'function') {
+    throw cpanelIdentityError('createImapClient is required to verify mail account passwords', 'CONFIGURATION');
+  }
   const secretResolver = resolveSecret;
   const apiTokenSecretRef = settings.apiTokenSecretRef;
+  const imapClientFactory = createImapClient;
 
   async function withApiClient<Result>(callback: (client: CpanelApiClientLike) => Promise<Result>): Promise<Result> {
     const apiToken = await secretResolver(apiTokenSecretRef);
@@ -158,20 +167,21 @@ export function createCpanelIdentityClient({
 
   // cPanel's UAPI has no generic, safe "verify this mailbox's password"
   // endpoint: Email::list_pops and its neighbors manage mail accounts, they
-  // do not authenticate them, and inventing an undocumented endpoint here
-  // would mean shipping unverified behavior against a real cPanel host.
-  // Real password verification for cPanel-hosted mail accounts will need a
-  // different mechanism in a later milestone — most likely a direct
-  // IMAP/POP3 LOGIN against the local mail server (the same approach this
-  // project already relies on elsewhere for LDAP-backed auth paths), or a
-  // dedicated cPanel plugin/hook shipped alongside Gulo Gulo. Until then this
-  // fails closed: it always returns false instead of pretending to
-  // authenticate.
-  async function authenticate(_request: LdapAuthenticateRequest = {}): Promise<boolean> {
-    logger.warn?.('cpanel_authenticate_not_implemented', {
-      reason: 'UAPI exposes no safe generic password-verification endpoint for cPanel mail accounts; requires IMAP/POP3 or a cPanel plugin, tracked for a later milestone',
+  // do not authenticate them. The only real verification mechanism is a
+  // direct IMAP LOGIN against the local mail server, same as `lookupUser`'s
+  // `mailAddress` convention — never the UAPI client.
+  async function authenticate({ tenantContext, username, password }: LdapAuthenticateRequest = {}): Promise<boolean> {
+    const context = assertTenantContext(tenantContext);
+    if (typeof username !== 'string' || !USERNAME_PATTERN.test(username)) return false;
+    if (typeof password !== 'string' || password.length === 0) return false;
+    const mailAddress = `${username}@${context.domain}`.toLowerCase();
+    return authenticateWithImapLogin({
+      createImapClient: imapClientFactory,
+      mailAddress,
+      password,
+      logger,
+      logEvent: 'cpanel_authenticate_imap_failed',
     });
-    return false;
   }
 
   async function healthCheck(): Promise<{ status: 'ok' }> {

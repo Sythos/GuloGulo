@@ -70,7 +70,12 @@ export function createPleskAdapter(options: PleskAdapterOptions = {}): PlatformA
   }
 
   async function createIdentityClient(config: IntegrationConfig): Promise<LdapIdentityClient> {
-    return createPleskIdentityClient({ config, resolveSecret, logger });
+    return createPleskIdentityClient({
+      config,
+      resolveSecret,
+      logger,
+      createImapClient: createLocalMailClients(config, { logger }).createImapClient,
+    });
   }
 
   async function createDataStore(config: IntegrationConfig): Promise<PostgresStore> {

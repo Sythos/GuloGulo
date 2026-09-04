@@ -7,7 +7,9 @@ import test from 'node:test';
 
 import { createPleskIdentityClient } from './plesk-identity-client.ts';
 import { createTenantContext } from '../../integrations/tenant-context.ts';
+import { imapClientError } from '../../core/mail/imap-client.ts';
 import type { PleskApiClientLike } from './plesk-api-client.ts';
+import type { ImapClient, ImapIdleSession, ImapMailboxStatus } from '../../core/mail/imap-client.ts';
 
 /**
  * A fake `PleskApiClientLike` — no `fetch`, no real HTTP, no dependency on
@@ -30,6 +32,22 @@ class FakeApiClient implements PleskApiClientLike {
     if (typeof response === 'function') return (response as () => unknown)();
     return response;
   }
+}
+
+/**
+ * A fake `ImapClient` — the injection seam `authenticate()` is built on top
+ * of via `authenticateWithImapLogin()` in `../contract/platform-adapter.ts`.
+ */
+class FakeImapClient implements ImapClient {
+  readonly calls: string[] = [];
+  readonly behavior: { connectError?: Error; loginError?: Error };
+  constructor(behavior: { connectError?: Error; loginError?: Error } = {}) { this.behavior = behavior; }
+  async connect(): Promise<void> { this.calls.push('connect'); if (this.behavior.connectError) throw this.behavior.connectError; }
+  async login(username: string): Promise<void> { this.calls.push(`login:${username}`); if (this.behavior.loginError) throw this.behavior.loginError; }
+  async select(): Promise<ImapMailboxStatus> { this.calls.push('select'); return { exists: 0, uidNext: null }; }
+  async idle(): Promise<ImapIdleSession> { this.calls.push('idle'); return { stop: async () => {} }; }
+  async logout(): Promise<void> { this.calls.push('logout'); }
+  close(): void { this.calls.push('close'); }
 }
 
 function settings(overrides: Record<string, unknown> = {}): Record<string, unknown> {
@@ -65,6 +83,13 @@ test('an enabled configuration without a secret resolver or key reference fails 
   );
 });
 
+test('an enabled configuration without an IMAP client factory fails closed at construction', () => {
+  assert.throws(
+    () => createPleskIdentityClient({ config: settings(), resolveSecret: async () => 'key' }),
+    /createImapClient/,
+  );
+});
+
 test('lookupUser maps a matching mail account entry to a TenantIdentity', async () => {
   const fake = new FakeApiClient({
     'GET /api/v2/domains': [{ id: 7, name: 'example.test' }],
@@ -74,6 +99,7 @@ test('lookupUser maps a matching mail account entry to a TenantIdentity', async 
     config: settings(),
     resolveSecret: async () => 'resolved-key',
     createApiClient: () => fake,
+    createImapClient: () => new FakeImapClient(),
   });
   if (!client.enabled) throw new Error('Plesk identity client unexpectedly disabled');
 
@@ -95,6 +121,7 @@ test('lookupUser returns null when the tenant domain does not exist on Plesk', a
     config: settings(),
     resolveSecret: async () => 'resolved-key',
     createApiClient: () => fake,
+    createImapClient: () => new FakeImapClient(),
   });
   if (!client.enabled) throw new Error('Plesk identity client unexpectedly disabled');
 
@@ -111,6 +138,7 @@ test('lookupUser returns null when no matching mail account exists', async () =>
     config: settings(),
     resolveSecret: async () => 'resolved-key',
     createApiClient: () => fake,
+    createImapClient: () => new FakeImapClient(),
   });
   if (!client.enabled) throw new Error('Plesk identity client unexpectedly disabled');
 
@@ -127,6 +155,7 @@ test('lookupUser reports a disabled mail account as inactive', async () => {
     config: settings(),
     resolveSecret: async () => 'resolved-key',
     createApiClient: () => fake,
+    createImapClient: () => new FakeImapClient(),
   });
   if (!client.enabled) throw new Error('Plesk identity client unexpectedly disabled');
 
@@ -134,12 +163,45 @@ test('lookupUser reports a disabled mail account as inactive', async () => {
   assert.equal(identity?.active, false);
 });
 
-test('authenticate always returns false and never calls the API client', async () => {
+test('authenticate succeeds on a valid IMAP LOGIN and never calls the API client', async () => {
+  const fake = new FakeApiClient({});
+  let imapClient: FakeImapClient | undefined;
+  const client = createPleskIdentityClient({
+    config: settings(),
+    resolveSecret: async () => 'resolved-key',
+    createApiClient: () => fake,
+    createImapClient: () => (imapClient = new FakeImapClient()),
+  });
+  if (!client.enabled) throw new Error('Plesk identity client unexpectedly disabled');
+
+  const result = await client.authenticate({ tenantContext: context(), username: 'alice', password: 'correct-password' });
+  assert.equal(result, true);
+  assert.equal(fake.calls.length, 0);
+  assert.deepEqual(imapClient?.calls, ['connect', 'login:alice@example.test', 'logout']);
+});
+
+test('authenticate fails closed on a rejected IMAP password and never calls the API client', async () => {
   const fake = new FakeApiClient({});
   const client = createPleskIdentityClient({
     config: settings(),
     resolveSecret: async () => 'resolved-key',
     createApiClient: () => fake,
+    createImapClient: () => new FakeImapClient({ loginError: imapClientError('authentication failed', 'AUTHENTICATION_FAILED') }),
+  });
+  if (!client.enabled) throw new Error('Plesk identity client unexpectedly disabled');
+
+  const result = await client.authenticate({ tenantContext: context(), username: 'alice', password: 'wrong-password' });
+  assert.equal(result, false);
+  assert.equal(fake.calls.length, 0);
+});
+
+test('authenticate fails closed when the local mail server is unreachable', async () => {
+  const fake = new FakeApiClient({});
+  const client = createPleskIdentityClient({
+    config: settings(),
+    resolveSecret: async () => 'resolved-key',
+    createApiClient: () => fake,
+    createImapClient: () => new FakeImapClient({ connectError: new Error('connection refused') }),
   });
   if (!client.enabled) throw new Error('Plesk identity client unexpectedly disabled');
 
@@ -148,12 +210,29 @@ test('authenticate always returns false and never calls the API client', async (
   assert.equal(fake.calls.length, 0);
 });
 
+test('authenticate rejects a malformed username or empty password without touching IMAP', async () => {
+  const fake = new FakeApiClient({});
+  let imapClient: FakeImapClient | undefined;
+  const client = createPleskIdentityClient({
+    config: settings(),
+    resolveSecret: async () => 'resolved-key',
+    createApiClient: () => fake,
+    createImapClient: () => (imapClient = new FakeImapClient()),
+  });
+  if (!client.enabled) throw new Error('Plesk identity client unexpectedly disabled');
+
+  assert.equal(await client.authenticate({ tenantContext: context(), username: 'not valid', password: 'x' }), false);
+  assert.equal(await client.authenticate({ tenantContext: context(), username: 'alice', password: '' }), false);
+  assert.equal(imapClient, undefined);
+});
+
 test('healthCheck resolves ok when the reachability probe succeeds', async () => {
   const fake = new FakeApiClient({ 'GET /api/v2/server': { platform: 'plesk' } });
   const client = createPleskIdentityClient({
     config: settings(),
     resolveSecret: async () => 'resolved-key',
     createApiClient: () => fake,
+    createImapClient: () => new FakeImapClient(),
   });
   if (!client.enabled) throw new Error('Plesk identity client unexpectedly disabled');
 
@@ -168,6 +247,7 @@ test('healthCheck propagates a network error instead of swallowing it', async ()
     config: settings(),
     resolveSecret: async () => 'resolved-key',
     createApiClient: () => fake,
+    createImapClient: () => new FakeImapClient(),
   });
   if (!client.enabled) throw new Error('Plesk identity client unexpectedly disabled');
 
@@ -180,6 +260,7 @@ test('a failed secret resolution fails closed instead of calling the API client'
     config: settings(),
     resolveSecret: async () => undefined,
     createApiClient: () => fake,
+    createImapClient: () => new FakeImapClient(),
   });
   if (!client.enabled) throw new Error('Plesk identity client unexpectedly disabled');
 

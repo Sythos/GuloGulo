@@ -6,6 +6,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import { createPleskAdapter } from './plesk-adapter.ts';
+import { createTenantContext } from '../../integrations/tenant-context.ts';
 import type { PlatformAdapter } from '../contract/platform-adapter.ts';
 
 /** An environment with no GULOGULO_CONFIG_FILE set: config.ts falls back to
@@ -54,7 +55,10 @@ test('createIdentityClient() builds a working enabled client when plesk settings
   } as any;
   const client = await adapter.createIdentityClient(config);
   assert.equal(client.enabled, true);
-  assert.equal(await client.authenticate(), false);
+  // No real Plesk/IMAP host is reachable from a test machine, so this
+  // exercises the real fail-closed path (see plesk-identity-client.test.ts
+  // for the injected-fake IMAP client coverage of a genuine LOGIN success).
+  assert.equal(await client.authenticate({ tenantContext: createTenantContext({ tenantId: 'acme', domain: 'acme.example' }), username: 'jdoe', password: 'anything' }), false);
 });
 
 test('createDataStore() builds a real PostgresStore from src/integrations/postgres-store.ts', async () => {

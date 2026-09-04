@@ -33,7 +33,7 @@ export type PlatformKind = 'cpanel' | 'plesk' | 'standalone';
  * hand back here, unlike `createDataStore()`'s pooled store.
  */
 export interface MailClientFactories {
-  readonly createImapClient: (overrides?: { readonly tls?: boolean }) => ImapClient;
+  readonly createImapClient: (overrides?: { readonly tls?: boolean; readonly connectTimeoutMs?: number; readonly commandTimeoutMs?: number }) => ImapClient;
   readonly createSmtpClient: (overrides?: { readonly tls?: SmtpTlsMode }) => SmtpClient;
 }
 
@@ -78,10 +78,12 @@ export function createLocalMailClients(
   const imapsPort = readMailPort(config, 'imapsPort', DEFAULT_IMAPS_PORT);
   const smtpSubmissionPort = readMailPort(config, 'smtpSubmissionPort', DEFAULT_SMTP_SUBMISSION_PORT);
   return Object.freeze({
-    createImapClient: (overrides: { readonly tls?: boolean } = {}) => createImapClient({
+    createImapClient: (overrides: { readonly tls?: boolean; readonly connectTimeoutMs?: number; readonly commandTimeoutMs?: number } = {}) => createImapClient({
       host,
       port: imapsPort,
       tls: overrides.tls ?? true,
+      connectTimeoutMs: overrides.connectTimeoutMs,
+      commandTimeoutMs: overrides.commandTimeoutMs,
       logger,
     }),
     createSmtpClient: (overrides: { readonly tls?: SmtpTlsMode } = {}) => createSmtpClient({
@@ -91,6 +93,55 @@ export function createLocalMailClients(
       logger,
     }),
   });
+}
+
+/**
+ * Real cPanel/Plesk mailbox password verification: neither panel's API
+ * exposes a generic "verify this password" endpoint (see
+ * `cpanel-identity-client.ts`/`plesk-identity-client.ts`), so the only
+ * mechanism actually available is attempting an IMAP LOGIN against the same
+ * local mail server `createLocalMailClients()` already points at. Success or
+ * a rejected password both come back as a plain `boolean` (fail closed on
+ * every error, including a network failure) — callers never learn more than
+ * "the credential worked" or "it didn't". Only `AUTHENTICATION_FAILED`
+ * (imap-client.ts's own code for a rejected LOGIN) is the expected, silent
+ * case; anything else (timeout, refused connection, protocol error) is
+ * logged via `logEvent` since on a real host that usually means the local
+ * mail server isn't reachable the way `INSTALL.md` assumes.
+ */
+export async function authenticateWithImapLogin({
+  createImapClient: createClient,
+  mailAddress,
+  password,
+  logger,
+  logEvent,
+}: {
+  readonly createImapClient: MailClientFactories['createImapClient'];
+  readonly mailAddress: string;
+  readonly password: string;
+  readonly logger?: ImapClientLogger;
+  readonly logEvent: string;
+}): Promise<boolean> {
+  const client = createClient();
+  let connected = false;
+  try {
+    await client.connect();
+    connected = true;
+    await client.login(mailAddress, password);
+    return true;
+  } catch (error) {
+    const code = error !== null && typeof error === 'object' && 'code' in error ? (error as { code?: unknown }).code : undefined;
+    if (code !== 'AUTHENTICATION_FAILED') {
+      logger?.warn?.(logEvent, { error: { name: error instanceof Error ? error.name : 'Error', code: typeof code === 'string' ? code : 'unknown' } });
+    }
+    return false;
+  } finally {
+    if (connected) {
+      try { await client.logout(); } catch { client.close(); }
+    } else {
+      client.close();
+    }
+  }
 }
 
 function readBackupPath(config: IntegrationConfig, fallback: string): string {

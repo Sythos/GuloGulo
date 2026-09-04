@@ -301,6 +301,46 @@ test('authenticated API is tenant/user scoped and logout requires a valid CSRF t
   }
 });
 
+test('the IMAP IDLE capability probe is unauthenticated-fail-closed, then cached per session', async () => {
+  const { runtime } = makeTestRuntime({
+    authenticateLogin: async ({ email, password }) => email === 'alice@acme.example' && password === 'test-only-password'
+      ? { tenantId: 'acme', domain: 'acme.example', userId: 'alice', actorId: 'alice', role: 'user' }
+      : null,
+  });
+  await startServer(runtime);
+  try {
+    const anonymous = await requestJson(runtime, '/api/mail/idle-status');
+    assert.equal(anonymous.statusCode, 401);
+
+    const login = await requestJson(runtime, '/api/session/login', {
+      method: 'POST', body: { email: 'alice@acme.example', password: 'test-only-password', rememberMe: false },
+    });
+    assert.equal(login.statusCode, 200);
+    const cookie = firstSetCookie(login.headers).split(';', 1)[0];
+
+    // No real IMAP server is reachable from a test machine, so a login that
+    // never touched the fixture/wiring paths still exercises the real
+    // fail-closed probe (see imap-idle-probe.test.ts for the injected-fake
+    // coverage of a genuine IDLE acceptance).
+    const first = await requestJson(runtime, '/api/mail/idle-status', { headers: { cookie } });
+    assert.equal(first.statusCode, 200);
+    assert.equal(first.body.imapIdleAvailable, false);
+    assert.equal(runtime.imapIdleAvailability.size, 1);
+
+    const second = await requestJson(runtime, '/api/mail/idle-status', { headers: { cookie } });
+    assert.equal(second.body.imapIdleAvailable, false);
+
+    const logout = await requestJson(runtime, '/api/session/logout', {
+      method: 'POST', headers: { cookie, 'x-csrf-token': login.body.csrfToken },
+    });
+    assert.equal(logout.statusCode, 200);
+    assert.equal(runtime.imapIdleAvailability.size, 0);
+    assert.equal(runtime.sessionMailAddress.size, 0);
+  } finally {
+    await stopServer(runtime);
+  }
+});
+
 test('fixture login is explicit and production defaults remain fail-closed', async () => {
   const production = createFixtureLoginAuthenticator({});
   assert.equal(await production({ email: 'alice@acme.example', password: 'anything', rememberMe: false }), null);

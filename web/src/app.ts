@@ -181,6 +181,25 @@ function writeManualTimeZone(windowRef, timeZone) {
   }
 }
 
+const DEFAULT_MAIL_REFRESH_INTERVAL_MINUTES = 5;
+
+function readManualMailRefreshIntervalMinutes(windowRef = globalThis) {
+  try {
+    const stored = Number.parseInt(windowRef.localStorage?.getItem('gulogulo.mailRefreshIntervalMinutes'), 10);
+    return Number.isInteger(stored) && stored >= 1 && stored <= 60 ? stored : DEFAULT_MAIL_REFRESH_INTERVAL_MINUTES;
+  } catch {
+    return DEFAULT_MAIL_REFRESH_INTERVAL_MINUTES;
+  }
+}
+
+function writeManualMailRefreshIntervalMinutes(windowRef, minutes) {
+  try {
+    windowRef.localStorage?.setItem('gulogulo.mailRefreshIntervalMinutes', String(minutes));
+  } catch {
+    // Storage is an optional preference, never an authentication boundary.
+  }
+}
+
 function formatDateTime(value, timeZone, locale = 'en') {
   const date = new Date(value);
   if (Number.isNaN(date.valueOf())) {
@@ -380,6 +399,8 @@ function createWebApplication(documentRef = globalThis.document, windowRef = glo
     timeZone: readManualTimeZone(windowRef) ?? detectBrowserTimeZone(windowRef),
     account: undefined,
     eventStream: undefined,
+    imapIdleAvailable: undefined,
+    mailAutoRefreshTimer: undefined,
   };
 
   const get = (selector) => documentRef.querySelector(selector);
@@ -406,6 +427,9 @@ function createWebApplication(documentRef = globalThis.document, windowRef = glo
     state.account = undefined;
     state.eventStream?.close();
     state.eventStream = undefined;
+    state.imapIdleAvailable = undefined;
+    stopMailAutoRefresh();
+    renderIdleNotice();
     api.setCsrfToken?.('');
     renderAuthenticationView(documentRef, false);
     setLoginBusy(false);
@@ -448,6 +472,7 @@ function createWebApplication(documentRef = globalThis.document, windowRef = glo
     setLoginBusy(false);
     renderAuthenticationView(documentRef, true);
     startEventStream();
+    void checkImapIdleAvailability();
     await loadFolder('inbox');
     if (focus) get('#main-content')?.focus?.();
   }
@@ -464,6 +489,39 @@ function createWebApplication(documentRef = globalThis.document, windowRef = glo
     const labels = { connected: 'Live updates connected', error: 'Live updates unavailable', unsupported: 'Live updates unavailable' };
     connectionState.textContent = labels[value] ?? 'Connecting…';
     connectionState.dataset.state = value;
+  }
+
+  function renderIdleNotice() {
+    const notice = get('#idle-notice');
+    if (notice) notice.hidden = state.imapIdleAvailable !== false;
+  }
+
+  function stopMailAutoRefresh() {
+    if (state.mailAutoRefreshTimer !== undefined) {
+      windowRef.clearInterval(state.mailAutoRefreshTimer);
+      state.mailAutoRefreshTimer = undefined;
+    }
+  }
+
+  function applyMailAutoRefresh() {
+    stopMailAutoRefresh();
+    if (state.imapIdleAvailable !== false) return;
+    const minutes = readManualMailRefreshIntervalMinutes(windowRef);
+    state.mailAutoRefreshTimer = windowRef.setInterval(() => void loadFolder(state.activeFolder), minutes * 60_000);
+  }
+
+  async function checkImapIdleAvailability() {
+    try {
+      const payload = await api.request('/mail/idle-status');
+      state.imapIdleAvailable = payload?.imapIdleAvailable === true;
+    } catch {
+      // Unknown is treated the same as unavailable: manual refresh always
+      // works, so failing to learn the real IMAP IDLE capability should
+      // never leave the mailbox looking live when it might not be.
+      state.imapIdleAvailable = false;
+    }
+    renderIdleNotice();
+    applyMailAutoRefresh();
   }
 
   function renderTimeZone() {
@@ -816,6 +874,12 @@ function createWebApplication(documentRef = globalThis.document, windowRef = glo
     renderTimeZone();
     renderMessages();
     if (state.selectedMessage) renderMessage(state.selectedMessage);
+    const requestedMinutes = Number.parseInt(data.get('mailRefreshIntervalMinutes'), 10);
+    const mailRefreshIntervalMinutes = Number.isInteger(requestedMinutes) && requestedMinutes >= 1 && requestedMinutes <= 60
+      ? requestedMinutes
+      : DEFAULT_MAIL_REFRESH_INTERVAL_MINUTES;
+    writeManualMailRefreshIntervalMinutes(windowRef, mailRefreshIntervalMinutes);
+    applyMailAutoRefresh();
     try {
       await api.request('/preferences', {
         method: 'POST',
@@ -824,6 +888,7 @@ function createWebApplication(documentRef = globalThis.document, windowRef = glo
           signature: data.get('signature'),
           vacationEnabled: data.get('vacationEnabled') === 'on',
           vacationMessage: data.get('vacationMessage'),
+          mailRefreshIntervalMinutes,
         },
       });
       get('#preferences-dialog')?.close();

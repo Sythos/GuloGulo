@@ -3,6 +3,7 @@
 // Author: Sythos (https://www.sythos.net)
 
 import { createCsrfManager, type CsrfManagerOptions } from './csrf.ts';
+import { createSessionCredentialStore } from './session-credential.ts';
 import { createSessionManager, type SessionIdentity, type SessionManagerOptions } from './session-manager.ts';
 
 export type WebSecurityOptions = SessionManagerOptions & CsrfManagerOptions;
@@ -10,10 +11,12 @@ export type WebSecurityOptions = SessionManagerOptions & CsrfManagerOptions;
 export function createWebSecurity(options: WebSecurityOptions = {}) {
   const sessions = createSessionManager(options);
   const csrf = createCsrfManager({ ...options, isSessionActive: (sessionId) => sessions.getActiveSession(sessionId) !== null });
+  const mailCredentials = createSessionCredentialStore(options);
 
   return Object.freeze({
     sessions,
     csrf,
+    mailCredentials,
     createAuthenticatedSession(identity: SessionIdentity) {
       const session = sessions.createSession(identity);
       return Object.freeze({ session, setCookie: sessions.serializeSessionCookie(session) });
@@ -21,7 +24,7 @@ export function createWebSecurity(options: WebSecurityOptions = {}) {
     authenticate(cookieHeader: unknown) { return sessions.authenticateCookie(cookieHeader); },
     logout(cookieHeader: unknown) {
       const result = sessions.logout(cookieHeader);
-      if (result.sessionId !== null) csrf.revokeSession(result.sessionId);
+      if (result.sessionId !== null) { csrf.revokeSession(result.sessionId); mailCredentials.delete(result.sessionId); }
       return Object.freeze({ invalidated: result.invalidated, clearCookie: result.clearCookie });
     },
   });
@@ -29,6 +32,8 @@ export function createWebSecurity(options: WebSecurityOptions = {}) {
 
 export type WebSecurity = ReturnType<typeof createWebSecurity>;
 export { createCsrfManager, CSRF_HEADER_NAME, csrfSecurityConstants } from './csrf.ts';
+export { createSessionCredentialStore } from './session-credential.ts';
 export { createSessionManager, DEFAULT_SESSION_COOKIE_NAME, sessionSecurityConstants, WebSecurityError } from './session-manager.ts';
 export type { CsrfManager, CsrfManagerOptions } from './csrf.ts';
+export type { SessionCredentialStore, SessionCredentialStoreOptions } from './session-credential.ts';
 export type { SessionIdentity, SessionManager, SessionManagerOptions, SessionStore, WebSession } from './session-manager.ts';

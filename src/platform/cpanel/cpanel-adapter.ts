@@ -69,7 +69,12 @@ export function createCpanelAdapter(options: CpanelAdapterOptions = {}): Platfor
   }
 
   async function createIdentityClient(config: IntegrationConfig): Promise<LdapIdentityClient> {
-    return createCpanelIdentityClient({ config, resolveSecret, logger });
+    return createCpanelIdentityClient({
+      config,
+      resolveSecret,
+      logger,
+      createImapClient: createLocalMailClients(config, { logger }).createImapClient,
+    });
   }
 
   async function createDataStore(config: IntegrationConfig): Promise<PostgresStore> {

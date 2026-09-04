@@ -5,6 +5,8 @@
 import { assertTenantContext } from '../../integrations/tenant-context.ts';
 import { createPleskApiClient } from './plesk-api-client.ts';
 import type { PleskApiClientLike, PleskApiClientOptions } from './plesk-api-client.ts';
+import { authenticateWithImapLogin } from '../contract/platform-adapter.ts';
+import type { MailClientFactories } from '../contract/platform-adapter.ts';
 import type {
   EnabledLdapIdentityClient,
   IntegrationLogger,
@@ -29,6 +31,8 @@ interface PleskIdentityClientOptions {
   readonly logger?: IntegrationLogger;
   /** Injectable for tests: overrides how the underlying REST client is built. */
   readonly createApiClient?: (options: PleskApiClientOptions) => PleskApiClientLike;
+  /** Required when `enabled`: how `authenticate()` opens an IMAP LOGIN against this target's local mail server. Callers pass `createLocalMailClients(config).createImapClient` (see `plesk-adapter.ts`); tests inject a fake. */
+  readonly createImapClient?: MailClientFactories['createImapClient'];
 }
 
 interface PleskDomainEntry {
@@ -94,6 +98,7 @@ export function createPleskIdentityClient({
   resolveSecret,
   logger = console,
   createApiClient = createPleskApiClient,
+  createImapClient,
 }: PleskIdentityClientOptions = {}): LdapIdentityClient {
   const settings = readSettings(config);
   if (!settings.enabled) {
@@ -111,8 +116,12 @@ export function createPleskIdentityClient({
   if (settings.baseUrl.length === 0) {
     throw pleskIdentityError('baseUrl is required', 'CONFIGURATION');
   }
+  if (typeof createImapClient !== 'function') {
+    throw pleskIdentityError('createImapClient is required to verify mail account passwords', 'CONFIGURATION');
+  }
   const secretResolver = resolveSecret;
   const apiKeySecretRef = settings.apiKeySecretRef;
+  const imapClientFactory = createImapClient;
 
   async function withApiClient<Result>(callback: (client: PleskApiClientLike) => Promise<Result>): Promise<Result> {
     const apiKey = await secretResolver(apiKeySecretRef);
@@ -189,22 +198,21 @@ export function createPleskIdentityClient({
 
   // Plesk's REST API has no generic, safe "verify this mailbox's password"
   // endpoint: the domain/mail-account resources manage mail accounts, they
-  // do not authenticate them, and inventing an undocumented endpoint here
-  // would mean shipping unverified behavior against a real Plesk host —
-  // the same limitation already documented and accepted for the cPanel
-  // adapter (`src/platform/cpanel/cpanel-identity-client.ts`), kept
-  // consistent here. Real password verification for Plesk-hosted mail
-  // accounts will need a different mechanism in a later milestone — most
-  // likely a direct IMAP/POP3 LOGIN against the local mail server (the same
-  // approach this project already relies on elsewhere for LDAP-backed auth
-  // paths), or a dedicated Plesk extension shipped alongside Gulo Gulo.
-  // Until then this fails closed: it always returns false instead of
-  // pretending to authenticate.
-  async function authenticate(_request: LdapAuthenticateRequest = {}): Promise<boolean> {
-    logger.warn?.('plesk_authenticate_not_implemented', {
-      reason: 'The Plesk REST API exposes no safe generic password-verification endpoint for mail accounts; requires IMAP/POP3 or a Plesk extension, tracked for a later milestone',
+  // do not authenticate them. The only real verification mechanism is a
+  // direct IMAP LOGIN against the local mail server, same as `lookupUser`'s
+  // `mailAddress` convention — never the REST client.
+  async function authenticate({ tenantContext, username, password }: LdapAuthenticateRequest = {}): Promise<boolean> {
+    const context = assertTenantContext(tenantContext);
+    if (typeof username !== 'string' || !USERNAME_PATTERN.test(username)) return false;
+    if (typeof password !== 'string' || password.length === 0) return false;
+    const mailAddress = `${username}@${context.domain}`.toLowerCase();
+    return authenticateWithImapLogin({
+      createImapClient: imapClientFactory,
+      mailAddress,
+      password,
+      logger,
+      logEvent: 'plesk_authenticate_imap_failed',
     });
-    return false;
   }
 
   async function healthCheck(): Promise<{ status: 'ok' }> {
