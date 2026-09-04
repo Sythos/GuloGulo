@@ -140,7 +140,7 @@ function runtimeMetadata() {
 function buildMetadata(config: RuntimeConfig) {
   const contract = config?.contract ?? config ?? {};
   return {
-    version: contract.buildVersion ?? config?.buildVersion ?? '0.1.6',
+    version: contract.buildVersion ?? config?.buildVersion ?? '0.1.7',
     build_digest: contract.buildDigest ?? config?.buildDigest ?? 'development',
     ...runtimeMetadata(),
   };

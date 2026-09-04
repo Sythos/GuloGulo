@@ -34,7 +34,7 @@ test('configuration defaults are versioned, deterministic, and secret-free', () 
   const second = loadConfiguration({}, { configFilePath: null });
 
   assert.equal(first.schemaVersion, CONFIG_SCHEMA_VERSION);
-  assert.equal(first.buildVersion, '0.1.6');
+  assert.equal(first.buildVersion, '0.1.7');
   assert.equal(first.buildDigest, 'development');
   assert.equal(first.project.displayName, 'Gulo Gulo');
   assert.equal(first.project.machineName, 'gulogulo');
