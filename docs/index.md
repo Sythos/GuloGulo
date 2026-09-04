@@ -115,21 +115,32 @@ in the README tracks exactly that boundary.
 Node.js is the default runtime on every target and is always required at
 install time regardless of choice — `npm` installs dependencies and runs
 database migrations either way. Bun is available as an alternative runtime
-for the compiled server itself, chosen with one script,
-`switch-runtime.sh`, on every target:
+for the compiled server itself. Every available option:
 
-```bash
-./install.sh --runtime=bun        # choose it at install time
-./switch-runtime.sh bun           # or switch an existing install later
-```
+- **At install time**, pick the runtime up front:
+  ```bash
+  ./install.sh --runtime=node   # the default, same as omitting the flag
+  ./install.sh --runtime=bun
+  ```
+- **On an already-installed instance**, `switch-runtime.sh` is the one
+  script behind every option below — it takes the runtime name as its
+  argument:
+  ```bash
+  ./switch-runtime.sh node
+  ./switch-runtime.sh bun
+  ```
+- **Shortcut wrappers**, if you'd rather not type the runtime name — these
+  call `switch-runtime.sh` for you, nothing else:
+  ```bash
+  ./switch-to-node.sh
+  ./switch-to-bun.sh
+  ```
 
-On cPanel and Plesk this re-renders and restarts the managed systemd unit;
-on standalone it updates the recorded choice and prints the correct manual
-start command, since that target never owns a systemd unit of its own. The
-choice is recorded in a `.runtime` marker next to `.env` and survives
-`upgrade.sh`. `switch-to-node.sh` and `switch-to-bun.sh` are optional
-one-argument shortcuts for the same script, for anyone who would rather not
-remember the exact runtime name.
+On cPanel and Plesk, switching re-renders and restarts the managed systemd
+unit; on standalone it updates the recorded choice and prints the correct
+manual start command, since that target never owns a systemd unit of its
+own. The choice is recorded in a `.runtime` marker next to `.env` and
+survives `upgrade.sh`.
 
 ## Status
 
