@@ -945,6 +945,31 @@ release evidence system as sanitized records.
   restore, and replacement without data loss.
 - Verify vendor Postfix, Dovecot, Rspamd, ClamAV, freshclam, CalDAV, and
   CardDAV versions, configuration, and update sources.
+- Verify inbound and outbound TCP/25 are actually open on the host, both at
+  the firewall and at the infrastructure/provider level. This is not
+  something Gulo Gulo, cPanel, or Plesk control or guarantee — it is a
+  decision made by whoever owns the underlying network. Dedicated/bare-metal
+  hosts sold specifically as "cPanel hosting"/"Plesk hosting" usually have it
+  open by default; generic cloud VPS providers (AWS, GCP, Azure,
+  DigitalOcean, Vultr, Linode, Oracle Cloud, and similar) commonly block
+  outbound 25 account-wide by default as an anti-spam measure, regardless of
+  what is installed on top, and require an explicit unblock request. No
+  workaround exists in Gulo Gulo itself for a blocked port — this is tracked
+  here until one is found.
+- Verify the local IMAP port (993) actually has something listening on
+  `127.0.0.1` — Gulo Gulo's IMAP client (`src/core/mail/imap-client.ts`)
+  only needs a standards-compliant IMAP4rev1 server with the IDLE extension
+  (RFC 3501 / RFC 2177), not Dovecot specifically, so any conformant server
+  works. Unlike TCP/25 this is not a network/provider block: both cPanel and
+  Plesk install and enable a local IMAP service by default, but either panel
+  lets an operator disable mail service for a domain or the whole server —
+  most commonly when a domain's mail is fully outsourced (MX pointed at
+  Google Workspace/Microsoft 365 and similar) and the panel's own mail
+  service was turned off for it. **Suggested workaround:** before relying on
+  this, confirm in WHM/Plesk that the domain is not configured as
+  MX-only/external-mail-only — if it is, either enable the panel's local
+  mail service for that domain or do not expect Gulo Gulo's IMAP client to
+  find anything listening.
 - Verify the optional Plesk/cPanel upstream tenant-tool account, API version,
   TLS, tenant/domain binding, webhook or pull policy, DNS ownership, and
   credential rotation.
