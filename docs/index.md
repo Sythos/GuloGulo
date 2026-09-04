@@ -144,10 +144,17 @@ survives `upgrade.sh`.
 
 ## Status
 
-This project tracks its own readiness honestly: a checked item in the
+Nothing here was thrown together. Every checked item in the
 [production readiness checklist](https://github.com/Sythos/GuloGulo/blob/main/README.md#production-readiness-checklist)
-means the repository contains the code, contract, or runbook and its gate
-passes — not that it has been field-verified against a real external LDAP,
-Postgres, cPanel, or Plesk deployment. See the
-[Install guide](install.md) for exactly what still needs field verification
-on each target before production use.
+has real code behind it, a real contract or runbook, and a CI gate that
+actually has to pass — the full test suite, linting, security scanning, and
+a real install-and-boot rehearsal in CI for every packaging target. That
+work is done and it stays green on every push.
+
+What a green checklist honestly does not yet cover is a real deployment
+run through it end to end: a live external LDAP directory, a production
+PostgreSQL instance, an actual cPanel or Plesk account. That's the one gap
+still open — not a shortcut taken in the code, but the field verification
+that only happens against real infrastructure, which a repository checkout
+can't rehearse on its own. See the [Install guide](install.md) for exactly
+what still needs that verification on each target before production use.
