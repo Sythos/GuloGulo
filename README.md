@@ -18,6 +18,7 @@ Author: Sythos (https://www.sythos.net)
 [![HTML5](https://img.shields.io/badge/HTML5-E34F26?logo=html5&logoColor=white)](https://developer.mozilla.org/en-US/docs/Web/HTML)
 [![TypeScript](https://img.shields.io/badge/TypeScript-3178C6?logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
 [![Node.js](https://img.shields.io/badge/Node.js-339933?logo=node.js&logoColor=white)](https://nodejs.org/)
+[![Bun](https://img.shields.io/badge/Bun-F472B6?logo=bun&logoColor=white)](https://bun.sh/)
 [![Package standalone archive](https://github.com/Sythos/GuloGulo/actions/workflows/package-standalone.yml/badge.svg)](https://github.com/Sythos/GuloGulo/actions/workflows/package-standalone.yml)
 
 Gulo Gulo is a mail-first, tenant-isolated groupware platform, distributed as
@@ -258,8 +259,18 @@ the checked contracts belongs in [INSTALL.md](INSTALL.md).
   and standalone archives; signing (GPG/minisign) not built yet;
 - [x] cPanel and Plesk PlatformAdapter implementations (identity via UAPI/REST,
   data via the existing PostgreSQL store, packaging pipeline for both) - real
-  password authentication for cPanel/Plesk mailboxes and MySQL/MariaDB support
-  remain backlog, documented in each adapter's README;
+  password authentication for cPanel/Plesk mailboxes now works via IMAP LOGIN
+  against the local mail server (neither panel API exposes a safe password
+  check), verified with an injected fake IMAP client; a real cPanel/Plesk host
+  rehearsal and MySQL/MariaDB support remain backlog, documented in each
+  adapter's README;
+- [x] a lazy, per-session IMAP IDLE capability check
+  (`src/core/mail/imap-idle-probe.ts`, `GET /api/mail/idle-status`) reusing an
+  encrypted, session-scoped copy of the login password
+  (`src/web/security/session-credential.ts`, AES-256-GCM under a key derived
+  from the session ID); the webmail UI shows a notice and falls back to a
+  configurable auto-refresh timer when IDLE is unavailable — see INSTALL.md's
+  "IMAP IDLE availability" for the full behavior;
 - [x] wire the CPANEL_API_*/PLESK_API_* settings from .env.example into
   runtime/config.ts's loader (same file/env pattern as ldap/postgres);
 - [x] provider-backed authenticated login/session wiring (src/runtime/login.ts)
@@ -268,12 +279,16 @@ the checked contracts belongs in [INSTALL.md](INSTALL.md).
   standalone, UAPI for cPanel, REST for Plesk — instead of the fixture
   authenticator; field verification against real backends belongs in
   INSTALL.md;
-- [ ] production Postfix/Dovecot mail adapters: minimal IMAP IDLE and SMTP
-  submission protocol clients and their adapters (`src/core/mail/imap-client.ts`,
+- [ ] production mail server adapters: minimal IMAP IDLE and SMTP submission
+  protocol clients and their adapters (`src/core/mail/imap-client.ts`,
   `src/core/mail/imap-idle-adapter.ts`, `src/core/mail/smtp-client.ts`,
-  `src/core/mail/smtp-queue-adapter.ts`) are implemented and tested end to end
-  against a local TCP protocol fake (see `doc/mail-core.md`); verification
-  against a real Dovecot/Postfix installation is still outstanding;
+  `src/core/mail/smtp-queue-adapter.ts`) are RFC-compliant and
+  implementation-agnostic (they depend on no vendor-specific behavior, only
+  standard SMTP and IMAP4rev1 + the IDLE extension) and are implemented and
+  tested end to end against a local TCP protocol fake (see
+  `doc/mail-core.md`); verification against a real SMTP/IMAP server
+  installation (Postfix/Exim + Dovecot are the common examples) is still
+  outstanding;
 - [x] persistent DAV backend: PostgreSQL-backed CalDAV/CardDAV storage
   (`src/core/dav/caldav/postgres-caldav-store.ts`,
   `src/core/dav/carddav/postgres-carddav-store.ts`,

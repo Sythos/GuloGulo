@@ -100,16 +100,25 @@ the [Install guide's field verification section](install.md#field-verification-c
 - Tenant isolation, roles, delegation, quota ceilings, aliases, and
   default-deny mailbox/calendar/contact access, exercised with a real
   tenant and user, not just fixtures.
-- Vendor Postfix (Exim by default on cPanel), Dovecot, Rspamd, ClamAV,
-  CalDAV, and CardDAV versions and configuration actually installed on the
-  host.
 - The local mail server is actually reachable on `127.0.0.1` — Gulo Gulo
   only ever connects to it as a client, on SMTP (`25`/`587`/`465`) and
-  IMAP (`993`), and never binds these itself. TCP/25 is not guaranteed
-  just because the host is up (many cloud VPS providers block outbound 25
-  account-wide by default); local IMAP is not guaranteed just because a
-  panel is installed (a domain can be MX-only/external-mail). See the
+  IMAP (`993`), and never binds these itself. This makes it independent of
+  which software provides them: any standards-compliant SMTP and
+  IMAP4rev1 server works, with one real condition — the IMAP server must
+  support the IDLE extension (RFC 2177) for live inbox updates. Gulo Gulo
+  checks this itself, once per session, and the webmail UI shows a notice
+  and switches to a manual/timed refresh when it is missing — see
+  [IMAP IDLE availability](install.md#imap-idle-availability) for exactly
+  what that check does and does not do.
+  TCP/25 is not guaranteed just because the host is up (many cloud VPS
+  providers block outbound 25 account-wide by default); local IMAP is not
+  guaranteed just because a panel is installed (a domain can be
+  MX-only/external-mail). See the
   [Install guide](install.md#field-verification-checklist) for both.
+- Vendor Rspamd, ClamAV, CalDAV, and CardDAV versions and configuration
+  actually installed on the host (the mail server itself — Postfix/Exim +
+  Dovecot are the common examples, cPanel defaults to Exim — is not a Gulo
+  Gulo dependency, only the protocol above is).
 
 None of this is optional polish — it is the difference between "the
 repository's own gate is green" and "this is safe to run in production."

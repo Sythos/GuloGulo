@@ -215,12 +215,17 @@ sha256sum -c gulogulo-<version>-standalone.tar.gz.sha256
   now).
 - A local mail server reachable on `127.0.0.1` — SMTP on the configured
   submission/implicit-TLS/inbound ports (`587`/`465`/`25` by default,
-  `mail.smtp*Port`) and IMAP on `993` (`mail.imapsPort`). Gulo Gulo only
-  ever connects to these as a client on localhost; it never binds them
-  itself and does not install or configure a mail server. See the "Field
-  verification checklist" below for what "reachable" actually depends on
-  (TCP/25 is not guaranteed just because the host is up; local IMAP is not
-  guaranteed just because a panel is installed).
+  `mail.smtp*Port`) and IMAP on `993` (`mail.imapsPort`). This is a
+  capability requirement, not a product requirement: Gulo Gulo only ever
+  connects as an RFC-compliant client on localhost — any standards-conformant
+  SMTP and IMAP4rev1 server works, Postfix/Exim/Dovecot are common examples,
+  not a dependency. The one real condition on the IMAP side: it must support
+  the IDLE extension (RFC 2177) for live inbox updates to work at all — see
+  "IMAP IDLE availability" below for what happens without it. Gulo Gulo never
+  binds any of these ports itself and does not install or configure a mail
+  server. See the "Field verification checklist" below for what "reachable"
+  actually depends on (TCP/25 is not guaranteed just because the host is up;
+  local IMAP is not guaranteed just because a panel is installed).
 
 ### Uninstall (`uninstall.sh [--non-interactive] [--yes]`)
 
@@ -353,11 +358,13 @@ AppConfig registration (only prints reminders for those two, same as
 
 Same as standalone (Node.js ≥ 26, always required for `npm`/migrations —
 Bun ≥ 1.4.0 also supported as an interchangeable alternative runtime for
-the compiled server, switchable anytime after install; a local mail
-server — Exim by default on cPanel, not Postfix — reachable on
-`127.0.0.1` for SMTP and IMAP, same caveats as standalone's "Field
-verification checklist" entries on TCP/25 and local IMAP availability;
-PostgreSQL optional; LDAP not applicable since identity comes from
+the compiled server, switchable anytime after install; a standards-
+compliant SMTP + IMAP4rev1-with-IDLE server reachable on `127.0.0.1` for
+SMTP and IMAP — cPanel's own default is Exim + Dovecot, not Postfix, but
+neither is a Gulo Gulo dependency, only the protocol is — same caveats as
+standalone's "Field verification checklist" entries on TCP/25 and local
+IMAP availability; PostgreSQL optional; LDAP not applicable since identity
+comes from
 cPanel's own UAPI — see Section 5 for the current `authenticate()`
 limitation), plus root access on a real RHEL-family cPanel/WHM host.
 
@@ -487,10 +494,12 @@ the dedicated system user — same caution as the cPanel target's
 Debian/Ubuntu host, Node.js ≥ 26 pre-installed (`install.sh` checks for it
 but does not install it) — always required for `npm`/migrations; Bun ≥
 1.4.0 is also supported as an interchangeable alternative runtime for the
-compiled server, switchable anytime after install — a local mail server
-reachable on `127.0.0.1` for SMTP and IMAP if mail features are used, same
-caveats as standalone's "Field verification checklist" entries on TCP/25
-and local IMAP availability — PostgreSQL optional (same as the other
+compiled server, switchable anytime after install — a standards-compliant
+SMTP + IMAP4rev1-with-IDLE server reachable on `127.0.0.1` if mail features
+are used (Postfix or Exim + Dovecot are common on Plesk, not a dependency —
+only the protocol is), same caveats as standalone's "Field verification
+checklist" entries on TCP/25 and local IMAP availability — PostgreSQL
+optional (same as the other
 targets), root access. Plesk itself is not required to be installed on the
 host at all for this to work; the Plesk REST API identity adapter
 (`src/platform/plesk/`) is only relevant if the host is also Plesk-managed
@@ -518,23 +527,31 @@ full install/upgrade/uninstall cycle on a real Debian/Ubuntu host.
 
 ## 5. Cross-cutting known limitations
 
-- **Password authentication on cPanel and Plesk is fail-closed and not
-  implemented.** Neither cPanel's UAPI nor Plesk's REST API exposes a
-  generic, safe way to verify an arbitrary mail account's password from the
-  outside. Rather than build against an undocumented, unverifiable endpoint,
-  `authenticate()` on both the `cpanel` and `plesk` identity adapters
-  **always returns `false`** and logs why. **LDAP and the DB-backed
-  `local_users` table (standalone target only, `IDENTITY_SOURCE=ldap` or
-  `database`) are the only identity sources that actually authenticate users
-  today.** `src/runtime/login.ts` resolves the configured target
+- **Password authentication on cPanel and Plesk now works via a real IMAP
+  LOGIN, not the panel API.** Neither cPanel's UAPI nor Plesk's REST API
+  exposes a generic, safe way to verify an arbitrary mail account's password
+  from the outside, so `authenticate()` on both identity adapters never
+  calls the panel API for this — instead it attempts a real IMAP `LOGIN`
+  against the local mail server on `127.0.0.1` (`src/platform/contract/
+  platform-adapter.ts`'s `authenticateWithImapLogin()`, shared by both
+  adapters), using the exact same `127.0.0.1`/`mail.imapsPort` connection
+  every other mail feature already uses. A login the IMAP server accepts
+  authenticates the user; a rejected password, an unreachable IMAP server,
+  or any other failure fails closed (`false`), never an exception. This is
+  verified today against an injected fake IMAP client
+  (`cpanel-identity-client.test.ts`, `plesk-identity-client.test.ts`) and,
+  end to end, against a real local TCP connection attempt in CI (which
+  correctly fails closed there, since CI has no real mail server) — **not
+  yet verified against a real cPanel/Plesk host with a real Dovecot/Exim
+  service.** LDAP and the DB-backed `local_users` table (standalone target
+  only, `IDENTITY_SOURCE=ldap` or `database`) remain the other working
+  identity sources. `src/runtime/login.ts` resolves the configured target
   (`GULOGULO_PLATFORM`) and calls its real identity client for every
-  `POST /api/session/login` outside `GULOGULO_FIXTURE_MODE=true` — including
-  for cPanel/Plesk, where that real client is the fail-closed one above, so a
-  login attempt is genuinely rejected by the adapter, not by a fixed stub.
-  Real cPanel/Plesk password login is future work; the most likely paths, per
-  `src/platform/cpanel/README.md` and `src/platform/plesk/README.md`, are a
-  direct IMAP/POP3 bind against the local mail server, or a dedicated
-  panel plugin/extension.
+  `POST /api/session/login` outside `GULOGULO_FIXTURE_MODE=true`. See
+  `src/platform/cpanel/README.md` and `src/platform/plesk/README.md` for the
+  implementation detail, and "IMAP IDLE availability" below — the same
+  local IMAP connection is reused (via the encrypted, session-scoped
+  credential described there) for the IMAP IDLE capability probe.
 - **MySQL/MariaDB is not implemented.** ADR-002 promises MySQL/MariaDB as the
   primary data engine for cPanel and Plesk hosts, but today all three
   targets — standalone, cpanel, and plesk — reuse the exact same
@@ -1019,6 +1036,49 @@ release evidence system as sanitized records.
 - Measure latency, memory, queue depth, storage pressure, connection counts,
   RPO, and RTO on each of the three targets that will actually be deployed.
 
+## IMAP IDLE availability
+
+Gulo Gulo never assumes the local IMAP server supports RFC 2177 IDLE — it
+checks, once per signed-in session, and degrades honestly when the answer is
+no.
+
+- **The check is lazy, not part of login.** `POST /api/session/login`
+  never attempts an IMAP connection itself, so a slow or unreachable IMAP
+  server never delays or blocks sign-in. The webmail UI asks separately,
+  the first time it needs to know, via `GET /api/mail/idle-status`.
+- **What the check actually does:** connect to the same `127.0.0.1`/
+  `mail.imapsPort` the rest of the mail core uses, `LOGIN` with the
+  mailbox's own credentials, `SELECT INBOX`, ask the server to accept
+  `IDLE`, then immediately stop and log out
+  (`src/core/mail/imap-idle-probe.ts`). It never subscribes to real
+  mailbox events — that stays `src/core/mail/imap-idle-adapter.ts`'s job,
+  not wired into the running server yet (see "Repository implementation
+  work still open" below). Any failure — LOGIN rejected, IDLE rejected,
+  connection unreachable or timed out — is treated as unavailable; short,
+  explicit timeouts (a few seconds) keep a filtered port from hanging the
+  request.
+- **Where the credential for the check comes from:** the password
+  submitted at login is kept only in memory, only for the life of that
+  session, encrypted at rest with AES-256-GCM under a key derived (HKDF)
+  from the session's own random identifier plus a per-process salt that is
+  itself never persisted (`src/web/security/session-credential.ts`). It is
+  discarded the moment the session logs out, expires, or is replaced by a
+  new login — never written to disk, a database, or a log. This is the
+  same credential the cPanel/Plesk `authenticate()` fix above reuses for
+  its own IMAP LOGIN.
+- **When IDLE is unavailable:** the webmail UI shows a persistent notice
+  in the bottom-left corner of the screen stating that live inbox updates
+  are unavailable and the inbox needs a manual refresh. Preferences gains
+  an "Inbox auto-refresh (minutes)" setting (kept client-side, per
+  browser); when IDLE is unavailable the UI polls the active folder on
+  that interval, and the setting has no effect at all when IDLE is
+  available (live updates are already in use).
+- **What this does not do:** the capability probe proves whether IDLE
+  would work — it does not fetch, list, or search mail. `/api/mail/
+  messages` remains an empty fixture until real IMAP FETCH/SEARCH support
+  lands (see "Repository implementation work still open" below); the
+  auto-refresh timer above will re-poll that same empty fixture until then.
+
 ## Evidence hand-off rules
 
 Keep evidence small and useful:
@@ -1042,8 +1102,12 @@ as tester work:
 - [ ] MySQL/MariaDB data engine behind the existing `PostgresPoolLike`/
   `PostgresClientLike` abstraction, the multi-engine support ADR-002 promises
   for cPanel/Plesk hosts;
-- [ ] real cPanel/Plesk panel-native password authentication (both adapters
-  are fail-closed today);
+- [x] real cPanel/Plesk password authentication via IMAP LOGIN against the
+  local mail server (both adapters previously always returned `false`; see
+  "Cross-cutting known limitations" above) — tested against an injected fake
+  IMAP client and, end to end, against a real local TCP connection attempt
+  in CI; **verification against a real cPanel/Plesk host with a real
+  Dovecot/Exim service is still outstanding**;
 - [ ] wiring `CPANEL_API_*` and Plesk API settings into
   `src/runtime/config.ts` so those integrations can actually be enabled;
 - [ ] an admin UI/API to create, rotate, and deactivate `local_users` rows for
@@ -1052,10 +1116,17 @@ as tester work:
   `doc/identity-and-postgres.md`);
 - [ ] production Postfix/Dovecot mail adapters: minimal IMAP IDLE and SMTP
   submission protocol clients and their adapters (`src/core/mail/imap-client.ts`,
-  `src/core/mail/imap-idle-adapter.ts`, `src/core/mail/smtp-client.ts`,
-  `src/core/mail/smtp-queue-adapter.ts`) are implemented and tested end to end
-  against a local TCP protocol fake (see `doc/mail-core.md`); verification
-  against a real Dovecot/Postfix installation is still outstanding;
+  `src/core/mail/imap-idle-adapter.ts`, `src/core/mail/imap-idle-probe.ts`,
+  `src/core/mail/smtp-client.ts`, `src/core/mail/smtp-queue-adapter.ts`) are
+  implemented and tested end to end against a local TCP protocol fake (see
+  `doc/mail-core.md`); verification against a real Dovecot/Postfix
+  installation is still outstanding;
+- [ ] real IMAP FETCH/SEARCH support: `imap-client.ts` only implements
+  `connect`/`LOGIN`/`SELECT`/`IDLE`/`logout` today (enough for the identity
+  and IMAP IDLE capability checks above), never message listing or content;
+  `/api/mail/messages` stays a deliberate empty fixture, and there is no
+  `/api/events` (SSE) endpoint on the server despite the webmail UI already
+  having a client for one, until this lands;
 - [x] persistent DAV backend: PostgreSQL-backed CalDAV/CardDAV storage
   (`src/core/dav/caldav/postgres-caldav-store.ts`,
   `src/core/dav/carddav/postgres-carddav-store.ts`,

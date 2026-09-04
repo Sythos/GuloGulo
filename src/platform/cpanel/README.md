@@ -44,18 +44,26 @@ email autonomamente.
   già usati per `ldap`/`postgres`/`controlPanel`: resta disabilitata di
   default finché `cpanel.enabled`/`CPANEL_API_ENABLED` non è impostato.
 
-## Limitazione nota: `authenticate()`
+## `authenticate()`: verifica reale via IMAP LOGIN
 
 L'UAPI di cPanel non espone un endpoint generico e sicuro per verificare la
 password di un account email arbitrario dall'esterno — `Email::list_pops` e
-gli endpoint affini gestiscono gli account, non li autenticano. Piuttosto che
-inventare un endpoint non documentato e non verificabile contro un cPanel
-reale, `authenticate()` fallisce **sempre e in modo esplicito**: ritorna
-`false` (fail-closed) e logga il motivo. La verifica password reale per gli
-account email cPanel è pianificata per una milestone successiva, con due
-strade più probabili: un login IMAP/POP3 diretto contro il server mail locale
-(pattern già disponibile in questo progetto per i percorsi di autenticazione
-basati su LDAP), oppure un plugin/hook cPanel dedicato.
+gli endpoint affini gestiscono gli account, non li autenticano. L'unico
+meccanismo di verifica realmente disponibile è quindi un login IMAP diretto
+contro il server mail locale: `authenticate()` tenta una vera `LOGIN` IMAP
+(`src/core/mail/imap-client.ts`, via l'helper condiviso
+`authenticateWithImapLogin()` in
+`../contract/platform-adapter.ts`) verso `127.0.0.1` sulla porta IMAP
+configurata (`mail.imapsPort`), usando `<username>@<dominio del tenant>`
+come utente IMAP e la password sottomessa al login. Un login accettato
+ritorna `true`; una password rifiutata, un server IMAP irraggiungibile, o
+qualunque altro errore ritornano `false` (fail-closed) — mai un'eccezione
+verso il chiamante. `createImapClient` è iniettato da `cpanel-adapter.ts`
+tramite `createLocalMailClients()`, lo stesso factory già usato per il
+probe di capability IMAP IDLE (vedi `INSTALL.md`, sezione "IMAP IDLE
+availability"). Verificato con un client IMAP fake nei test
+(`cpanel-identity-client.test.ts`); non ancora verificato contro un host
+cPanel reale con Dovecot/Exim in produzione.
 
 ## Cosa manca
 

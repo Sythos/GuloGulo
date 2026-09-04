@@ -254,6 +254,15 @@ assume that an IDLE event is a complete message list.
   a `broker.notify(...)` call, so local subscribers see it exactly as they do
   today. The IMAP transport is injected through an `ImapClientFactory`, never
   hardcoded, so the adapter stays testable.
+- `src/core/mail/imap-idle-probe.ts` is a much smaller sibling: a one-shot
+  capability check, not a subscription. `probeImapIdleAvailability()`
+  connects, logs in, selects INBOX, asks the server to accept `IDLE`, then
+  immediately stops and logs out — it never registers real event handling.
+  This is what `GET /api/mail/idle-status` calls lazily (see INSTALL.md's
+  "IMAP IDLE availability") to decide whether the webmail UI can rely on
+  live updates or must fall back to a manual/timed refresh; it does not
+  replace `imap-idle-adapter.ts`, which stays the module for an actual
+  ongoing IDLE subscription once one is wired into the running server.
 - `src/core/mail/smtp-client.ts` is a minimal SMTP (RFC 5321) client for the
   same reason: EHLO, STARTTLS, AUTH LOGIN, MAIL FROM/RCPT TO/DATA (with
   dot-stuffing), and QUIT, over `node:net`/`node:tls`.
