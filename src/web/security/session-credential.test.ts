@@ -40,10 +40,10 @@ test('a credential is never readable under a different session identifier', () =
 });
 
 test('a credential is discarded once it expires', () => {
-  const { clock, advance } = createClock();
-  const store = createSessionCredentialStore({ clock, randomBytesFn: createDeterministicRandomBytes() });
-  store.set(SESSION_A, 'super-secret-password', clock() + 1_000);
-  advance(1_000);
+  const timeClock = createClock();
+  const store = createSessionCredentialStore({ clock: timeClock.clock, randomBytesFn: createDeterministicRandomBytes() });
+  store.set(SESSION_A, 'super-secret-password', timeClock.clock() + 1_000);
+  timeClock.advance(1_000);
   assert.equal(store.get(SESSION_A), null);
   assert.equal(store.size, 0);
 });
