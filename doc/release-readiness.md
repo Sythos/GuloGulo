@@ -50,21 +50,31 @@ indexed `doc/...` paths (including `lp8-evidence-operator.md`,
 into files that no longer live under `doc/`. Live provider evidence and
 provider-specific Plesk/cPanel adapters remain outside this checkout.
 
-## Artifact provenance: retired GHCR/container release lane
+## Artifact provenance
 
-**⚠️ This section describes a mechanism that no longer exists.**
-`.github/workflows/container-release.yml` has been removed from the
-repository, along with the GHCR image publication, SBOM/attestation, and
-numeric-tag release automation it used to run. See the archived
-`old_docs/lp-proof-records/sbom-release-plan.md` for the retired mechanism and
-the security principles (checksum, provenance, attestation, least-privilege
-permissions) that still need to be readapted to the cPanel/Plesk/standalone
-packages — that readaptation has not happened yet, and none of the three
-current package workflows (`.github/workflows/package-{standalone,cpanel,
-plesk}.yml`) produce an SBOM or a signed attestation today. The current, real
-CI gates for a release are `.github/workflows/quality-gates.yml` (repository
-entry points, MIT/SPDX headers, and the full test suite) plus the three
-packaging workflows, each of which builds, actually installs
+The GHCR/container release lane (`container-release.yml`, GHCR image
+publication, and the numeric-tag automation that went with it) was retired
+when the project moved off Docker/OCI — it no longer exists, and the
+security principles it used to provide (checksum, provenance, attestation,
+least-privilege permissions) were readapted to the current
+cPanel/Plesk/standalone packages, not carried over automatically.
+
+Checksums have applied to every package since the tar.gz-based targets
+shipped: each of the three `.tar.gz` files gets its own `.sha256` sidecar
+(`packaging/shared/stage-application.ts`'s `writeChecksumFile`), aggregated
+into one `checksums.txt` per release.
+
+Since release 0.1.6, `.github/workflows/release.yml`'s `publish-release` job
+also generates a signed build provenance attestation for all three packages
+(`actions/attest-build-provenance`, GitHub's own Sigstore-backed
+attestation) before they are uploaded to the release — verifiable with
+`gh attestation verify <file> --repo Sythos/GuloGulo`. This did not exist for
+any earlier tag; there is no attestation for 0.1.5 or earlier. An SBOM is
+still not generated — that readaptation has not happened yet.
+
+The current, real CI gates for a release are `.github/workflows/quality-gates.yml`
+(repository entry points, MIT/SPDX headers, and the full test suite) plus the
+three packaging workflows, each of which builds, actually installs
 (`install.sh --non-interactive`), and boots the package, polling
 `/health/ready` and `/` — on cPanel and Plesk the systemd
 enable/start step is stubbed since their CI containers have no init system;

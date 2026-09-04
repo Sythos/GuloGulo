@@ -269,6 +269,8 @@ jobs:
     if: github.ref_type == 'tag'
     permissions:
       contents: write
+      attestations: write
+      id-token: write
     env:
       VERSION: ${{ needs.detect-version.outputs.version }}
     steps:
@@ -307,6 +309,14 @@ jobs:
             echo "CPANEL=$CPANEL"
             echo "PLESK=$PLESK"
           } >> "$GITHUB_ENV"
+
+      - name: Generate build provenance attestations
+        uses: actions/attest-build-provenance@v4.2.2
+        with:
+          subject-path: |
+            release-assets/${{ env.STANDALONE }}
+            release-assets/${{ env.CPANEL }}
+            release-assets/${{ env.PLESK }}
 
       - name: Build and verify the aggregated checksums.txt
         shell: bash
