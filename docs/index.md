@@ -100,8 +100,16 @@ the [Install guide's field verification section](install.md#field-verification-c
 - Tenant isolation, roles, delegation, quota ceilings, aliases, and
   default-deny mailbox/calendar/contact access, exercised with a real
   tenant and user, not just fixtures.
-- Vendor Postfix, Dovecot, Rspamd, ClamAV, CalDAV, and CardDAV versions and
-  configuration actually installed on the host.
+- Vendor Postfix (Exim by default on cPanel), Dovecot, Rspamd, ClamAV,
+  CalDAV, and CardDAV versions and configuration actually installed on the
+  host.
+- The local mail server is actually reachable on `127.0.0.1` — Gulo Gulo
+  only ever connects to it as a client, on SMTP (`25`/`587`/`465`) and
+  IMAP (`993`), and never binds these itself. TCP/25 is not guaranteed
+  just because the host is up (many cloud VPS providers block outbound 25
+  account-wide by default); local IMAP is not guaranteed just because a
+  panel is installed (a domain can be MX-only/external-mail). See the
+  [Install guide](install.md#field-verification-checklist) for both.
 
 None of this is optional polish — it is the difference between "the
 repository's own gate is green" and "this is safe to run in production."

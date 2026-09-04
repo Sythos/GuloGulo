@@ -213,6 +213,14 @@ sha256sum -c gulogulo-<version>-standalone.tar.gz.sha256
   `doc/identity-and-postgres.md` for the table, the migration, and the
   current lack of an admin UI to provision users (insert rows directly for
   now).
+- A local mail server reachable on `127.0.0.1` — SMTP on the configured
+  submission/implicit-TLS/inbound ports (`587`/`465`/`25` by default,
+  `mail.smtp*Port`) and IMAP on `993` (`mail.imapsPort`). Gulo Gulo only
+  ever connects to these as a client on localhost; it never binds them
+  itself and does not install or configure a mail server. See the "Field
+  verification checklist" below for what "reachable" actually depends on
+  (TCP/25 is not guaranteed just because the host is up; local IMAP is not
+  guaranteed just because a panel is installed).
 
 ### Uninstall (`uninstall.sh [--non-interactive] [--yes]`)
 
@@ -345,11 +353,13 @@ AppConfig registration (only prints reminders for those two, same as
 
 Same as standalone (Node.js ≥ 26, always required for `npm`/migrations —
 Bun ≥ 1.4.0 also supported as an interchangeable alternative runtime for
-the compiled server, switchable anytime after install; PostgreSQL
-optional; LDAP not applicable since identity comes from cPanel's own UAPI
-— see Section 5 for the current `authenticate()` limitation), plus root
-access on a real RHEL-family
-cPanel/WHM host.
+the compiled server, switchable anytime after install; a local mail
+server — Exim by default on cPanel, not Postfix — reachable on
+`127.0.0.1` for SMTP and IMAP, same caveats as standalone's "Field
+verification checklist" entries on TCP/25 and local IMAP availability;
+PostgreSQL optional; LDAP not applicable since identity comes from
+cPanel's own UAPI — see Section 5 for the current `authenticate()`
+limitation), plus root access on a real RHEL-family cPanel/WHM host.
 
 ### CI status
 
@@ -477,10 +487,12 @@ the dedicated system user — same caution as the cPanel target's
 Debian/Ubuntu host, Node.js ≥ 26 pre-installed (`install.sh` checks for it
 but does not install it) — always required for `npm`/migrations; Bun ≥
 1.4.0 is also supported as an interchangeable alternative runtime for the
-compiled server, switchable anytime after install — PostgreSQL optional
-(same as the other targets), root access. Plesk itself is not required to
-be installed on the host at
-all for this to work; the Plesk REST API identity adapter
+compiled server, switchable anytime after install — a local mail server
+reachable on `127.0.0.1` for SMTP and IMAP if mail features are used, same
+caveats as standalone's "Field verification checklist" entries on TCP/25
+and local IMAP availability — PostgreSQL optional (same as the other
+targets), root access. Plesk itself is not required to be installed on the
+host at all for this to work; the Plesk REST API identity adapter
 (`src/platform/plesk/`) is only relevant if the host is also Plesk-managed
 and you intend to use it for identity.
 
@@ -943,7 +955,9 @@ release evidence system as sanitized records.
   connection limits on every target.
 - Verify external volume/directory creation, encryption, snapshots, ownership,
   restore, and replacement without data loss.
-- Verify vendor Postfix, Dovecot, Rspamd, ClamAV, freshclam, CalDAV, and
+- Verify vendor Postfix (Exim by default on cPanel — Gulo Gulo's SMTP/IMAP
+  clients are protocol-generic, RFC-compliant only, and do not depend on
+  either specifically), Dovecot, Rspamd, ClamAV, freshclam, CalDAV, and
   CardDAV versions, configuration, and update sources.
 - Verify inbound and outbound TCP/25 are actually open on the host, both at
   the firewall and at the infrastructure/provider level. This is not

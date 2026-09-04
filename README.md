@@ -87,7 +87,11 @@ being re-enabled once a signing key exists (see
 ## Quickstart
 
 Full instructions, requirements, and known gaps for each target are in
-[INSTALL.md](INSTALL.md) - this is the short version.
+[INSTALL.md](INSTALL.md) - this is the short version. Every target also
+needs a local mail server reachable on `127.0.0.1` for SMTP and IMAP -
+Gulo Gulo only ever connects to it as a client, on localhost; see
+INSTALL.md for what "reachable" actually depends on (TCP/25 is not
+guaranteed just because the host is up).
 
 **Standalone** (any Linux host, Node.js 26+ - Bun 1.4.0+ also supported as
 the runtime, interchangeable with Node.js anytime after install; the build
