@@ -240,7 +240,7 @@ jobs:
         run: cat "$INSTALL_DIR/server.log" 2>/dev/null || true
 
       - name: Upload the tar.gz package artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: gulogulo-cpanel-package
           path: |
