@@ -1,0 +1,10 @@
+# SPDX-License-Identifier: MIT
+# SPDX-FileCopyrightText: 2026 Sythos (https://www.sythos.net)
+# Author: Sythos (https://www.sythos.net)
+#
+# Pins the docs site's build toolchain (see mkdocs.yml, .github/workflows/
+# docs.yml). Unrelated to the application itself, which has no Python
+# dependency - this exists only so `pip install -r requirements.txt` builds
+# the GitHub Pages site reproducibly, locally or in CI.
+
+mkdocs-material==9.7.7

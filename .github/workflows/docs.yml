@@ -1,0 +1,73 @@
+# SPDX-License-Identifier: MIT
+# SPDX-FileCopyrightText: 2026 Sythos (https://www.sythos.net)
+# Author: Sythos (https://www.sythos.net)
+
+# Builds and deploys the GitHub Pages site (mkdocs.yml + docs/) with
+# Material for MkDocs. GitHub does not build MkDocs natively the way it
+# builds Jekyll, so this workflow does the build itself and hands the
+# static output to GitHub's own Pages deploy action - Pages' source must be
+# set to "GitHub Actions" (not "Deploy from a branch") for this to publish;
+# see the repo's Settings > Pages.
+name: Deploy docs site
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - docs/**
+      - overrides/**
+      - mkdocs.yml
+      - requirements.txt
+      - .github/workflows/docs.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: Build the site with MkDocs
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.x"
+
+      - name: Install MkDocs Material
+        shell: bash
+        run: pip install -r requirements.txt
+
+      - name: Build (strict - warnings fail the build)
+        shell: bash
+        run: mkdocs build --strict
+
+      - name: Upload the built site
+        uses: actions/upload-pages-artifact@v4
+        with:
+          path: site
+
+  deploy:
+    name: Deploy to GitHub Pages
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy
+        id: deployment
+        uses: actions/deploy-pages@v4

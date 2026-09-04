@@ -1,13 +1,3 @@
----
-layout: default
-title: Gulo Gulo
-description: >-
-  Secure, tenant-isolated mail, calendar, and contacts groupware, distributed
-  as cPanel, Plesk, and standalone packages built from the same TypeScript
-  core.
-permalink: /
----
-
 <!--
 SPDX-License-Identifier: MIT
 SPDX-FileCopyrightText: 2026 Sythos (https://www.sythos.net)
@@ -40,10 +30,7 @@ while code signing is still pending; see the
 [README](https://github.com/Sythos/GuloGulo/blob/main/README.md#why-three-packages-and-why-these-targets)
 for the full rationale.
 
-Node.js is the default runtime; Bun is available as an alternative on
-every target, switchable after install without reinstalling.
-
-## Get started
+## Install and setup
 
 - **[Install guide](https://github.com/Sythos/GuloGulo/blob/main/INSTALL.md)**
   — build/install/upgrade instructions and known gaps, per target
@@ -53,6 +40,30 @@ every target, switchable after install without reinstalling.
   — packaged `.tar.gz` archives for each target
 - **[Repository](https://github.com/Sythos/GuloGulo)**
   — source, issues, and CI
+
+### Node.js or Bun
+
+Node.js is the default runtime on every target and is always required at
+install time regardless of choice — `npm` installs dependencies and runs
+database migrations either way. Bun is available as an alternative
+runtime for the compiled server itself:
+
+```bash
+./install.sh --runtime=bun
+```
+
+Already installed under Node? Switch a running instance without
+reinstalling:
+
+```bash
+./switch-to-bun.sh    # or ./switch-to-node.sh to switch back
+```
+
+On cPanel and Plesk this re-renders and restarts the managed systemd
+unit; on standalone it updates the recorded choice and prints the
+correct manual start command, since that target never owns a systemd
+unit of its own. The choice is recorded in a `.runtime` marker next to
+`.env` and survives `upgrade.sh`.
 
 ## Status
 

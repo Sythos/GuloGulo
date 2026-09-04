@@ -1,0 +1,40 @@
+# SPDX-License-Identifier: MIT
+# SPDX-FileCopyrightText: 2026 Sythos (https://www.sythos.net)
+# Author: Sythos (https://www.sythos.net)
+
+site_name: Gulo Gulo
+site_description: >-
+  Secure, tenant-isolated mail, calendar, and contacts groupware, distributed
+  as cPanel, Plesk, and standalone packages built from the same TypeScript
+  core.
+site_url: https://sythos.github.io/GuloGulo/
+site_author: Sythos
+repo_url: https://github.com/Sythos/GuloGulo
+repo_name: Sythos/GuloGulo
+copyright: MIT licensed
+
+docs_dir: docs
+site_dir: site
+
+theme:
+  name: material
+  custom_dir: overrides
+  favicon: assets/favicon-32.png
+  logo: assets/brand-mark.png
+  palette:
+    scheme: slate
+    primary: custom
+    accent: custom
+  features:
+    - navigation.instant
+    - navigation.tracking
+    - content.code.copy
+    - search.suggest
+    - search.share
+
+extra_css:
+  - assets/extra.css
+
+markdown_extensions:
+  - admonition
+  - pymdownx.superfences

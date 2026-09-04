@@ -1,0 +1,25 @@
+/*
+SPDX-License-Identifier: MIT
+SPDX-FileCopyrightText: 2026 Sythos (https://www.sythos.net)
+Author: Sythos (https://www.sythos.net)
+*/
+
+/* Matches GuloGulo's own web app palette (web/manifest.json:
+   background_color #111417, theme_color #d99a4f) instead of Material's
+   stock indigo, so the docs site and the app read as the same product. */
+[data-md-color-primary="custom"] {
+  --md-primary-fg-color: #171b1f;
+  --md-primary-fg-color--light: #2a2f35;
+  --md-primary-fg-color--dark: #111417;
+  --md-primary-bg-color: #e8e6e1;
+}
+
+[data-md-color-accent="custom"] {
+  --md-accent-fg-color: #d99a4f;
+  --md-accent-fg-color--transparent: #d99a4f1a;
+  --md-accent-bg-color: #111417;
+}
+
+:root {
+  --md-default-bg-color: #111417;
+}
