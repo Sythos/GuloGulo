@@ -5,6 +5,7 @@
 # Pins the docs site's build toolchain (see mkdocs.yml, .github/workflows/
 # docs.yml). Unrelated to the application itself, which has no Python
 # dependency - this exists only so `pip install -r requirements.txt` builds
-# the GitHub Pages site reproducibly, locally or in CI.
+# the GitHub Pages site reproducibly, locally or in CI. This is not a Python
+# project and never ships or imports any Python source of its own.
 
 mkdocs-material==9.7.7
