@@ -14,7 +14,7 @@ name: Package Plesk archive
 # gulogulo-<version>_plesk_.tar.gz until a code-signing key exists.
 #
 # This still runs inside a real `debian:trixie` container (not the
-# ubuntu-latest runner the standalone workflow uses) so the Node.js install
+# ubuntu-26.04 runner the standalone workflow uses) so the Node.js install
 # via NodeSource's setup_26.x script, and
 # packaging/plesk/scripts/install.sh - a straight shell translation of
 # DEBIAN/postinst - are both exercised on the actual target OS this package
@@ -49,7 +49,7 @@ concurrency:
 jobs:
   build-and-verify-package:
     name: Build the tar.gz and install it end to end
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     container: debian:trixie
     timeout-minutes: 20
     steps:
