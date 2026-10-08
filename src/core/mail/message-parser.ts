@@ -8,6 +8,8 @@
 // attachment metadata. It never executes or fetches anything; the HTML is
 // handed to the browser, which sanitises it before it reaches the DOM.
 
+import { TextDecoder } from 'node:util';
+
 export interface ParsedAttachment {
   readonly name: string;
   readonly contentType: string;
