@@ -109,6 +109,13 @@ function attributeString(value: unknown): string | undefined {
   return typeof value === 'string' ? value : undefined;
 }
 
+/** An absent role attribute stays absent; several values are ambiguous and become an unknown role that `login.ts` rejects. */
+function roleAttribute(value: unknown): { role?: string } {
+  if (Array.isArray(value) && value.length > 1) return { role: 'ambiguous' };
+  const role = attributeString(value);
+  return role === undefined ? {} : { role };
+}
+
 export function createLdapIdentityClient({
   config,
   resolveSecret,
@@ -209,7 +216,7 @@ export function createLdapIdentityClient({
       const result = await client.search(userBaseDn, {
         scope: 'sub',
         filter,
-        attributes: ['uid', 'mail', 'displayName', 'cn', 'active'],
+        attributes: ['uid', 'mail', 'displayName', 'cn', 'active', 'guloguloRole'],
       });
       const entries: readonly LdapSearchEntry[] = (result).searchEntries ?? [];
       if (entries.length > 1) throw ldapError('LDAP returned multiple identities', 'AMBIGUOUS_IDENTITY');
@@ -223,6 +230,7 @@ export function createLdapIdentityClient({
         displayName: attributeString(entry.displayName) ?? attributeString(entry.cn) ?? null,
         dn: attributeString(entry.dn),
         active: entry.active !== false,
+        ...roleAttribute(entry.guloguloRole),
       };
     }), 'lookup');
   }

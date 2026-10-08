@@ -6,7 +6,7 @@ import { createCpanelAdapter } from '../platform/cpanel/cpanel-adapter.ts';
 import { createPleskAdapter } from '../platform/plesk/plesk-adapter.ts';
 import { createStandaloneAdapter } from '../platform/standalone/standalone-adapter.ts';
 import { createTenantContext } from '../integrations/tenant-context.ts';
-import type { IntegrationConfig, IntegrationLogger, LdapIdentityClient, SecretResolver, TenantContext, TenantIdentity } from '../integrations/types.ts';
+import type { IntegrationConfig, IntegrationLogger, LdapIdentityClient, SecretResolver, TenantContext, TenantIdentity, TenantRole } from '../integrations/types.ts';
 import type { PlatformAdapter } from '../platform/contract/platform-adapter.ts';
 import type { SessionIdentity } from '../web/security/session-manager.ts';
 
@@ -90,6 +90,25 @@ export function createEnvironmentSecretResolver(environment: NodeJS.ProcessEnv =
     const value = environment[key];
     return typeof value === 'string' && value.length > 0 ? value : undefined;
   };
+}
+
+/**
+ * Roles a tenant-bound login may carry. `provider` is deliberately absent: it
+ * is not scoped to one tenant, so it can never come from a tenant identity
+ * lookup.
+ */
+const LOGIN_ROLES: ReadonlySet<string> = new Set<string>(['user', 'tenant_master', 'monitor']);
+
+/**
+ * Maps the role reported by the platform identity source to the session role.
+ * No assignment means least privilege (`user`); an unknown or unauthorized
+ * value returns `null` so the login fails closed. The role never comes from
+ * the browser request.
+ */
+export function resolveLoginRole(identity: TenantIdentity | null): TenantRole | null {
+  const role = identity?.role;
+  if (role === undefined) return 'user';
+  return LOGIN_ROLES.has(role) ? role as TenantRole : null;
 }
 
 interface ParsedLoginEmail {
@@ -198,13 +217,19 @@ export function createProvisionedLoginAuthenticator({
     }
     if (identity !== null && identity.active === false) return null;
 
+    const role = resolveLoginRole(identity);
+    if (role === null) {
+      logger.warn?.('login_role_unauthorized', { tenantId: parsed.tenantId });
+      return null;
+    }
+
     const userId = identity?.externalId ?? parsed.username;
     return Object.freeze({
       tenantId: parsed.tenantId,
       domain: parsed.domain,
       userId,
       actorId: userId,
-      role: 'user' as const,
+      role,
     });
   };
 }
