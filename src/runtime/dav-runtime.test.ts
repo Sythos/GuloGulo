@@ -11,6 +11,7 @@ import test from 'node:test';
 import type { PostgresClientLike, PostgresPoolOptions, QueryResult } from '../integrations/types.ts';
 import { createPostgresCalDavStore } from '../core/dav/caldav/postgres-caldav-store.ts';
 import { createPostgresCardDavStore } from '../core/dav/carddav/postgres-carddav-store.ts';
+import { CSRF_HEADER_NAME } from '../web/security/index.ts';
 import { createLogger } from './logger.js';
 import { createRuntimeServer, startServer, stopServer } from './server.js';
 
@@ -322,6 +323,10 @@ function serverAddress(runtime: TestRuntime): AddressInfo {
   return address;
 }
 
+// CSRF token issued at login, per session cookie: cookie-authenticated
+// PUT/DELETE must carry it, exactly like a browser would send it.
+const csrfByCookie = new Map<string, string>();
+
 interface RawResponse { statusCode: number | undefined; headers: IncomingHttpHeaders; body: string }
 
 function rawRequest(runtime: TestRuntime, path: string, { method = 'GET', headers = {}, body }: { method?: string; headers?: OutgoingHttpHeaders; body?: string } = {}): Promise<RawResponse> {
@@ -333,6 +338,7 @@ function rawRequest(runtime: TestRuntime, path: string, { method = 'GET', header
       path,
       method,
       headers: {
+        ...(typeof headers.cookie === 'string' && (method === 'PUT' || method === 'DELETE') && csrfByCookie.has(headers.cookie) ? { [CSRF_HEADER_NAME]: csrfByCookie.get(headers.cookie) } : {}),
         ...headers,
         ...(body === undefined ? {} : { 'content-length': Buffer.byteLength(body) }),
       },
@@ -356,7 +362,14 @@ async function login(runtime: TestRuntime): Promise<string> {
   assert.equal(response.statusCode, 200);
   const setCookie = response.headers['set-cookie'];
   assert.ok(Array.isArray(setCookie) && setCookie.length > 0);
-  return setCookie[0].split(';', 1)[0];
+  const cookie = setCookie[0].split(';', 1)[0];
+  csrfByCookie.set(cookie, (JSON.parse(response.body) as { csrfToken: string }).csrfToken);
+  return cookie;
+}
+
+/** Basic credentials as a standard DAV client sends them: always over TLS, here reported by the TLS-terminating proxy. */
+function basicHeaders(email = 'alice@acme.example', password = 'test-only-password'): OutgoingHttpHeaders {
+  return { authorization: `Basic ${Buffer.from(`${email}:${password}`, 'utf8').toString('base64')}`, 'x-forwarded-proto': 'https' };
 }
 
 function event({ summary = 'Team meeting', uid = 'event-1@example.test' }: { summary?: string; uid?: string } = {}) {
@@ -580,6 +593,155 @@ test('DAV routes respond 503 when no DAV store is configured', async () => {
     const cookie = await login(runtime);
     const response = await rawRequest(runtime, '/dav/calendars/acme/alice/personal/', { method: 'PROPFIND', headers: { cookie, depth: '0' } });
     assert.equal(response.statusCode, 503);
+  } finally {
+    await stopServer(runtime);
+  }
+});
+
+test('OPTIONS advertises DAV capabilities without credentials', async () => {
+  const { runtime } = makeTestRuntime();
+  await startServer(runtime);
+  try {
+    const response = await rawRequest(runtime, '/dav/', { method: 'OPTIONS' });
+    assert.equal(response.statusCode, 200);
+    assert.match(response.headers.dav as string, /calendar-access/u);
+    assert.match(response.headers.dav as string, /addressbook/u);
+    for (const method of ['OPTIONS', 'PROPFIND', 'REPORT', 'PUT']) assert.match(response.headers.allow as string, new RegExp(method, 'u'));
+    assert.equal(response.body, '');
+  } finally {
+    await stopServer(runtime);
+  }
+});
+
+test('DAV Basic authentication: challenge, failures, TLS requirement and lockout', async () => {
+  const { davStore } = makeDavStore();
+  const { runtime } = makeTestRuntime({ davStore });
+  await startServer(runtime);
+  try {
+    const anonymous = await rawRequest(runtime, '/dav/', { method: 'PROPFIND', headers: { depth: '0' } });
+    assert.equal(anonymous.statusCode, 401);
+    assert.match(anonymous.headers['www-authenticate'] as string, /^Basic realm="Gulo Gulo DAV"/u);
+
+    const wrongPassword = await rawRequest(runtime, '/dav/', { method: 'PROPFIND', headers: { ...basicHeaders('alice@acme.example', 'wrong'), depth: '0' } });
+    assert.equal(wrongPassword.statusCode, 401);
+    assert.match(wrongPassword.headers['www-authenticate'] as string, /^Basic/u);
+
+    const bearer = await rawRequest(runtime, '/dav/', { method: 'PROPFIND', headers: { authorization: 'Bearer abc', 'x-forwarded-proto': 'https' } });
+    assert.equal(bearer.statusCode, 401);
+
+    const insecure = await rawRequest(runtime, '/dav/', { method: 'PROPFIND', headers: { authorization: basicHeaders().authorization, depth: '0' } });
+    assert.equal(insecure.statusCode, 403);
+    assert.doesNotMatch(insecure.body, /test-only-password/u);
+
+    const ok = await rawRequest(runtime, '/dav/', { method: 'PROPFIND', headers: { ...basicHeaders(), depth: '0' } });
+    assert.equal(ok.statusCode, 207);
+
+    let last = wrongPassword;
+    for (let attempt = 0; attempt < 5; attempt += 1) {
+      last = await rawRequest(runtime, '/dav/', { method: 'PROPFIND', headers: { ...basicHeaders('alice@acme.example', `wrong-${attempt}`), depth: '0' } });
+    }
+    assert.equal(last.statusCode, 429);
+    assert.ok(Number(last.headers['retry-after']) > 0);
+    const locked = await rawRequest(runtime, '/dav/', { method: 'PROPFIND', headers: { ...basicHeaders(), depth: '0' } });
+    assert.equal(locked.statusCode, 429);
+  } finally {
+    await stopServer(runtime);
+  }
+});
+
+test('DAV discovery: a Basic client finds its principal, calendar home and address book home', async () => {
+  const { davStore, caldav, carddav } = makeDavStore();
+  const { runtime } = makeTestRuntime({ davStore });
+  await startServer(runtime);
+  try {
+    await caldav.createCalendarCollection(alice, { collectionId: 'personal', displayName: 'Alice calendar' });
+    await carddav.createAddressBook(alice, { addressBookId: 'personal', displayName: 'Alice contacts' });
+    const headers = { ...basicHeaders(), depth: '0' };
+
+    const root = await rawRequest(runtime, '/dav/', { method: 'PROPFIND', headers });
+    assert.equal(root.statusCode, 207);
+    assert.match(root.body, /<D:current-user-principal><D:href>\/dav\/principals\/acme\/alice\/<\/D:href>/u);
+
+    const principal = await rawRequest(runtime, '/dav/principals/acme/alice/', { method: 'PROPFIND', headers });
+    assert.equal(principal.statusCode, 207);
+    assert.match(principal.body, /<C:calendar-home-set><D:href>\/dav\/calendars\/acme\/alice\/<\/D:href>/u);
+    assert.match(principal.body, /<CARD:addressbook-home-set><D:href>\/dav\/contacts\/acme\/alice\/<\/D:href>/u);
+
+    const calendarHome = await rawRequest(runtime, '/dav/calendars/acme/alice/', { method: 'PROPFIND', headers: { ...headers, depth: '1' } });
+    assert.equal(calendarHome.statusCode, 207);
+    assert.match(calendarHome.body, /\/dav\/calendars\/acme\/alice\/personal\//u);
+    assert.match(calendarHome.body, /<C:calendar\/>/u);
+
+    const addressBookHome = await rawRequest(runtime, '/dav/contacts/acme/alice/', { method: 'PROPFIND', headers: { ...headers, depth: '1' } });
+    assert.equal(addressBookHome.statusCode, 207);
+    assert.match(addressBookHome.body, /\/dav\/contacts\/acme\/alice\/personal\//u);
+    assert.match(addressBookHome.body, /<CARD:addressbook\/>/u);
+
+    const shallowHome = await rawRequest(runtime, '/dav/calendars/acme/alice/', { method: 'PROPFIND', headers });
+    assert.doesNotMatch(shallowHome.body, /personal/u);
+  } finally {
+    await stopServer(runtime);
+  }
+});
+
+test('DAV discovery: principals and homes of other users or tenants are denied, other methods fail explicitly', async () => {
+  const { davStore } = makeDavStore();
+  const { runtime } = makeTestRuntime({ davStore });
+  await startServer(runtime);
+  try {
+    const headers = { ...basicHeaders(), depth: '0' };
+    for (const path of ['/dav/principals/acme/bob/', '/dav/calendars/acme/bob/', '/dav/contacts/acme/bob/', '/dav/principals/other/alice/', '/dav/calendars/other/alice/', '/dav/contacts/other/alice/', '/dav/calendars/other/alice/personal/', '/dav/contacts/acme/bob/personal/']) {
+      assert.equal((await rawRequest(runtime, path, { method: 'PROPFIND', headers })).statusCode, 403, path);
+    }
+
+    const put = await rawRequest(runtime, '/dav/', { method: 'PUT', headers: basicHeaders(), body: 'x' });
+    assert.equal(put.statusCode, 405);
+    assert.equal(put.headers.allow, 'OPTIONS, PROPFIND');
+    const mkcol = await rawRequest(runtime, '/dav/calendars/acme/alice/personal/', { method: 'MKCOL', headers: basicHeaders() });
+    assert.equal(mkcol.statusCode, 501);
+  } finally {
+    await stopServer(runtime);
+  }
+});
+
+test('DAV Basic clients write with conditional requests and no CSRF token; cookie writes need one', async () => {
+  const { davStore, caldav, carddav } = makeDavStore();
+  const { runtime } = makeTestRuntime({ davStore });
+  await startServer(runtime);
+  try {
+    await caldav.createCalendarCollection(alice, { collectionId: 'personal' });
+    await carddav.createAddressBook(alice, { addressBookId: 'personal' });
+    const auth = basicHeaders();
+
+    const created = await rawRequest(runtime, '/dav/calendars/acme/alice/personal/event-1.ics', {
+      method: 'PUT', headers: { ...auth, 'if-none-match': '*', 'content-type': 'text/calendar' }, body: event(),
+    });
+    assert.equal(created.statusCode, 201);
+    const etag = created.headers.etag as string;
+    const stale = await rawRequest(runtime, '/dav/calendars/acme/alice/personal/event-1.ics', {
+      method: 'PUT', headers: { ...auth, 'if-match': '"stale"', 'content-type': 'text/calendar' }, body: event({ summary: 'Updated' }),
+    });
+    assert.equal(stale.statusCode, 412);
+    const updated = await rawRequest(runtime, '/dav/calendars/acme/alice/personal/event-1.ics', {
+      method: 'PUT', headers: { ...auth, 'if-match': etag, 'content-type': 'text/calendar' }, body: event({ summary: 'Updated' }),
+    });
+    assert.equal(updated.statusCode, 204);
+    const deleted = await rawRequest(runtime, '/dav/calendars/acme/alice/personal/event-1.ics', { method: 'DELETE', headers: { ...auth, 'if-match': updated.headers.etag as string } });
+    assert.equal(deleted.statusCode, 204);
+
+    const contact = await rawRequest(runtime, '/dav/contacts/acme/alice/personal/ada.vcf', {
+      method: 'PUT', headers: { ...auth, 'if-none-match': '*', 'content-type': 'text/vcard' }, body: vcard(),
+    });
+    assert.equal(contact.statusCode, 201);
+
+    const cookie = await login(runtime);
+    csrfByCookie.delete(cookie);
+    const withoutCsrf = await rawRequest(runtime, '/dav/contacts/acme/alice/personal/ada.vcf', { method: 'DELETE', headers: { cookie, 'if-match': contact.headers.etag as string } });
+    assert.equal(withoutCsrf.statusCode, 403);
+    assert.match(withoutCsrf.body, /CSRF_INVALID/u);
+
+    const readWithCookie = await rawRequest(runtime, '/dav/contacts/acme/alice/personal/ada.vcf', { method: 'GET', headers: { cookie } });
+    assert.equal(readWithCookie.statusCode, 200);
   } finally {
     await stopServer(runtime);
   }

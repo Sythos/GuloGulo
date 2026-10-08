@@ -24,7 +24,7 @@ do not give the master a back door into a user's content.
 | DAV storage migration | `src/core/db/migrations/0003_dav_storage.sql` | `dav_calendar_collections`/`dav_calendar_objects`/`dav_calendar_changes`, `dav_address_books`/`dav_contacts`/`dav_contact_changes`, tenant-forced RLS |
 | Discovery | `src/core/dav/discovery/index.ts` | tenant-bound `.well-known` resources, mail autoconfig, service endpoints, safe manual overrides |
 | HTTP well-known | `src/runtime/server.ts` | optional, explicitly injected discovery contract for GET/HEAD resources |
-| HTTP DAV surface | `src/runtime/server.ts` (`handleDavRoute()`), tested by `src/runtime/dav-runtime.test.ts` | `PROPFIND`/`GET`/`PUT`/`DELETE`/`REPORT` under `/dav/calendars/*`/`/dav/contacts/*`, session-authenticated, calling `runtime.davStore` |
+| HTTP DAV surface | `src/runtime/server.ts` (`handleDavRoute()`), tested by `src/runtime/dav-runtime.test.ts` | `PROPFIND`/`GET`/`PUT`/`DELETE`/`REPORT` under `/dav/calendars/*`/`/dav/contacts/*`, plus `OPTIONS` and principal/home discovery under `/dav/`; Basic-over-TLS or session-cookie authenticated, calling `runtime.davStore` |
 | Platform wiring | `src/platform/contract/platform-adapter.ts` (`createDavStore()`), and the standalone/cPanel/Plesk adapters; resolved into the running server by `src/runtime/index.ts` | resolves the PostgreSQL-backed CalDAV/CardDAV stores for each packaging target |
 | Browser surface | `web/index.html`, `web/src/app.ts` | read-only Calendar and Contacts views, discovery status, and manual-fallback messaging |
 
@@ -117,9 +117,9 @@ The contract maps naturally to the usual DAV method set:
 
 `src/runtime/server.ts`'s `handleDavRoute()` is that protocol adapter — see
 "HTTP surface" further down for its exact URL structure, method coverage,
-and authentication/authorization rules. It authenticates the request from
-the same session cookie as `/api/*`, builds the actor/scope from that
-session, applies (a minimal, documented subset of) the table above, and
+and authentication/authorization rules. It authenticates the request with
+HTTP Basic (LDAP credentials, TLS only) or the same session cookie as
+`/api/*`, builds the actor/scope from that principal, applies (a minimal, documented subset of) the table above, and
 calls the store; it never calls a store with a role elevated from an HTTP
 header or a path segment.
 
@@ -289,18 +289,25 @@ Both share the `/dav/` base path `.well-known/caldav`/`.well-known/carddav`
 already redirect to (`src/core/dav/discovery/index.ts`'s `defaultPath: '/dav/'`
 for both services) — this router is what that redirect now actually lands on.
 
-There is deliberately no calendar-home-set/principal discovery: a client
-must already know its `{tenantId}/{ownerUserId}/{collectionId}` (or
-`{tenantId}/{userId}/{addressBookId}`) triple. Real clients normally
-discover that by `PROPFIND`-ing the principal URL and then the
-`calendar-home-set`/`addressbook-home-set` property; neither is implemented,
-so this is real, outstanding interoperability work (see the VERIFY BEFORE
-USE note at the end of this document).
+A client finds its collections by walking the discovery resources, each
+answering `PROPFIND` only (`405` with `Allow: OPTIONS, PROPFIND` otherwise):
+
+- `/dav/` — `current-user-principal` (RFC 5397);
+- `/dav/principals/{tenantId}/{userId}/` — `principal-URL`, `calendar-home-set`
+  and `addressbook-home-set`;
+- `/dav/calendars/{tenantId}/{userId}/` and `/dav/contacts/{tenantId}/{userId}/`
+  — the homes; at Depth 1 they list the user's calendars (including calendars
+  delegated to them, under their owner's href) and address books.
+
+A principal or home is only visible to its own user in its own tenant (`403`
+otherwise).
 
 ### Methods
 
 | Method | Level | What it does | What it deliberately does not do |
 | --- | --- | --- | --- |
+| `OPTIONS` | any `/dav/` path | `200` with `DAV: 1, 3, calendar-access, addressbook` and `Allow`; needs no credentials and returns no tenant data | — |
+| `PROPFIND` | discovery resources | see "URL structure" | — |
 | `PROPFIND` | collection (Depth 0/1) | `207 Multi-Status` with `resourcetype`, `displayname`, `getlastmodified`, `sync-token` for the collection, plus one entry per object at Depth 1 (`getetag`, `getcontenttype`, empty `resourcetype`) | ignores the requested `<D:prop>` selection and always returns this fixed set; `Depth: infinity` is rejected with `403` |
 | `PROPFIND` | object (Depth 0) | `207` with that object's `getetag`/`getcontenttype` | same fixed-property-set limitation |
 | `GET`/`HEAD` | object | the raw `text/calendar`/`text/vcard` body with an `ETag` header | no `GET` on a collection (there is nothing meaningful to serve; `404`) |
@@ -320,29 +327,55 @@ messages.
 
 ### Authentication and authorization
 
-DAV routes authenticate with the exact same cookie session as every other
-`/api/*` route (`runtime.webSecurity.authenticate()`); there is no separate
-DAV credential path, Basic/Digest auth, or app-password mechanism. An
-unauthenticated request gets `401`, identical to `/api/mail/messages` etc.
+Standard DAV clients use **HTTP Basic** with the user's mail address and their
+LDAP password — the same verifier (`authenticateLogin`) as the web login, so
+no second credential store exists. Basic is accepted **only over TLS**: the
+connection must be TLS, or the TLS-terminating proxy must send
+`X-Forwarded-Proto: https` (make sure the proxy sets or overwrites it);
+otherwise the answer is `403 TLS_REQUIRED`. Failures answer `401` with
+`WWW-Authenticate: Basic realm="Gulo Gulo DAV"`; five failures for the same
+address and client within 15 minutes answer `429` with `Retry-After` (counted
+separately from the web login). Other schemes answer `401`. Without an
+`Authorization` header the browser session cookie is still accepted, as for
+every `/api/*` route; with neither, the answer is `401` plus the Basic challenge.
 
-Authorization never trusts the URL: the authenticated session's `tenantId`
+Basic requests carry no ambient credential, so they need no CSRF token.
+Cookie-authenticated `PUT`/`DELETE` are browser writes and must send the
+session's `X-CSRF-Token` header (`403 CSRF_INVALID` otherwise).
+
+Authorization never trusts the URL: the authenticated principal's `tenantId`
 must equal the URL's `tenantId` segment (checked by the router itself,
 before any store call — a mismatch is `403`, and the store is never even
 queried), and every store call is made with an actor/scope built from the
-*session* (`{tenantId, domain, userId, role}`), never from the URL. CardDAV
+*principal* (`{tenantId, domain, userId, role}`), never from the URL. CardDAV
 has no delegate/sharing concept in this codebase, so its URL's `userId`
-segment must equal the session's `userId` (checked the same way, `403` on
+segment must equal the principal's `userId` (checked the same way, `403` on
 mismatch); CalDAV's `ownerUserId` segment may legitimately differ from the
-session user for a delegated calendar — `resolveCollectionRow()`'s own
-owner-vs-delegate ACL check decides that (`403 ACL_DENIED` if the session
-user has neither ownership nor a delegate grant), not the router.
+authenticated user for a delegated calendar — `resolveCollectionRow()`'s own
+owner-vs-delegate ACL check decides that (`403 ACL_DENIED` if the user has
+neither ownership nor a delegate grant), not the router.
 
-`PUT`/`DELETE`/`REPORT` do **not** require the `X-CSRF-Token` header that
-`POST /api/session/logout` uses: a real DAV client (Apple Calendar,
-Thunderbird, DAVx5, ...) cannot obtain or send that double-submit token, so
-this surface relies on the session cookie's own `SameSite=Lax`/`Strict`
-attribute (`src/web/security/session-manager.ts`) as its cross-site request
-forgery mitigation instead. This is a deliberate, documented trade-off.
+### Checking a real client
+
+Against the deployed service (HTTPS, behind the TLS proxy):
+
+1. `curl -i -X OPTIONS https://HOST/dav/` — expect `200` and a `DAV:` header
+   containing `calendar-access` and `addressbook`.
+2. `curl -i -X PROPFIND -H 'Depth: 0' https://HOST/dav/` — expect `401` with
+   `WWW-Authenticate: Basic`.
+3. Repeat with `-u user@domain:password` — expect `207` with
+   `current-user-principal`; follow it, then the `calendar-home-set` and
+   `addressbook-home-set` (`Depth: 1` on the homes lists the collections).
+4. `curl -i https://HOST/.well-known/caldav` — expect a redirect to `/dav/`.
+5. In a real client (DAVx5, Thunderbird, Apple Calendar/Contacts) enter
+   `https://HOST/`, the mail address and the LDAP password; the calendar and
+   address book should appear without further paths. Create, edit and delete
+   an event and a contact, and check on a second device that sync picks them
+   up. A wrong password must be rejected, and after repeated failures the
+   server answers `429`.
+
+The suite covers this against a fake pool, not a real client; step 5 is
+still field work.
 
 ### Wiring
 
@@ -372,7 +405,12 @@ calendar-query`; `REPORT sync-collection` across create/update/delete with
 tombstones; conditional `DELETE`; a cross-tenant CalDAV URL (`403`, store
 never reached); a cross-user CardDAV URL (`403`); an unsupported method
 (`501`); and an unauthenticated request (`401`) — plus the equivalent
-CardDAV `PUT`/`GET`/`DELETE`/`REPORT sync-collection` cycle.
+CardDAV `PUT`/`GET`/`DELETE`/`REPORT sync-collection` cycle. It also covers
+`OPTIONS`, Basic authentication (challenge, wrong password, TLS requirement,
+lockout), the `/dav/` → principal → home discovery chain, denial of other
+users' and tenants' principals and homes, `405` on non-`PROPFIND` discovery
+requests, conditional writes with Basic credentials, and the CSRF requirement
+for cookie writes.
 
 ## Sync tokens and conditional writes
 
@@ -496,19 +534,20 @@ still need:
    outstanding;
 2. ~~an authenticated HTTP adapter for the minimal DAV method set and XML
    reports~~ — done in code/tests (see "HTTP surface" above); `MKCOL`/
-   `MKCALENDAR`, `PROPPATCH`, `COPY`/`MOVE`, `LOCK`/`UNLOCK`, `ACL`, and
-   calendar-home-set/principal discovery remain unimplemented, and
+   `MKCALENDAR`, `PROPPATCH`, `COPY`/`MOVE`, `LOCK`/`UNLOCK`, and `ACL`
+   remain unimplemented, and
    verification against a real PostgreSQL instance is still outstanding;
 3. ~~real session integration for DAV authentication~~ — done: `/dav/*`
-   authenticates with the same cookie session as `/api/*` (see "HTTP
-   surface" above); real LDAP/DB-backed login itself is covered by
+   authenticates standard clients with HTTP Basic over TLS (LDAP
+   credentials) and still accepts the `/api/*` cookie session (see "HTTP
+   surface" above); every Basic request runs one LDAP verification, with no
+   credential cache yet; real LDAP/DB-backed login itself is covered by
    `src/runtime/login.ts` (`doc/identity-and-postgres.md`), unrelated to
    this DAV-specific wiring;
 4. Apple, Thunderbird, Evolution, and mobile-client interoperability tests
    — the HTTP method/report subset implemented here has not been rehearsed
    against any real client, and several things a real client commonly
-   expects are known-missing: calendar-home-set/principal discovery,
-   `calendar-multiget`/`addressbook-multiget`, and `<C:calendar-data>`/
+   expects are known-missing: `calendar-multiget`/`addressbook-multiget`, and `<C:calendar-data>`/
    `<CARD:address-data>` embedded in query results;
 5. quota reservation/rollback and rate limits around DAV uploads and reports
    (the shared `dav` abuse-rate-limit channel now covers `/dav/*` requests
