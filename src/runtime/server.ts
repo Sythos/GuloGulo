@@ -34,7 +34,7 @@ export interface ApiResourceContext {
 }
 type ApiResource = (scope: ApiScope, context: ApiResourceContext) => Promise<Record<string, unknown>> | Record<string, unknown>;
 type ApiResources = Record<ApiResourceName, ApiResource>;
-interface RuntimeServerOptions {
+export interface RuntimeServerOptions {
   config?: RuntimeConfig;
   logger?: RuntimeLogger;
   clock?: () => Date;

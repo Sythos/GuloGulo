@@ -11,7 +11,7 @@
 // failing backend must reach `server.ts` as an error (503), never as an empty
 // list.
 
-import type { ImapClient } from '../core/mail/imap-client.ts';
+import type { ImapClient, ImapMessageSummary } from '../core/mail/imap-client.ts';
 import { buildDiscoveryDocument } from '../core/dav/discovery/index.ts';
 import type { DavStore, MailClientFactories } from '../platform/contract/platform-adapter.ts';
 
@@ -91,7 +91,7 @@ export function createProductionApiResources({
         connected = true;
         await client.login(credentials.mailAddress, credentials.password);
         const status = await client.select(MAIL_FOLDER);
-        const summaries = status.exists === 0
+        const summaries: readonly ImapMessageSummary[] = status.exists === 0
           ? []
           : await client.fetchSummaries(Math.max(1, status.exists - mailPageSize + 1), status.exists);
         return {

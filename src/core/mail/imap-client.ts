@@ -235,6 +235,7 @@ function parseSummary(line: string): ImapMessageSummary | null {
   const envelope = items.get('ENVELOPE');
   const fields = Array.isArray(envelope) ? envelope : [];
   const internal = items.get('INTERNALDATE');
+  const subject = fields[1];
   const messageId = fields[9];
   return Object.freeze({
     uid,
@@ -242,7 +243,7 @@ function parseSummary(line: string): ImapMessageSummary | null {
     flags: Object.freeze(Array.isArray(flags) ? flags.filter((flag): flag is string => typeof flag === 'string') : []),
     internalDate: isoDate(internal),
     date: isoDate(fields[0]),
-    subject: typeof fields[1] === 'string' ? decodeMimeWords(fields[1]) : '',
+    subject: typeof subject === 'string' ? decodeMimeWords(subject) : '',
     from: formatAddresses(fields[2]),
     to: formatAddresses(fields[5]),
     messageId: typeof messageId === 'string' ? messageId : null,
