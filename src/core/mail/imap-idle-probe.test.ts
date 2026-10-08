@@ -20,6 +20,8 @@ class FakeImapClient implements ImapClient {
 
   async connect(): Promise<void> { this.calls.push('connect'); if (this.behavior.connectError) throw this.behavior.connectError; }
   async login(username: string): Promise<void> { this.calls.push(`login:${username}`); if (this.behavior.loginError) throw this.behavior.loginError; }
+  async fetchMessage(): Promise<null> { return null; }
+  async moveMessage(): Promise<void> {}
   async select(mailbox: string): Promise<ImapMailboxStatus> { this.calls.push(`select:${mailbox}`); if (this.behavior.selectError) throw this.behavior.selectError; return { exists: 0, uidNext: null }; }
   async idle(): Promise<ImapIdleSession> {
     this.calls.push('idle');

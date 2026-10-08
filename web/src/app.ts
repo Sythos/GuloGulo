@@ -342,12 +342,12 @@ function createApiClient({ fetchFn = globalThis.fetch, documentRef = globalThis.
     const contentType = response.headers?.get?.('content-type') ?? '';
     const payload = contentType.includes('json') ? await response.json() : undefined;
     if (!response.ok) {
-      const error = new Error(asString(payload?.message, `Request failed with HTTP ${response.status}`));
+      const error = new Error(asString(payload?.error?.message, asString(payload?.message, `Request failed with HTTP ${response.status}`)));
       error.status = response.status;
       throw error;
     }
     const responseToken = payload?.csrfToken ?? response.headers?.get?.('x-csrf-token');
-    if (responseToken !== undefined) setCsrfToken(responseToken);
+    if (responseToken !== undefined && responseToken !== null) setCsrfToken(responseToken);
     return payload;
   }
 
@@ -686,7 +686,7 @@ function createWebApplication(documentRef = globalThis.document, windowRef = glo
     date.textContent = formatMessageTime(message, state.timeZone, config.locale);
     const body = get('#message-body');
     body.replaceChildren();
-    const safeFragment = sanitiseMessageHtml(message.html, documentRef);
+    const safeFragment = asString(message.html) ? sanitiseMessageHtml(message.html, documentRef) : undefined;
     if (safeFragment) {
       body.append(safeFragment);
     } else {
