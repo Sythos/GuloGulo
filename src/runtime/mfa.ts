@@ -384,6 +384,22 @@ export function mfaPolicyFromConfig(config: unknown): MfaPolicy {
   return Object.freeze({ totp: mode(webAuth.totp), webauthn: mode(webAuth.webauthn), recoveryCodes: webAuth.recoveryCodes !== false });
 }
 
+// The auth managers are `@ts-nocheck` modules whose inferred option types omit
+// parameters without a default (`secretProtector`, `key`); these narrow casts
+// restore the real option shapes for typed callers.
+type ManagerOptions = Record<string, unknown>;
+
+/** In-memory TOTP manager whose secrets are sealed with the given 32-byte AES-GCM key. */
+export function createInMemoryTotpManager({ clock, key }: { clock: () => number; key: Buffer }): MfaTotpManager {
+  const protector = (createAesGcmSecretProtector as unknown as (options: ManagerOptions) => unknown)({ key });
+  return (createTotpManager as unknown as (options: ManagerOptions) => MfaTotpManager)({ clock, secretProtector: protector });
+}
+
+/** In-memory one-time recovery-code manager. */
+export function createInMemoryRecoveryManager({ clock }: { clock: () => number }): MfaRecoveryManager {
+  return (createRecoveryCodeManager as unknown as (options: ManagerOptions) => MfaRecoveryManager)({ clock });
+}
+
 /**
  * Default runtime gate: in-memory TOTP and recovery-code stores under an
  * ephemeral secret key, so enrolled factors do not survive a restart. WebAuthn
@@ -399,9 +415,9 @@ export function createDefaultMfaGate({ config, clock, webauthn }: { config: unkn
     policy,
     clock: clockFn,
     ...(policy.totp === 'disabled' ? {} : {
-      totp: createTotpManager({ clock: totpClock, secretProtector: createAesGcmSecretProtector({ key: randomBytes(32) }) }) as unknown as MfaTotpManager,
+      totp: createInMemoryTotpManager({ clock: totpClock, key: randomBytes(32) }),
     }),
-    ...(policy.recoveryCodes ? { recovery: createRecoveryCodeManager({ clock: totpClock }) as unknown as MfaRecoveryManager } : {}),
+    ...(policy.recoveryCodes ? { recovery: createInMemoryRecoveryManager({ clock: totpClock }) } : {}),
     ...(webauthn === undefined || policy.webauthn === 'disabled' ? {} : { webauthn }),
   });
 }

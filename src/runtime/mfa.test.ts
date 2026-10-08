@@ -8,9 +8,9 @@ import type { AddressInfo } from 'node:net';
 import { PassThrough } from 'node:stream';
 import test from 'node:test';
 
-import { createAesGcmSecretProtector, createRecoveryCodeManager, createTotpManager, generateTotpCode } from '../core/auth/index.ts';
+import { generateTotpCode } from '../core/auth/index.ts';
 import { createLogger } from './logger.js';
-import { createMfaGate, type MfaPolicy, type MfaRecoveryManager, type MfaTotpManager, type MfaWebAuthnManager } from './mfa.ts';
+import { createInMemoryRecoveryManager, createInMemoryTotpManager, createMfaGate, type MfaPolicy, type MfaWebAuthnManager } from './mfa.ts';
 import { createRuntimeServer, startServer, stopServer } from './server.ts';
 
 interface JsonResponse { statusCode: number | undefined; headers: IncomingHttpHeaders; body: any }
@@ -25,8 +25,8 @@ const START = Date.UTC(2026, 0, 1, 12, 0, 0);
 
 function setup(policy: Partial<MfaPolicy> = {}, webauthn?: MfaWebAuthnManager) {
   let nowMs = START;
-  const totp = createTotpManager({ clock: () => nowMs, secretProtector: createAesGcmSecretProtector({ key: Buffer.alloc(32, 7) }) }) as unknown as MfaTotpManager;
-  const recovery = createRecoveryCodeManager({ clock: () => nowMs }) as unknown as MfaRecoveryManager;
+  const totp = createInMemoryTotpManager({ clock: () => nowMs, key: Buffer.alloc(32, 7) });
+  const recovery = createInMemoryRecoveryManager({ clock: () => nowMs });
   const gate = createMfaGate({
     policy: { totp: 'required', webauthn: 'disabled', recoveryCodes: true, ...policy },
     clock: () => new Date(nowMs),
