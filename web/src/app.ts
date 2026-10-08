@@ -344,6 +344,7 @@ function createApiClient({ fetchFn = globalThis.fetch, documentRef = globalThis.
     if (!response.ok) {
       const error = new Error(asString(payload?.message, `Request failed with HTTP ${response.status}`));
       error.status = response.status;
+      error.code = asString(payload?.error?.code);
       throw error;
     }
     const responseToken = payload?.csrfToken ?? response.headers?.get?.('x-csrf-token');
@@ -422,7 +423,123 @@ function createWebApplication(documentRef = globalThis.document, windowRef = glo
     error.hidden = !message;
   }
 
+  function setMfaError(message = '') {
+    const error = get('#mfa-error');
+    if (!error) return;
+    error.textContent = message;
+    error.hidden = !message;
+  }
+
+  /** Shows exactly one of the sign-in steps: the password form, the second-factor form, or the one-time recovery codes. */
+  function showLoginStep(step) {
+    const sections = { password: '#login-form', mfa: '#mfa-form', recovery: '#mfa-recovery' };
+    for (const [name, selector] of Object.entries(sections)) {
+      const section = get(selector);
+      if (section) section.hidden = name !== step;
+    }
+  }
+
+  function showMfa(challenge) {
+    state.mfa = { token: asString(challenge.mfaToken), pending: undefined };
+    const factors = Array.isArray(challenge.factors) ? challenge.factors : [];
+    const totp = factors.find((factor) => factor.type === 'totp' && !factor.satisfied);
+    const passkey = factors.find((factor) => factor.type === 'webauthn' && !factor.satisfied);
+    const password = get('#login-password');
+    if (password) password.value = '';
+    setMfaError('');
+    setLoginBusy(false);
+    showLoginStep('mfa');
+    const recoveryRow = get('#mfa-recovery-row');
+    if (recoveryRow) recoveryRow.hidden = challenge.recoveryAvailable !== true || !totp?.enrolled;
+    const useRecovery = get('#mfa-use-recovery');
+    if (useRecovery) useRecovery.checked = false;
+    const code = get('#mfa-code');
+    if (code) code.value = '';
+    const enroll = get('#mfa-enroll');
+    if (enroll) enroll.hidden = true;
+    if (!totp) {
+      if (passkey) setMfaError('This account also requires a security key, which this page cannot use yet. Contact your administrator.');
+      return;
+    }
+    if (!totp.enrolled) void beginTotpEnrollment();
+    get('#mfa-code')?.focus?.();
+  }
+
+  async function beginTotpEnrollment() {
+    try {
+      const payload = await api.request('/session/mfa/totp/enroll', { method: 'POST', body: { mfaToken: state.mfa?.token } });
+      const totp = payload?.totp ?? {};
+      get('#mfa-secret').textContent = asString(totp.secret);
+      const link = get('#mfa-otpauth');
+      if (link) link.href = asString(totp.otpauthUri, '#');
+      get('#mfa-enroll').hidden = false;
+    } catch {
+      setMfaError('Two-step verification could not be set up. Try again.');
+    }
+  }
+
+  async function submitMfa(event) {
+    event.preventDefault();
+    const form = event.currentTarget;
+    if (!form.checkValidity()) {
+      form.reportValidity();
+      return;
+    }
+    const data = new FormData(form);
+    setMfaError('');
+    try {
+      const payload = await api.request('/session/mfa/verify', {
+        method: 'POST',
+        body: {
+          mfaToken: state.mfa?.token,
+          method: data.get('useRecovery') === 'on' ? 'recovery' : 'totp',
+          code: asString(data.get('code')).trim(),
+        },
+      });
+      if (payload?.mfaRequired === true) {
+        showMfa(payload);
+        return;
+      }
+      const codes = Array.isArray(payload?.recoveryCodes) ? payload.recoveryCodes.map((code) => asString(code)) : [];
+      state.mfa = undefined;
+      if (codes.length === 0) {
+        await enterWorkspace(payload);
+        return;
+      }
+      const list = get('#mfa-recovery-list');
+      if (list) {
+        list.replaceChildren(...codes.map((code) => {
+          const item = documentRef.createElement('li');
+          const text = documentRef.createElement('code');
+          text.textContent = code;
+          item.append(text);
+          return item;
+        }));
+      }
+      showLoginStep('recovery');
+      state.mfa = { token: '', pending: payload };
+      get('#mfa-recovery-continue')?.focus?.();
+    } catch (error) {
+      if (error?.code === 'MFA_CHALLENGE_INVALID') {
+        state.mfa = undefined;
+        showLogin({ message: 'Your sign-in expired. Sign in again.' });
+        return;
+      }
+      setMfaError(error?.status === 429 ? 'Too many attempts. Wait a moment and try again.' : 'Verification failed. Check the code and try again.');
+      get('#mfa-error')?.focus?.();
+    }
+  }
+
+  async function finishRecoveryStep() {
+    const payload = state.mfa?.pending;
+    state.mfa = undefined;
+    get('#mfa-recovery-list')?.replaceChildren?.();
+    if (payload) await enterWorkspace(payload);
+  }
+
   function showLogin({ message = '', focus = true } = {}) {
+    state.mfa = undefined;
+    showLoginStep('password');
     state.authentication = 'signed-out';
     state.account = undefined;
     state.eventStream?.close();
@@ -917,6 +1034,11 @@ function createWebApplication(documentRef = globalThis.document, windowRef = glo
           rememberMe: data.get('rememberMe') === 'on',
         },
       });
+      if (payload?.mfaRequired === true) {
+        form.reset();
+        showMfa(payload);
+        return;
+      }
       await enterWorkspace(payload);
       form.reset();
     } catch (error) {
@@ -954,6 +1076,9 @@ function createWebApplication(documentRef = globalThis.document, windowRef = glo
 
   function bindEvents() {
     get('#login-form')?.addEventListener('submit', submitLogin);
+    get('#mfa-form')?.addEventListener('submit', submitMfa);
+    get('#mfa-cancel')?.addEventListener('click', () => showLogin());
+    get('#mfa-recovery-continue')?.addEventListener('click', () => void finishRecoveryStep());
     get('#compose-button')?.addEventListener('click', () => get('#compose-dialog')?.showModal());
     get('#preferences-button')?.addEventListener('click', () => get('#preferences-dialog')?.showModal());
     get('#about-button')?.addEventListener('click', () => get('#about-dialog')?.showModal());

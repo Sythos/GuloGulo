@@ -17,6 +17,7 @@ import { CSRF_HEADER_NAME, createWebSecurity } from '../web/security/index.ts';
 import type { SessionIdentity, WebSecurity, WebSession } from '../web/security/index.ts';
 import { createLocalMailClients, type DavStore } from '../platform/contract/platform-adapter.ts';
 import { probeImapIdleAvailability } from '../core/mail/imap-idle-probe.ts';
+import { createDefaultMfaGate, MfaUnavailableError, type MfaChallenge, type MfaGate, type MfaLoginInput } from './mfa.ts';
 
 // eslint-disable-next-line @typescript-eslint/no-redundant-type-constituents -- loadConfig's inferred return already carries `any` from config.ts's tracked @ts-nocheck waiver, not from the Record here
 type RuntimeConfig = ReturnType<typeof loadConfig> & Record<string, unknown>;
@@ -41,6 +42,8 @@ interface RuntimeServerOptions {
   webSecurity?: WebSecurity;
   rateLimiter?: any;
   authenticateLogin?: LoginAuthenticator;
+  /** Second-factor gate between a verified password and the web session. Defaults to one built from `config.webAuth`. */
+  mfaGate?: MfaGate;
   apiResources?: Partial<ApiResources>;
   /** The persistent CalDAV/CardDAV storage backends (`PlatformAdapter.createDavStore()`). Undefined means the `/dav/*` surface responds 503 instead of touching a store. */
   davStore?: DavStore;
@@ -58,6 +61,7 @@ export interface RuntimeServer {
   webSecurity: WebSecurity;
   rateLimiter: any;
   authenticateLogin: LoginAuthenticator;
+  mfaGate: MfaGate;
   apiResources: ApiResources;
   loginFailures: Map<string, { startedAt: number; count: number }>;
   /** The mail address submitted at login, per active session — not secret, kept separately from `webSecurity.mailCredentials`'s encrypted password so the IMAP IDLE capability probe (`/api/mail/idle-status`) never needs to guess a login username from `session.userId`, which is not a reliable full mail address on every target. */
@@ -121,6 +125,12 @@ const CALDAV_COLLECTION_PATTERN = /^\/dav\/calendars\/([^/]+)\/([^/]+)\/([^/]+)\
 const CALDAV_OBJECT_PATTERN = /^\/dav\/calendars\/([^/]+)\/([^/]+)\/([^/]+)\/([^/]+)$/u;
 const CARDDAV_COLLECTION_PATTERN = /^\/dav\/contacts\/([^/]+)\/([^/]+)\/([^/]+)\/$/u;
 const CARDDAV_OBJECT_PATTERN = /^\/dav\/contacts\/([^/]+)\/([^/]+)\/([^/]+)\/([^/]+)$/u;
+const MFA_ROUTES = new Set([
+  '/api/session/mfa/totp/enroll',
+  '/api/session/mfa/verify',
+  '/api/session/mfa/webauthn/options',
+  '/api/session/mfa/webauthn/complete',
+]);
 const LOGIN_FAILURE_LIMIT = 5;
 const LOGIN_FAILURE_WINDOW_MS = 15 * 60 * 1000;
 const API_GET_ROUTES = new Map<string, ApiResourceName>([
@@ -267,6 +277,7 @@ function requestPath(request: IncomingMessage): string | null {
 
 function routeName(path: string | null): string {
   if (path === '/api/session/login') return '/api/session/login';
+  if (path !== null && MFA_ROUTES.has(path)) return path;
   if (path === '/api/session/logout') return '/api/session/logout';
   if (path === '/api/session') return '/api/session';
   if (path !== null && API_GET_ROUTES.has(path)) return `/api/${API_GET_ROUTES.get(path)}`;
@@ -366,7 +377,7 @@ function readPatchStatus(config: RuntimeConfig): PatchStatusDto {
 }
 
 function abuseChannelForPath(path: string | null): string {
-  if (path === '/api/session/login') return 'login';
+  if (path === '/api/session/login' || (path !== null && MFA_ROUTES.has(path))) return 'login';
   if (path !== null && path.startsWith('/api/')) return 'api';
   if (path !== null && (WELL_KNOWN_PATH_VALUES.has(path) || path.startsWith('/dav/'))) return 'dav';
   return 'http';
@@ -913,6 +924,10 @@ function publicSessionUser(session: WebSession) {
   });
 }
 
+function mfaPayload(challenge: MfaChallenge) {
+  return { authenticated: false, mfaRequired: true, ...challenge };
+}
+
 function equalFixtureIdentifier(supplied: unknown, expected: string): boolean {
   const suppliedBytes = Buffer.from(String(supplied), 'utf8');
   const expectedBytes = Buffer.from(expected, 'utf8');
@@ -1000,6 +1015,7 @@ export function createRuntimeServer({
   webSecurity = createWebSecurity({ clock }),
   rateLimiter,
   authenticateLogin = createFixtureLoginAuthenticator(),
+  mfaGate = createDefaultMfaGate({ config, clock }),
   apiResources = defaultApiResources(),
   davStore,
 }: RuntimeServerOptions = {}): RuntimeServer {
@@ -1034,6 +1050,7 @@ export function createRuntimeServer({
     webSecurity,
     rateLimiter: rateLimiter ?? createRateLimiter({ clock }),
     authenticateLogin,
+    mfaGate,
     apiResources: { ...defaultApiResources(), ...apiResources },
     loginFailures: new Map(),
     sessionMailAddress: new Map(),
@@ -1098,6 +1115,46 @@ export function createRuntimeServer({
       clearExpiredCookie();
       finish(401, responsePayload(runtime, 'unauthorized', requestDetails, {
         error: { code: 'AUTHENTICATION_REQUIRED', message: 'Authentication is required.' },
+      }));
+    };
+
+    /** The only place a web session is created: after the password, and after the second factor when one is demanded. */
+    const startSession = ({ identity, email, password }: MfaLoginInput, loginKey?: string, recoveryCodes?: readonly string[]) => {
+      try {
+        if (session !== null) {
+          runtime.webSecurity.logout(cookieHeader);
+          runtime.sessionMailAddress.delete(session.sessionId);
+          runtime.imapIdleAvailability.delete(session.sessionId);
+        }
+        const authenticated = runtime.webSecurity.createAuthenticatedSession(identity);
+        const csrfToken = runtime.webSecurity.csrf.issue(authenticated.session).token;
+        runtime.webSecurity.mailCredentials.set(authenticated.session.sessionId, password, authenticated.session.expiresAt);
+        runtime.sessionMailAddress.set(authenticated.session.sessionId, email);
+        if (loginKey !== undefined) runtime.loginFailures.delete(loginKey);
+        response.setHeader('set-cookie', authenticated.setCookie);
+        finish(200, responsePayload(runtime, 'ok', requestDetails, {
+          authenticated: true,
+          user: publicSessionUser(authenticated.session),
+          csrfToken,
+          ...(recoveryCodes === undefined ? {} : { recoveryCodes }),
+        }));
+      } catch {
+        finish(401, responsePayload(runtime, 'unauthorized', requestDetails, {
+          error: { code: 'SIGN_IN_FAILED', message: 'Unable to sign in.' },
+        }));
+      }
+    };
+    const rejectMfa = (status: 'invalid' | 'not_allowed' | 'failed') => {
+      if (status === 'not_allowed') {
+        finish(403, responsePayload(runtime, 'forbidden', requestDetails, {
+          error: { code: 'MFA_ACTION_NOT_ALLOWED', message: 'This step is not available.' },
+        }));
+        return;
+      }
+      finish(401, responsePayload(runtime, 'unauthorized', requestDetails, {
+        error: status === 'invalid'
+          ? { code: 'MFA_CHALLENGE_INVALID', message: 'The sign-in challenge is invalid or has expired.' }
+          : { code: 'MFA_VERIFICATION_FAILED', message: 'Verification failed.' },
       }));
     };
 
@@ -1180,28 +1237,86 @@ export function createRuntimeServer({
         }));
         return;
       }
+      let mfa;
       try {
-        if (session !== null) {
-          runtime.webSecurity.logout(cookieHeader);
-          runtime.sessionMailAddress.delete(session.sessionId);
-          runtime.imapIdleAvailability.delete(session.sessionId);
-        }
-        const authenticated = runtime.webSecurity.createAuthenticatedSession(identity);
-        const csrfToken = runtime.webSecurity.csrf.issue(authenticated.session).token;
-        runtime.webSecurity.mailCredentials.set(authenticated.session.sessionId, password, authenticated.session.expiresAt);
-        runtime.sessionMailAddress.set(authenticated.session.sessionId, email);
-        runtime.loginFailures.delete(loginKey);
-        response.setHeader('set-cookie', authenticated.setCookie);
-        finish(200, responsePayload(runtime, 'ok', requestDetails, {
-          authenticated: true,
-          user: publicSessionUser(authenticated.session),
-          csrfToken,
+        mfa = runtime.mfaGate.begin({ identity, email, password, rememberMe });
+      } catch (error) {
+        if (error instanceof MfaUnavailableError) scopedLogger.warn('mfa_unavailable', { reason: error.message });
+        finish(503, responsePayload(runtime, 'unavailable', requestDetails, {
+          error: { code: 'MFA_UNAVAILABLE', message: 'Sign-in is temporarily unavailable.' },
         }));
-      } catch {
-        finish(401, responsePayload(runtime, 'unauthorized', requestDetails, {
-          error: { code: 'SIGN_IN_FAILED', message: 'Unable to sign in.' },
-        }));
+        return;
       }
+      if (mfa.required) {
+        runtime.loginFailures.delete(loginKey);
+        finish(200, responsePayload(runtime, 'mfa_required', requestDetails, mfaPayload(mfa.challenge)));
+        return;
+      }
+      startSession({ identity, email, password, rememberMe }, loginKey);
+      return;
+    }
+
+    if (MFA_ROUTES.has(path)) {
+      if (method !== 'POST') {
+        response.setHeader('allow', 'POST');
+        finish(405, responsePayload(runtime, 'method_not_allowed', requestDetails, { allow: ['POST'] }));
+        return;
+      }
+      let body: Record<string, unknown>;
+      try {
+        body = await readJsonBody(request);
+      } catch (error) {
+        finish(error !== null && typeof error === 'object' && 'code' in error && error.code === 'BODY_TOO_LARGE' ? 413 : 400, responsePayload(runtime, 'bad_request', requestDetails, {
+          error: { code: 'INVALID_REQUEST', message: 'The request could not be processed.' },
+        }));
+        return;
+      }
+      const gate = runtime.mfaGate;
+      if (path === '/api/session/mfa/totp/enroll') {
+        const enrollment = gate.enrollTotp(body.mfaToken);
+        if (enrollment.status !== 'ok') {
+          rejectMfa(enrollment.status);
+          return;
+        }
+        finish(200, responsePayload(runtime, 'ok', requestDetails, {
+          totp: { secret: enrollment.secret, otpauthUri: enrollment.otpauthUri },
+        }));
+        return;
+      }
+      if (path === '/api/session/mfa/webauthn/options') {
+        const options = gate.webauthnOptions(body.mfaToken);
+        if (options.status !== 'ok') {
+          rejectMfa(options.status);
+          return;
+        }
+        finish(200, responsePayload(runtime, 'ok', requestDetails, { webauthn: { ceremony: options.ceremony, options: options.options } }));
+        return;
+      }
+      let step;
+      if (path === '/api/session/mfa/webauthn/complete') {
+        step = gate.webauthnComplete(body.mfaToken, body);
+      } else if (body.method === 'recovery') {
+        step = gate.verifyRecovery(body.mfaToken, body.code);
+      } else if (body.method === 'totp') {
+        step = gate.verifyTotp(body.mfaToken, body.code);
+      } else {
+        finish(400, responsePayload(runtime, 'bad_request', requestDetails, {
+          error: { code: 'INVALID_REQUEST', message: 'The request could not be processed.' },
+        }));
+        return;
+      }
+      if (step.status === 'pending') {
+        finish(200, responsePayload(runtime, 'mfa_required', requestDetails, {
+          ...mfaPayload(step.challenge),
+          ...(step.recoveryCodes === undefined ? {} : { recoveryCodes: step.recoveryCodes }),
+        }));
+        return;
+      }
+      if (step.status === 'complete') {
+        startSession(step.login, undefined, step.recoveryCodes);
+        return;
+      }
+      rejectMfa(step.status);
       return;
     }
 
