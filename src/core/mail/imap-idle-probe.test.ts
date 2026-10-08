@@ -7,6 +7,8 @@ import test from 'node:test';
 
 import { imapClientError } from './imap-client.ts';
 import { probeImapIdleAvailability } from './imap-idle-probe.ts';
+// Registers the IMAP FETCH tests in this already-registered test entry point.
+import './imap-fetch.test.ts';
 import type { ImapClient, ImapIdleSession, ImapMailboxStatus } from './imap-client.ts';
 
 class FakeImapClient implements ImapClient {
