@@ -2,7 +2,7 @@
 // SPDX-FileCopyrightText: 2026 Sythos (https://www.sythos.net)
 // Author: Sythos (https://www.sythos.net)
 
-import { randomBytes } from 'node:crypto';
+import { createHash, randomBytes } from 'node:crypto';
 
 import { createAesGcmSecretProtector, createRecoveryCodeManager, createTotpManager } from '../core/auth/index.ts';
 import type { SessionIdentity } from '../web/security/session-manager.ts';
@@ -129,9 +129,21 @@ const DEFAULT_CHALLENGE_TTL_MS = 5 * 60 * 1000;
 const DEFAULT_MAX_FAILURES = 5;
 const DEFAULT_MAX_PENDING = 1000;
 const TOKEN_PATTERN = /^[A-Za-z0-9_-]{43}$/u;
+const SCOPE_ID_PATTERN = /^[a-z0-9][a-z0-9._:@/-]{0,127}$/u;
 const FACTOR_TYPES: readonly MfaFactorType[] = ['totp', 'webauthn'];
 const WEBAUTHN_REGISTRATION_FIELDS = ['challenge', 'credentialId', 'clientDataJSON', 'authenticatorData', 'credentialPublicKey', 'signature', 'attestationObject', 'label', 'transports'] as const;
 const WEBAUTHN_ASSERTION_FIELDS = ['challenge', 'credentialId', 'clientDataJSON', 'authenticatorData', 'signature'] as const;
+
+/**
+ * The auth managers only accept lowercase ids of a restricted alphabet, while
+ * identity sources may return others (underscores, upper case, ...). Ids that
+ * already fit are used as is; any other id maps to a stable hash, so an unusual
+ * user id can never make a login fail or share a factor scope.
+ */
+function mfaScopeId(value: string): string {
+  const lowered = value.toLowerCase();
+  return SCOPE_ID_PATTERN.test(lowered) ? lowered : `x${createHash('sha256').update(value, 'utf8').digest('hex')}`;
+}
 
 function pick(source: Record<string, unknown>, fields: readonly string[]): Record<string, unknown> {
   const result: Record<string, unknown> = {};
@@ -234,8 +246,8 @@ export function createMfaGate({
 
   function begin(login: MfaLoginInput): MfaBeginResult {
     purgeExpired();
-    const tenantId = login.identity.tenantId.toLowerCase();
-    const userId = login.identity.userId.toLowerCase();
+    const tenantId = mfaScopeId(login.identity.tenantId);
+    const userId = mfaScopeId(login.identity.userId);
     const needs = new Set<MfaFactorType>();
     const required = new Set<MfaFactorType>();
     const enrolled = new Set<MfaFactorType>();
