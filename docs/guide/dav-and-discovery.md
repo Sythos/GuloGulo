@@ -479,7 +479,7 @@ in this test suite.
 `npm test` includes all of the above contract tests. The GitHub quality gate
 (`.github/workflows/quality-gates.yml`) also checks the explicit repository
 entry points, MIT/SPDX headers, and tenant-scope denial markers, on an Ubuntu
-`ubuntu-latest` runner. There is no Docker build or Compose gate in the
+`ubuntu-26.04` runner. There is no Docker build or Compose gate in the
 current packaging model; the standalone, cPanel, and Plesk package workflows
 (`.github/workflows/package-{standalone,cpanel,plesk}.yml`) are the
 authoritative install/build checks — see `../INSTALL.md`.

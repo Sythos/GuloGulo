@@ -39,7 +39,7 @@ concurrency:
 jobs:
   baseline-scan:
     name: Scan the booted server with ZAP baseline
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     timeout-minutes: 20
     steps:
       - name: Checkout
