@@ -108,9 +108,11 @@ test('a logged-in master cannot read another user private content', async () => 
   });
   const master = await login({ email: 'master@acme.test', password: 'x' });
   assert.ok(master);
+  // rbac.ts is untyped (`@ts-nocheck`), so its defaulted option fields infer as `null`.
+  const decide = (request: Record<string, string>) => authorize(master, request as never);
   assert.throws(
-    () => authorize(master, { permission: 'content.read', resource: 'mailbox', targetUserId: 'alice' }),
+    () => decide({ permission: 'content.read', resource: 'mailbox', targetUserId: 'alice' }),
     (error: unknown) => (error as { code?: string }).code === 'CONTENT_ACCESS_DENIED',
   );
-  assert.equal(authorize(master, { permission: 'user.read', targetUserId: 'alice' }).allowed, true);
+  assert.equal(decide({ permission: 'user.read', targetUserId: 'alice' }).allowed, true);
 });
