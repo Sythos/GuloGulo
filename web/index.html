@@ -90,6 +90,44 @@ Author: Sythos (https://www.sythos.net)
               Your password is sent only to the same-origin authentication API and is never stored by this page.
             </p>
           </form>
+
+          <form class="login-form" id="mfa-form" novalidate hidden>
+            <div class="login-error" id="mfa-error" role="alert" aria-live="assertive" tabindex="-1" hidden></div>
+            <p id="mfa-intro">Enter the code from your authenticator app to finish signing in.</p>
+            <div id="mfa-enroll" hidden>
+              <p>Add this key to your authenticator app, then enter the code it shows.</p>
+              <p><code id="mfa-secret"></code></p>
+              <p><a id="mfa-otpauth" href="#">Open in authenticator app</a></p>
+            </div>
+
+            <label for="mfa-code">Code</label>
+            <input
+              id="mfa-code"
+              name="code"
+              type="text"
+              inputmode="numeric"
+              autocomplete="one-time-code"
+              autocapitalize="characters"
+              spellcheck="false"
+              maxlength="32"
+              required
+            >
+
+            <label class="checkbox-row" id="mfa-recovery-row" for="mfa-use-recovery" hidden>
+              <input id="mfa-use-recovery" name="useRecovery" type="checkbox">
+              <span>Use a recovery code instead</span>
+            </label>
+
+            <button class="button button-primary login-submit" id="mfa-submit" type="submit">Verify</button>
+            <button class="button" id="mfa-cancel" type="button">Back to sign in</button>
+          </form>
+
+          <section class="login-form" id="mfa-recovery" aria-labelledby="mfa-recovery-heading" hidden>
+            <h2 id="mfa-recovery-heading">Save your recovery codes</h2>
+            <p>Each code works once if you lose your authenticator. They are shown only now.</p>
+            <ul id="mfa-recovery-list"></ul>
+            <button class="button button-primary" id="mfa-recovery-continue" type="button">I saved them, continue</button>
+          </section>
         </section>
 
         <div class="login-art" aria-hidden="true">
