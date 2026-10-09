@@ -21,7 +21,7 @@
 #      then rebuild and restart Apache:
 #        /scripts/rebuildhttpdconf && systemctl restart httpd
 #
-# Requires mod_proxy and mod_proxy_http to be enabled in the EasyApache 4
+# Requires mod_proxy, mod_proxy_http and mod_headers to be enabled in the EasyApache 4
 # profile (they are part of the default cPanel Apache MPM/module set on
 # most current builds; check WHM > EasyApache 4 if ProxyPass is refused).
 #
@@ -40,6 +40,12 @@
     # point these at your own; do not duplicate certificate management here.
     # SSLCertificateFile   /path/to/fullchain.pem
     # SSLCertificateKeyFile /path/to/privkey.pem
+
+    # Tell Gulo Gulo the client connection is TLS: DAV Basic credentials are
+    # refused without it. Always "set" (overwrite), never "append"/"merge", so
+    # a client cannot supply its own value. Needs mod_headers. mod_proxy adds
+    # X-Forwarded-For itself, which the DAV login lockout uses.
+    RequestHeader set X-Forwarded-Proto "https"
 
     ProxyPreserveHost On
     ProxyPass "/" "http://127.0.0.1:8080/"

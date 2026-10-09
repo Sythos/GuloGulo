@@ -49,6 +49,8 @@ interface RuntimeServerOptions {
   apiResources?: Partial<ApiResources>;
   /** The persistent CalDAV/CardDAV storage backends (`PlatformAdapter.createDavStore()`). Undefined means the `/dav/*` surface responds 503 instead of touching a store. */
   davStore?: DavStore;
+  /** Peer addresses of the TLS-terminating reverse proxies whose `X-Forwarded-*` headers are believed. Defaults to `GULOGULO_TRUSTED_PROXIES` (comma-separated), then loopback only. */
+  trustedProxyAddresses?: readonly string[];
   /** IMAP/SMTP client factories used by the message-detail, send and archive routes. Defaults to the local mail server (`createLocalMailClients()`). */
   mailClients?: MailRouteClients;
 }
@@ -72,6 +74,8 @@ export interface RuntimeServer {
   /** Cached result of the lazy IMAP IDLE capability probe, per active session. Computed once on first `/api/mail/idle-status` read; cleared alongside `sessionMailAddress`/`webSecurity.mailCredentials` on logout. */
   imapIdleAvailability: Map<string, boolean>;
   davStore: DavStore | undefined;
+  /** Socket peer addresses allowed to tell us the client's protocol and address (`X-Forwarded-Proto`/`X-Forwarded-For`). */
+  trustedProxyAddresses: ReadonlySet<string>;
   server: Server;
 }
 
@@ -125,7 +129,10 @@ const DAV_XML_CONTENT_TYPE = 'application/xml; charset=utf-8';
 // without authentication (capability advertisement only, no tenant data).
 const SUPPORTED_DAV_METHODS = new Set(['OPTIONS', 'PROPFIND', 'GET', 'HEAD', 'PUT', 'DELETE', 'REPORT']);
 const DAV_ALLOW_HEADER = [...SUPPORTED_DAV_METHODS].join(', ');
-const DAV_COMPLIANCE_HEADER = '1, 3, calendar-access, addressbook';
+// `calendar-access`/`addressbook` are deliberately not advertised: they promise
+// the mandatory multiget reports, which this adapter does not implement yet.
+const DAV_COMPLIANCE_HEADER = '1, 3';
+const LOOPBACK_PROXY_ADDRESSES: readonly string[] = ['127.0.0.1', '::1', '::ffff:127.0.0.1'];
 const DAV_DISCOVERY_ALLOW_HEADER = 'OPTIONS, PROPFIND';
 const DAV_BASIC_REALM = 'Gulo Gulo DAV';
 const DAV_ROOT_PATTERN = /^\/dav\/?$/u;
@@ -691,11 +698,32 @@ function davAuthFailure(status: number, code: string, message: string, headers: 
   return { ok: false, status, code, message, headers };
 }
 
-/** HTTP Basic credentials are only accepted over TLS: a TLS-terminating socket or a proxy that reports `https`. */
-function isTlsRequest(request: IncomingMessage): boolean {
+/** Parses the comma-separated `GULOGULO_TRUSTED_PROXIES` list; unset or empty means loopback only. */
+function parseTrustedProxyAddresses(value: string | undefined): readonly string[] {
+  const configured = (value ?? '').split(',').map((entry) => entry.trim()).filter((entry) => entry !== '');
+  return configured.length > 0 ? configured : LOOPBACK_PROXY_ADDRESSES;
+}
+
+function isTrustedProxy(runtime: RuntimeServer, request: IncomingMessage): boolean {
+  const peer = request.socket.remoteAddress;
+  return peer !== undefined && runtime.trustedProxyAddresses.has(peer);
+}
+
+/** HTTP Basic credentials are only accepted over TLS: a TLS-terminating socket, or `https` reported by a trusted reverse proxy (never by an arbitrary peer). */
+function isTlsRequest(runtime: RuntimeServer, request: IncomingMessage): boolean {
   if ('encrypted' in request.socket && request.socket.encrypted === true) return true;
+  if (!isTrustedProxy(runtime, request)) return false;
   const forwarded = requestHeader(request, 'x-forwarded-proto');
   return typeof forwarded === 'string' && forwarded.split(',')[0]!.trim().toLowerCase() === 'https';
+}
+
+/** The client's address for lockout keys: the last `X-Forwarded-For` entry (appended by our own proxy) when the peer is a trusted proxy, else the socket peer. */
+function davClientAddress(runtime: RuntimeServer, request: IncomingMessage): string {
+  const peer = request.socket.remoteAddress ?? 'unknown';
+  if (!isTrustedProxy(runtime, request)) return peer;
+  const forwardedFor = requestHeader(request, 'x-forwarded-for');
+  const last = forwardedFor?.split(',').pop()?.trim();
+  return last !== undefined && last !== '' && last.length <= 64 ? last : peer;
 }
 
 /**
@@ -711,20 +739,24 @@ async function authenticateDavRequest(runtime: RuntimeServer, request: IncomingM
     if (session !== null) {
       return { ok: true, via: 'cookie', principal: { tenantId: session.tenantId, domain: session.domain, userId: session.userId, role: session.role } };
     }
+    // No Basic challenge over plaintext: a client would answer it with its password.
+    if (!isTlsRequest(runtime, request)) {
+      return davAuthFailure(403, 'TLS_REQUIRED', 'HTTP Basic credentials are only accepted over TLS.');
+    }
     return davAuthFailure(401, 'AUTHENTICATION_REQUIRED', 'Authentication is required.', DAV_CHALLENGE_HEADERS);
+  }
+  if (!isTlsRequest(runtime, request)) {
+    return davAuthFailure(403, 'TLS_REQUIRED', 'HTTP Basic credentials are only accepted over TLS.');
   }
   const match = /^Basic +([A-Za-z0-9+/]+={0,2})$/iu.exec(authorization);
   if (match === null) {
     return davAuthFailure(401, 'AUTH_SCHEME_UNSUPPORTED', 'Only HTTP Basic authentication is supported.', DAV_CHALLENGE_HEADERS);
   }
-  if (!isTlsRequest(request)) {
-    return davAuthFailure(403, 'TLS_REQUIRED', 'HTTP Basic credentials are only accepted over TLS.');
-  }
   const decoded = Buffer.from(match[1]!, 'base64').toString('utf8');
   const separator = decoded.indexOf(':');
   const email = separator > 0 ? decoded.slice(0, separator).trim().toLowerCase() : '';
   const password = separator > 0 ? decoded.slice(separator + 1) : '';
-  const failureKey = `dav:${request.socket.remoteAddress ?? 'unknown'}:${email.slice(0, 254)}`;
+  const failureKey = `dav:${davClientAddress(runtime, request)}:${email.slice(0, 254)}`;
   const now = runtime.clock().getTime();
   const previousFailure = runtime.loginFailures.get(failureKey);
   if (previousFailure && now - previousFailure.startedAt < LOGIN_FAILURE_WINDOW_MS && previousFailure.count >= LOGIN_FAILURE_LIMIT) {
@@ -1282,6 +1314,7 @@ export function createRuntimeServer({
   authenticateLogin = createFixtureLoginAuthenticator(),
   apiResources = defaultApiResources(),
   davStore,
+  trustedProxyAddresses = parseTrustedProxyAddresses(process.env.GULOGULO_TRUSTED_PROXIES),
   mailClients: injectedMailClients,
 }: RuntimeServerOptions = {}): RuntimeServer {
   const runtimeMetrics = metrics ?? createMetrics({ clock });
@@ -1320,6 +1353,7 @@ export function createRuntimeServer({
     sessionMailAddress: new Map(),
     imapIdleAvailability: new Map(),
     davStore,
+    trustedProxyAddresses: new Set(trustedProxyAddresses),
     server: undefined as unknown as Server,
   };
   const mailClients = createLocalMailClients(config ?? {}, { logger });

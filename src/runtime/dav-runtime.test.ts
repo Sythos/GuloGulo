@@ -392,7 +392,7 @@ test('DAV routes reject unauthenticated requests and unimplemented methods', asy
   const { runtime } = makeTestRuntime({ davStore });
   await startServer(runtime);
   try {
-    const anonymous = await rawRequest(runtime, '/dav/calendars/acme/alice/personal/', { method: 'PROPFIND', headers: { depth: '0' } });
+    const anonymous = await rawRequest(runtime, '/dav/calendars/acme/alice/personal/', { method: 'PROPFIND', headers: { depth: '0', 'x-forwarded-proto': 'https' } });
     assert.equal(anonymous.statusCode, 401);
 
     const cookie = await login(runtime);
@@ -611,8 +611,7 @@ test('OPTIONS advertises DAV capabilities without credentials', async () => {
   try {
     const response = await rawRequest(runtime, '/dav/', { method: 'OPTIONS' });
     assert.equal(response.statusCode, 200);
-    assert.match(response.headers.dav as string, /calendar-access/u);
-    assert.match(response.headers.dav as string, /addressbook/u);
+    assert.equal(response.headers.dav, '1, 3');
     for (const method of ['OPTIONS', 'PROPFIND', 'REPORT', 'PUT']) assert.match(response.headers.allow as string, new RegExp(method, 'u'));
     assert.equal(response.body, '');
   } finally {
@@ -625,7 +624,11 @@ test('DAV Basic authentication: challenge, failures, TLS requirement and lockout
   const { runtime } = makeTestRuntime({ davStore });
   await startServer(runtime);
   try {
-    const anonymous = await rawRequest(runtime, '/dav/', { method: 'PROPFIND', headers: { depth: '0' } });
+    const plaintext = await rawRequest(runtime, '/dav/', { method: 'PROPFIND', headers: { depth: '0' } });
+    assert.equal(plaintext.statusCode, 403);
+    assert.equal(plaintext.headers['www-authenticate'], undefined);
+
+    const anonymous = await rawRequest(runtime, '/dav/', { method: 'PROPFIND', headers: { depth: '0', 'x-forwarded-proto': 'https' } });
     assert.equal(anonymous.statusCode, 401);
     assert.match(anonymous.headers['www-authenticate'] as string, /^Basic realm="Gulo Gulo DAV"/u);
 
@@ -748,6 +751,45 @@ test('DAV Basic clients write with conditional requests and no CSRF token; cooki
 
     const readWithCookie = await rawRequest(runtime, '/dav/contacts/acme/alice/personal/ada.vcf', { method: 'GET', headers: { cookie } });
     assert.equal(readWithCookie.statusCode, 200);
+  } finally {
+    await stopServer(runtime);
+  }
+});
+
+test('DAV Basic only trusts X-Forwarded-Proto from a configured proxy address', async () => {
+  const { davStore } = makeDavStore();
+  const { runtime } = makeTestRuntime({ davStore, trustedProxyAddresses: ['203.0.113.1'] });
+  await startServer(runtime);
+  try {
+    const spoofed = await rawRequest(runtime, '/dav/', { method: 'PROPFIND', headers: { ...basicHeaders(), depth: '0' } });
+    assert.equal(spoofed.statusCode, 403);
+    const anonymous = await rawRequest(runtime, '/dav/', { method: 'PROPFIND', headers: { depth: '0', 'x-forwarded-proto': 'https' } });
+    assert.equal(anonymous.statusCode, 403);
+    assert.equal(anonymous.headers['www-authenticate'], undefined);
+  } finally {
+    await stopServer(runtime);
+  }
+});
+
+test('DAV login lockout is keyed by the client address reported by the trusted proxy', async () => {
+  const { davStore } = makeDavStore();
+  const { runtime } = makeTestRuntime({ davStore });
+  await startServer(runtime);
+  try {
+    const attacker = { 'x-forwarded-for': '203.0.113.9' };
+    let last: RawResponse | undefined;
+    for (let attempt = 0; attempt < 5; attempt += 1) {
+      last = await rawRequest(runtime, '/dav/', { method: 'PROPFIND', headers: { ...basicHeaders('alice@acme.example', `wrong-${attempt}`), ...attacker, depth: '0' } });
+    }
+    assert.equal(last?.statusCode, 429);
+
+    const sameAddress = await rawRequest(runtime, '/dav/', { method: 'PROPFIND', headers: { ...basicHeaders(), ...attacker, depth: '0' } });
+    assert.equal(sameAddress.statusCode, 429);
+    const spoofedPrefix = await rawRequest(runtime, '/dav/', { method: 'PROPFIND', headers: { ...basicHeaders(), 'x-forwarded-for': '198.51.100.7, 203.0.113.9', depth: '0' } });
+    assert.equal(spoofedPrefix.statusCode, 429);
+
+    const otherClient = await rawRequest(runtime, '/dav/', { method: 'PROPFIND', headers: { ...basicHeaders(), 'x-forwarded-for': '198.51.100.7', depth: '0' } });
+    assert.equal(otherClient.statusCode, 207);
   } finally {
     await stopServer(runtime);
   }
