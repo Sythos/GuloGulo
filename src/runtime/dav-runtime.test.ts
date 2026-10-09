@@ -717,7 +717,7 @@ test('DAV Basic clients write with conditional requests and no CSRF token; cooki
   await startServer(runtime);
   try {
     await caldav.createCalendarCollection(alice, { collectionId: 'personal' });
-    await carddav.createAddressBook(alice, { addressBookId: 'personal' });
+    await carddav.createAddressBook(alice, { addressBookId: 'personal', displayName: 'Alice contacts' });
     const auth = basicHeaders();
 
     const created = await rawRequest(runtime, '/dav/calendars/acme/alice/personal/event-1.ics', {
