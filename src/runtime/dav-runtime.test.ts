@@ -323,13 +323,23 @@ function serverAddress(runtime: TestRuntime): AddressInfo {
   return address;
 }
 
-// CSRF token issued at login, per session cookie: cookie-authenticated
-// PUT/DELETE must carry it, exactly like a browser would send it.
-const csrfByCookie = new Map<string, string>();
-
 interface RawResponse { statusCode: number | undefined; headers: IncomingHttpHeaders; body: string }
 
-function rawRequest(runtime: TestRuntime, path: string, { method = 'GET', headers = {}, body }: { method?: string; headers?: OutgoingHttpHeaders; body?: string } = {}): Promise<RawResponse> {
+/**
+ * Cookie-authenticated PUT/DELETE carry a fresh one-time CSRF token, fetched
+ * from `GET /api/session` exactly like the browser does; pass `csrf: false` to
+ * send none.
+ */
+async function rawRequest(runtime: TestRuntime, path: string, { method = 'GET', headers = {}, body, csrf = true }: { method?: string; headers?: OutgoingHttpHeaders; body?: string; csrf?: boolean } = {}): Promise<RawResponse> {
+  if (csrf && typeof headers.cookie === 'string' && (method === 'PUT' || method === 'DELETE')) {
+    const session = await sendRequest(runtime, '/api/session', { headers: { cookie: headers.cookie } });
+    const csrfToken = (JSON.parse(session.body) as { csrfToken: string }).csrfToken;
+    return sendRequest(runtime, path, { method, headers: { [CSRF_HEADER_NAME]: csrfToken, ...headers }, body });
+  }
+  return sendRequest(runtime, path, { method, headers, body });
+}
+
+function sendRequest(runtime: TestRuntime, path: string, { method = 'GET', headers = {}, body }: { method?: string; headers?: OutgoingHttpHeaders; body?: string } = {}): Promise<RawResponse> {
   const address = serverAddress(runtime);
   return new Promise<RawResponse>((resolvePromise, reject) => {
     const requestHandle = request({
@@ -338,7 +348,6 @@ function rawRequest(runtime: TestRuntime, path: string, { method = 'GET', header
       path,
       method,
       headers: {
-        ...(typeof headers.cookie === 'string' && (method === 'PUT' || method === 'DELETE') && csrfByCookie.has(headers.cookie) ? { [CSRF_HEADER_NAME]: csrfByCookie.get(headers.cookie) } : {}),
         ...headers,
         ...(body === undefined ? {} : { 'content-length': Buffer.byteLength(body) }),
       },
@@ -362,9 +371,7 @@ async function login(runtime: TestRuntime): Promise<string> {
   assert.equal(response.statusCode, 200);
   const setCookie = response.headers['set-cookie'];
   assert.ok(Array.isArray(setCookie) && setCookie.length > 0);
-  const cookie = setCookie[0].split(';', 1)[0];
-  csrfByCookie.set(cookie, (JSON.parse(response.body) as { csrfToken: string }).csrfToken);
-  return cookie;
+  return setCookie[0].split(';', 1)[0];
 }
 
 /** Basic credentials as a standard DAV client sends them: always over TLS, here reported by the TLS-terminating proxy. */
@@ -735,8 +742,7 @@ test('DAV Basic clients write with conditional requests and no CSRF token; cooki
     assert.equal(contact.statusCode, 201);
 
     const cookie = await login(runtime);
-    csrfByCookie.delete(cookie);
-    const withoutCsrf = await rawRequest(runtime, '/dav/contacts/acme/alice/personal/ada.vcf', { method: 'DELETE', headers: { cookie, 'if-match': contact.headers.etag as string } });
+    const withoutCsrf = await rawRequest(runtime, '/dav/contacts/acme/alice/personal/ada.vcf', { method: 'DELETE', headers: { cookie, 'if-match': contact.headers.etag as string }, csrf: false });
     assert.equal(withoutCsrf.statusCode, 403);
     assert.match(withoutCsrf.body, /CSRF_INVALID/u);
 
