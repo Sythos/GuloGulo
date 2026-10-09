@@ -50,6 +50,19 @@ export interface ImapIdleSession {
   readonly stop: () => Promise<void>;
 }
 
+/** Header-level summary of one message, as returned by `fetchSummaries`. No body is ever fetched. */
+export interface ImapMessageSummary {
+  readonly uid: number;
+  readonly sequence: number;
+  readonly flags: readonly string[];
+  readonly internalDate: string | null;
+  readonly date: string | null;
+  readonly subject: string;
+  readonly from: string;
+  readonly to: string;
+  readonly messageId: string | null;
+}
+
 export interface ImapFetchedMessage {
   readonly uid: number;
   readonly flags: readonly string[];
@@ -63,6 +76,8 @@ export interface ImapClient {
   connect(): Promise<void>;
   login(username: string, password: string): Promise<void>;
   select(mailbox: string): Promise<ImapMailboxStatus>;
+  /** FETCH UID/FLAGS/INTERNALDATE/ENVELOPE for the sequence-number range `first`..`last` of the selected mailbox, newest first. */
+  fetchSummaries(first: number, last: number): Promise<readonly ImapMessageSummary[]>;
   /** `UID FETCH` of one message from the selected mailbox without setting `\Seen`; resolves to null when the UID does not exist. */
   fetchMessage(uid: number, maxBytes: number): Promise<ImapFetchedMessage | null>;
   /** `UID MOVE` (RFC 6851) of one message from the selected mailbox, creating `destination` first when it does not exist yet. */
@@ -103,6 +118,148 @@ function assertSafeAtom(value: unknown, name: string): string {
 /** IMAP quoted-string syntax (RFC 3501 4.3). Rejects CR/LF/NUL upstream via `assertSafeAtom`. */
 function quotedString(value: string): string {
   return `"${value.replace(/[\\"]/gu, (char) => `\\${char}`)}"`;
+}
+
+type FetchValue = string | null | FetchValue[];
+
+function charIndexForBytes(text: string, byteCount: number): number {
+  let bytes = 0;
+  let index = 0;
+  for (const char of text) {
+    if (bytes >= byteCount) break;
+    bytes += Buffer.byteLength(char);
+    index += char.length;
+  }
+  return index;
+}
+
+/**
+ * Re-inlines the `{N}` literals (RFC 3501 4.3) that `command` pulled out of
+ * the untagged lines, so each FETCH response is one self-contained string
+ * again. `command` stores the line before a literal, the literal itself in
+ * `literals`, and the text after it as the next untagged entry.
+ */
+function joinLiterals(lines: readonly string[], literals: readonly string[]): string[] {
+  const merged: string[] = [];
+  let next = 0;
+  for (let i = 0; i < lines.length; i += 1) {
+    let current = lines[i];
+    while (LITERAL_SUFFIX.test(current) && i + 1 < lines.length && next < literals.length) {
+      i += 1;
+      current += CRLF + literals[next] + lines[i];
+      next += 1;
+    }
+    merged.push(current);
+  }
+  return merged;
+}
+
+/** Parses one merged FETCH response line into nested lists of atoms, strings and NIL (null). */
+function parseFetchList(text: string): FetchValue {
+  let pos = text.indexOf('(');
+  if (pos === -1) throw imapClientError('malformed FETCH response', 'PROTOCOL_ERROR');
+
+  function parseValue(): FetchValue {
+    while (text[pos] === ' ') pos += 1;
+    const char = text[pos];
+    if (char === '(') {
+      pos += 1;
+      const list: FetchValue[] = [];
+      for (;;) {
+        while (text[pos] === ' ') pos += 1;
+        if (pos >= text.length) throw imapClientError('malformed FETCH response', 'PROTOCOL_ERROR');
+        if (text[pos] === ')') { pos += 1; return list; }
+        list.push(parseValue());
+      }
+    }
+    if (char === '"') {
+      pos += 1;
+      let value = '';
+      while (pos < text.length && text[pos] !== '"') {
+        if (text[pos] === '\\') pos += 1;
+        value += text[pos] ?? '';
+        pos += 1;
+      }
+      pos += 1;
+      return value;
+    }
+    if (char === '{') {
+      const end = text.indexOf('}', pos);
+      const size = Number(text.slice(pos + 1, end));
+      const start = end + 1 + CRLF.length;
+      const length = charIndexForBytes(text.slice(start), size);
+      pos = start + length;
+      return text.slice(start, start + length);
+    }
+    const start = pos;
+    while (pos < text.length && text[pos] !== ' ' && text[pos] !== ')' && text[pos] !== '(') pos += 1;
+    const atom = text.slice(start, pos);
+    if (atom.length === 0) throw imapClientError('malformed FETCH response', 'PROTOCOL_ERROR');
+    return atom.toUpperCase() === 'NIL' ? null : atom;
+  }
+
+  return parseValue();
+}
+
+function decodeMimeWords(value: string): string {
+  return value.replace(/=\?([^?]+)\?([bq])\?([^?]*)\?=/giu, (word, charset: string, encoding: string, payload: string) => {
+    try {
+      const bytes = encoding.toLowerCase() === 'b'
+        ? Buffer.from(payload, 'base64')
+        : Buffer.from(payload.replace(/_/gu, ' ').replace(/=([0-9a-f]{2})/giu, (_m, hex: string) => String.fromCharCode(Number.parseInt(hex, 16))), 'latin1');
+      return new TextDecoder(charset).decode(bytes);
+    } catch {
+      return word;
+    }
+  }).replace(/\s+/gu, ' ').trim();
+}
+
+function formatAddresses(value: FetchValue | undefined): string {
+  if (!Array.isArray(value)) return '';
+  return value.map((entry) => {
+    if (!Array.isArray(entry)) return '';
+    const [name, , mailbox, host] = entry as Array<string | null>;
+    const address = mailbox === null || mailbox === undefined ? '' : `${mailbox}@${host ?? ''}`;
+    const display = typeof name === 'string' ? decodeMimeWords(name) : '';
+    return display.length > 0 && address.length > 0 ? `${display} <${address}>` : display || address;
+  }).filter((entry) => entry.length > 0).join(', ');
+}
+
+function isoDate(value: FetchValue | undefined): string | null {
+  if (typeof value !== 'string') return null;
+  const parsed = new Date(value);
+  return Number.isNaN(parsed.getTime()) ? null : parsed.toISOString();
+}
+
+function parseSummary(line: string): ImapMessageSummary | null {
+  const sequenceMatch = /^\*\s+(\d+)\s+FETCH\b/iu.exec(line);
+  if (sequenceMatch === null) return null;
+  const list = parseFetchList(line.slice(sequenceMatch[0].length));
+  if (!Array.isArray(list)) return null;
+  const items = new Map<string, FetchValue>();
+  for (let i = 0; i + 1 < list.length; i += 2) {
+    const key = list[i];
+    if (typeof key === 'string') items.set(key.toUpperCase(), list[i + 1]);
+  }
+  const uid = Number(items.get('UID'));
+  if (!Number.isSafeInteger(uid)) return null;
+  const flags = items.get('FLAGS');
+  const envelope = items.get('ENVELOPE');
+  const fields = Array.isArray(envelope) ? envelope : [];
+  const internal = items.get('INTERNALDATE');
+  const subject = fields[1];
+  const messageId = fields[9];
+  return Object.freeze({
+    uid,
+    sequence: Number(sequenceMatch[1]),
+    flags: Object.freeze(Array.isArray(flags) ? flags.filter((flag): flag is string => typeof flag === 'string') : []),
+    internalDate: isoDate(internal),
+    date: isoDate(fields[0]),
+    subject: typeof subject === 'string' ? decodeMimeWords(subject) : '',
+    from: formatAddresses(fields[2]),
+    to: formatAddresses(fields[5]),
+    messageId: typeof messageId === 'string' ? messageId : null,
+  });
 }
 
 export function createImapClient(options: ImapClientOptions): ImapClient {
@@ -290,6 +447,20 @@ export function createImapClient(options: ImapClientOptions): ImapClient {
     return Object.freeze({ exists, uidNext });
   }
 
+  async function fetchSummaries(first: number, last: number): Promise<readonly ImapMessageSummary[]> {
+    if (!Number.isSafeInteger(first) || !Number.isSafeInteger(last) || first < 1 || last < first) {
+      throw imapClientError('fetch range is invalid', 'INVALID_INPUT');
+    }
+    const literals: string[] = [];
+    const untagged = await command(`FETCH ${first}:${last} (UID FLAGS INTERNALDATE ENVELOPE)`, literals);
+    const summaries: ImapMessageSummary[] = [];
+    for (const line of joinLiterals(untagged, literals)) {
+      const summary = parseSummary(line);
+      if (summary !== null) summaries.push(summary);
+    }
+    return Object.freeze(summaries.sort((a, b) => b.sequence - a.sequence));
+  }
+
   async function fetchMessage(uid: number, maxBytes: number): Promise<ImapFetchedMessage | null> {
     if (!Number.isSafeInteger(uid) || uid < 1 || !Number.isSafeInteger(maxBytes) || maxBytes < 1 || maxBytes > MAX_LITERAL_BYTES) {
       throw imapClientError('fetch arguments are invalid', 'INVALID_INPUT');
@@ -400,7 +571,7 @@ export function createImapClient(options: ImapClientOptions): ImapClient {
     socket = null;
   }
 
-  return Object.freeze({ connect, login, select, fetchMessage, moveMessage, idle, logout, close });
+  return Object.freeze({ connect, login, select, fetchSummaries, fetchMessage, moveMessage, idle, logout, close });
 }
 
 export { imapClientError };

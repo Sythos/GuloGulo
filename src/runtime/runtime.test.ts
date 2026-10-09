@@ -19,6 +19,8 @@ import { loadConfig } from './config.js';
 import { createLogger } from './logger.js';
 import { createProvisionedLoginAuthenticator } from './login.js';
 import { createFixtureLoginAuthenticator, createRuntimeServer, startServer, stopServer } from './server.js';
+// Registers the production entrypoint wiring tests in this already-registered test entry point.
+import './wiring.test.ts';
 
 type TestRuntime = ReturnType<typeof createRuntimeServer>;
 interface JsonResponse { statusCode: number | undefined; headers: IncomingHttpHeaders; body: any }

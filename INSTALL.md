@@ -1121,12 +1121,19 @@ as tester work:
   implemented and tested end to end against a local TCP protocol fake (see
   `doc/mail-core.md`); verification against a real Dovecot/Postfix
   installation is still outstanding;
-- [ ] real IMAP FETCH/SEARCH support: `imap-client.ts` only implements
-  `connect`/`LOGIN`/`SELECT`/`IDLE`/`logout` today (enough for the identity
-  and IMAP IDLE capability checks above), never message listing or content;
-  `/api/mail/messages` stays a deliberate empty fixture, and there is no
-  `/api/events` (SSE) endpoint on the server despite the webmail UI already
-  having a client for one, until this lands;
+- [x] web resource APIs wired to real data (`src/runtime/wiring.ts`,
+  `src/runtime/api-resources.ts`): `/api/mail/messages` lists the newest
+  INBOX messages over IMAP (`fetchSummaries()` in `imap-client.ts`: headers
+  only, no message bodies) with the session's own mailbox login,
+  `/api/calendar/events` and `/api/contacts` read the PostgreSQL DAV stores
+  and `/api/discovery` the tenant-bound contract, all scoped to the session's
+  tenant and user; a missing or failing backend answers 503
+  `RESOURCE_UNAVAILABLE` instead of an empty list. Tested against fake
+  IMAP/DAV backends only — verification against a real Dovecot/PostgreSQL
+  deployment is still outstanding;
+- [ ] real IMAP SEARCH and message content (body, attachments), folders other
+  than INBOX, and an `/api/events` (SSE) endpoint on the server despite the
+  webmail UI already having a client for one;
 - [x] persistent DAV backend: PostgreSQL-backed CalDAV/CardDAV storage
   (`src/core/dav/caldav/postgres-caldav-store.ts`,
   `src/core/dav/carddav/postgres-carddav-store.ts`,

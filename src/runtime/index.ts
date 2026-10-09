@@ -7,7 +7,8 @@
 import { loadConfig } from './config.js';
 import { createLogger } from './logger.js';
 import { createEnvironmentSecretResolver, createPlatformAdapterForTarget, createProvisionedLoginAuthenticator, resolvePlatformTarget } from './login.js';
-import { createFixtureLoginAuthenticator, createRuntimeServer, startServer, stopServer } from './server.js';
+import { createFixtureLoginAuthenticator, startServer, stopServer } from './server.js';
+import { createProductionRuntimeServer } from './wiring.js';
 
 let runtime;
 let stopping = false;
@@ -63,7 +64,7 @@ async function main() {
   const logger = createLogger(loggerOptions(config));
   const authenticateLogin = resolveLoginAuthenticator(config, logger);
   const davStore = await resolveDavStore(config, logger);
-  runtime = createRuntimeServer({ config, logger, authenticateLogin, davStore });
+  runtime = createProductionRuntimeServer({ config, logger, authenticateLogin, davStore });
   await startServer(runtime);
 
   const shutdown = async (signal) => {

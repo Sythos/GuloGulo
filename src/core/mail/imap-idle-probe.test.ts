@@ -7,6 +7,8 @@ import test from 'node:test';
 
 import { imapClientError } from './imap-client.ts';
 import { probeImapIdleAvailability } from './imap-idle-probe.ts';
+// Registers the IMAP FETCH tests in this already-registered test entry point.
+import './imap-fetch.test.ts';
 import type { ImapClient, ImapIdleSession, ImapMailboxStatus } from './imap-client.ts';
 
 class FakeImapClient implements ImapClient {
@@ -23,6 +25,7 @@ class FakeImapClient implements ImapClient {
   async fetchMessage(): Promise<null> { return null; }
   async moveMessage(): Promise<void> {}
   async select(mailbox: string): Promise<ImapMailboxStatus> { this.calls.push(`select:${mailbox}`); if (this.behavior.selectError) throw this.behavior.selectError; return { exists: 0, uidNext: null }; }
+  async fetchSummaries(): Promise<[]> { return []; }
   async idle(): Promise<ImapIdleSession> {
     this.calls.push('idle');
     if (this.behavior.idleError) throw this.behavior.idleError;

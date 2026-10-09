@@ -31,9 +31,15 @@ type ApiResourceName = 'mail' | 'calendar' | 'contacts' | 'discovery';
 interface LoginCredentials { email: string; password: string; rememberMe: boolean }
 interface ApiScope { tenantId: string; userId: string; role: string }
 type LoginAuthenticator = (credentials: LoginCredentials, requestDetails?: RequestDetails) => Promise<SessionIdentity | null> | SessionIdentity | null;
-type ApiResource = (scope: ApiScope) => Promise<Record<string, unknown>> | Record<string, unknown>;
+/** Per-request context beyond the tenant/user scope: the session's tenant domain and, when the session still holds them, its mail login credentials (never serialized into a response). */
+export interface ApiResourceContext {
+  readonly domain: string | undefined;
+  readonly mailCredentials: { readonly mailAddress: string; readonly password: string } | null;
+  readonly logger: RuntimeLogger;
+}
+type ApiResource = (scope: ApiScope, context: ApiResourceContext) => Promise<Record<string, unknown>> | Record<string, unknown>;
 type ApiResources = Record<ApiResourceName, ApiResource>;
-interface RuntimeServerOptions {
+export interface RuntimeServerOptions {
   config?: RuntimeConfig;
   logger?: RuntimeLogger;
   clock?: () => Date;
@@ -992,12 +998,23 @@ export function createFixtureLoginAuthenticator(environment: Record<string, stri
   };
 }
 
+/**
+ * Without a configured backend a resource must fail (503 `RESOURCE_UNAVAILABLE`)
+ * instead of answering with an empty list that looks like "no data". The real
+ * IMAP/DAV/discovery wiring lives in `./api-resources.ts`.
+ */
+function unconfiguredApiResource(name: ApiResourceName): ApiResource {
+  return () => {
+    throw Object.assign(new Error(`API resource ${name} is not configured`), { code: 'RESOURCE_NOT_CONFIGURED' });
+  };
+}
+
 function defaultApiResources(): ApiResources {
   return Object.freeze({
-    mail: async () => Object.freeze({ messages: Object.freeze([]) }),
-    calendar: async () => Object.freeze({ events: Object.freeze([]) }),
-    contacts: async () => Object.freeze({ contacts: Object.freeze([]) }),
-    discovery: async () => Object.freeze({ services: Object.freeze([]) }),
+    mail: unconfiguredApiResource('mail'),
+    calendar: unconfiguredApiResource('calendar'),
+    contacts: unconfiguredApiResource('contacts'),
+    discovery: unconfiguredApiResource('discovery'),
   });
 }
 
@@ -1498,10 +1515,16 @@ export function createRuntimeServer({
       if (session === null) { unauthorized(); return; }
       const resourceName = API_GET_ROUTES.get(path)!;
       try {
+        const mailAddress = runtime.sessionMailAddress.get(session.sessionId);
+        const mailPassword = runtime.webSecurity.mailCredentials.get(session.sessionId);
         const data = await runtime.apiResources[resourceName]({
           tenantId: session.tenantId,
           userId: session.userId,
           role: session.role,
+        }, {
+          domain: session.domain,
+          mailCredentials: mailAddress === undefined || mailPassword === null ? null : { mailAddress, password: mailPassword },
+          logger: scopedLogger,
         });
         const directResource = resourceName === 'mail'
           ? { messages: Array.isArray(data?.messages) ? data.messages : [] }
@@ -1515,7 +1538,9 @@ export function createRuntimeServer({
           ...directResource,
           data,
         }));
-      } catch {
+      } catch (error) {
+        const code = error !== null && typeof error === 'object' && 'code' in error ? (error as { code?: unknown }).code : undefined;
+        scopedLogger.warn('api_resource_unavailable', { resource: resourceName, error: { name: error instanceof Error ? error.name : 'Error', code: typeof code === 'string' ? code : 'unknown' } });
         finish(503, responsePayload(runtime, 'unavailable', requestDetails, {
           error: { code: 'RESOURCE_UNAVAILABLE', message: 'The requested resource is unavailable.' },
         }));
