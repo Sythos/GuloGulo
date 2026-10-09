@@ -714,7 +714,7 @@ function isTlsRequest(runtime: RuntimeServer, request: IncomingMessage): boolean
   if ('encrypted' in request.socket && request.socket.encrypted === true) return true;
   if (!isTrustedProxy(runtime, request)) return false;
   const forwarded = requestHeader(request, 'x-forwarded-proto');
-  return typeof forwarded === 'string' && forwarded.split(',')[0]!.trim().toLowerCase() === 'https';
+  return typeof forwarded === 'string' && forwarded.split(',')[0].trim().toLowerCase() === 'https';
 }
 
 /** The client's address for lockout keys: the last `X-Forwarded-For` entry (appended by our own proxy) when the peer is a trusted proxy, else the socket peer. */
@@ -752,7 +752,7 @@ async function authenticateDavRequest(runtime: RuntimeServer, request: IncomingM
   if (match === null) {
     return davAuthFailure(401, 'AUTH_SCHEME_UNSUPPORTED', 'Only HTTP Basic authentication is supported.', DAV_CHALLENGE_HEADERS);
   }
-  const decoded = Buffer.from(match[1]!, 'base64').toString('utf8');
+  const decoded = Buffer.from(match[1], 'base64').toString('utf8');
   const separator = decoded.indexOf(':');
   const email = separator > 0 ? decoded.slice(0, separator).trim().toLowerCase() : '';
   const password = separator > 0 ? decoded.slice(separator + 1) : '';
@@ -822,8 +822,8 @@ function matchDavDiscoveryRoute(path: string): DavDiscoveryRoute | null {
   for (const [pattern, kind] of patterns) {
     const found = pattern.exec(path);
     if (found === null) continue;
-    const tenantId = decodeSegment(found[1]!);
-    const userId = decodeSegment(found[2]!);
+    const tenantId = decodeSegment(found[1]);
+    const userId = decodeSegment(found[2]);
     return tenantId === null || userId === null ? null : { kind, tenantId, userId };
   }
   return null;
