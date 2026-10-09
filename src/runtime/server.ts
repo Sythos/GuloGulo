@@ -17,6 +17,10 @@ import { CSRF_HEADER_NAME, createWebSecurity } from '../web/security/index.ts';
 import type { SessionIdentity, WebSecurity, WebSession } from '../web/security/index.ts';
 import { createLocalMailClients, type DavStore } from '../platform/contract/platform-adapter.ts';
 import { probeImapIdleAvailability } from '../core/mail/imap-idle-probe.ts';
+import { MailInputError, validateOutgoing } from '../core/mail/message-composer.ts';
+import type { OutgoingMessageInput } from '../core/mail/message-composer.ts';
+import { archiveMessage, MailRouteError, readMessageDetail, SEND_BODY_MAX_BYTES, submitMessage } from './mail-routes.ts';
+import type { MailRouteClients } from './mail-routes.ts';
 
 // eslint-disable-next-line @typescript-eslint/no-redundant-type-constituents -- loadConfig's inferred return already carries `any` from config.ts's tracked @ts-nocheck waiver, not from the Record here
 type RuntimeConfig = ReturnType<typeof loadConfig> & Record<string, unknown>;
@@ -50,6 +54,8 @@ export interface RuntimeServerOptions {
   apiResources?: Partial<ApiResources>;
   /** The persistent CalDAV/CardDAV storage backends (`PlatformAdapter.createDavStore()`). Undefined means the `/dav/*` surface responds 503 instead of touching a store. */
   davStore?: DavStore;
+  /** IMAP/SMTP client factories used by the message-detail, send and archive routes. Defaults to the local mail server (`createLocalMailClients()`). */
+  mailClients?: MailRouteClients;
 }
 export interface RuntimeServer {
   config: RuntimeConfig;
@@ -129,6 +135,7 @@ const CARDDAV_COLLECTION_PATTERN = /^\/dav\/contacts\/([^/]+)\/([^/]+)\/([^/]+)\
 const CARDDAV_OBJECT_PATTERN = /^\/dav\/contacts\/([^/]+)\/([^/]+)\/([^/]+)\/([^/]+)$/u;
 const LOGIN_FAILURE_LIMIT = 5;
 const LOGIN_FAILURE_WINDOW_MS = 15 * 60 * 1000;
+const MAIL_MESSAGE_PATH = /^\/api\/mail\/messages\/([^/]+?)(\/archive)?$/u;
 const API_GET_ROUTES = new Map<string, ApiResourceName>([
   ['/api/mail/messages', 'mail'],
   ['/api/calendar/events', 'calendar'],
@@ -276,6 +283,11 @@ function routeName(path: string | null): string {
   if (path === '/api/session/logout') return '/api/session/logout';
   if (path === '/api/session') return '/api/session';
   if (path !== null && API_GET_ROUTES.has(path)) return `/api/${API_GET_ROUTES.get(path)}`;
+  if (path === '/api/mail/send') return '/api/mail/send';
+  if (path !== null) {
+    const mailMessage = MAIL_MESSAGE_PATH.exec(path);
+    if (mailMessage !== null) return mailMessage[2] === undefined ? '/api/mail/message' : '/api/mail/message/archive';
+  }
   if (path === '/health/live' || path === '/healthz') {
     return '/health/live';
   }
@@ -1019,6 +1031,7 @@ export function createRuntimeServer({
   authenticateLogin = createFixtureLoginAuthenticator(),
   apiResources = defaultApiResources(),
   davStore,
+  mailClients: injectedMailClients,
 }: RuntimeServerOptions = {}): RuntimeServer {
   const runtimeMetrics = metrics ?? createMetrics({ clock });
   const metadata = buildMetadata(config);
@@ -1059,6 +1072,8 @@ export function createRuntimeServer({
     server: undefined as unknown as Server,
   };
   const mailClients = createLocalMailClients(config ?? {}, { logger });
+  const mailRouteClients: MailRouteClients = injectedMailClients ?? mailClients;
+  const mailMutationsInFlight = new Set<string>();
 
   const handleRequest = async (request: IncomingMessage, response: ServerResponse): Promise<void> => {
     const path = requestPath(request);
@@ -1282,6 +1297,97 @@ export function createRuntimeServer({
         runtime.imapIdleAvailability.set(session.sessionId, imapIdleAvailable);
       }
       finish(200, responsePayload(runtime, 'ok', requestDetails, { imapIdleAvailable }));
+      return;
+    }
+
+    const mailMessageMatch = MAIL_MESSAGE_PATH.exec(path);
+    if (mailMessageMatch !== null || path === '/api/mail/send') {
+      const isSend = path === '/api/mail/send';
+      const mutating = isSend || mailMessageMatch?.[2] !== undefined;
+      if (mutating ? method !== 'POST' : (method !== 'GET' && method !== 'HEAD')) {
+        const allow = mutating ? ['POST'] : ['GET', 'HEAD'];
+        response.setHeader('allow', allow.join(', '));
+        finish(405, responsePayload(runtime, 'method_not_allowed', requestDetails, { allow }));
+        return;
+      }
+      if (session === null) { unauthorized(); return; }
+      if (mutating) {
+        try {
+          runtime.webSecurity.csrf.validateRequest(session, { headerToken: requestHeader(request, CSRF_HEADER_NAME), consume: false });
+        } catch {
+          finish(403, responsePayload(runtime, 'forbidden', requestDetails, {
+            error: { code: 'CSRF_INVALID', message: 'The request could not be verified.' },
+          }));
+          return;
+        }
+      }
+      // CSRF tokens are single-use: a verified change that succeeds spends the token and returns the next one,
+      // while a failed one leaves the token usable so the user can retry.
+      const reply = (statusCode: number, status: string, details: Record<string, unknown>): void => {
+        let nextToken: Record<string, unknown> = {};
+        if (mutating && statusCode < 400) {
+          runtime.webSecurity.csrf.validateRequest(session, { headerToken: requestHeader(request, CSRF_HEADER_NAME) });
+          nextToken = { csrfToken: runtime.webSecurity.csrf.issue(session).token };
+        }
+        finish(statusCode, responsePayload(runtime, status, requestDetails, { ...details, ...nextToken }));
+      };
+      const replyError = (statusCode: number, code: string, message: string): void => {
+        reply(statusCode, statusCode >= 500 ? 'unavailable' : 'error', { error: { code, message } });
+      };
+      const mailAddress = runtime.sessionMailAddress.get(session.sessionId);
+      const password = runtime.webSecurity.mailCredentials.get(session.sessionId);
+      if (mailAddress === undefined || password === null) {
+        replyError(401, 'MAIL_SESSION_EXPIRED', 'Sign in again to use mail.');
+        return;
+      }
+      if (mailAddress.slice(mailAddress.lastIndexOf('@') + 1).toLowerCase() !== session.domain.toLowerCase()) {
+        replyError(403, 'TENANT_MISMATCH', 'The mailbox does not belong to this tenant.');
+        return;
+      }
+      const credentials = { mailAddress, password };
+      // One change per session at a time, so a double click cannot send or move twice.
+      if (mutating) {
+        if (mailMutationsInFlight.has(session.sessionId)) {
+          replyError(409, 'REQUEST_IN_PROGRESS', 'Another change is still in progress.');
+          return;
+        }
+        mailMutationsInFlight.add(session.sessionId);
+      }
+      try {
+        if (isSend) {
+          let input: OutgoingMessageInput;
+          try {
+            input = validateOutgoing(await readJsonBody(request, SEND_BODY_MAX_BYTES));
+          } catch (error) {
+            if (error instanceof MailInputError) { replyError(error.code === 'MESSAGE_TOO_LARGE' ? 413 : 400, error.code, 'The message could not be accepted.'); return; }
+            replyError(error !== null && typeof error === 'object' && 'code' in error && error.code === 'BODY_TOO_LARGE' ? 413 : 400, 'INVALID_REQUEST', 'The request could not be processed.');
+            return;
+          }
+          await submitMessage(mailRouteClients, credentials, input, clock());
+          reply(202, 'accepted', { accepted: true, recipients: input.recipients.length });
+          return;
+        }
+        const messageId = decodeURIComponent(mailMessageMatch![1]);
+        if (mutating) {
+          await archiveMessage(mailRouteClients, credentials, messageId);
+          reply(200, 'ok', { archived: true, id: messageId });
+          return;
+        }
+        const message = await readMessageDetail(mailRouteClients, credentials, messageId);
+        reply(200, 'ok', { message });
+      } catch (error) {
+        if (error instanceof MailRouteError) {
+          scopedLogger.warn('mail_request_failed', { route, error: { code: error.code }, status_code: error.status });
+          replyError(error.status, error.code, error.message);
+          return;
+        }
+        // Includes a malformed %-escape in the message id; no message content is ever logged.
+        scopedLogger.warn('mail_request_failed', { route, error: { code: error instanceof URIError ? 'INVALID_MESSAGE_ID' : 'INTERNAL_ERROR' } });
+        if (error instanceof URIError) replyError(400, 'INVALID_MESSAGE_ID', 'The message identifier is invalid.');
+        else replyError(500, 'INTERNAL_ERROR', 'An internal error occurred.');
+      } finally {
+        if (mutating) mailMutationsInFlight.delete(session.sessionId);
+      }
       return;
     }
 

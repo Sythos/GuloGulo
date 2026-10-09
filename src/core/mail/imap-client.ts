@@ -9,6 +9,7 @@
 // dependency-free event broker and never imports this file directly — only
 // `imap-idle-adapter.ts` wires the two together.
 
+import { StringDecoder } from 'node:string_decoder';
 import { connect as netConnect } from 'node:net';
 import type { Socket } from 'node:net';
 import { connect as tlsConnect } from 'node:tls';
@@ -62,12 +63,25 @@ export interface ImapMessageSummary {
   readonly messageId: string | null;
 }
 
+export interface ImapFetchedMessage {
+  readonly uid: number;
+  readonly flags: readonly string[];
+  /** The raw RFC 5322 message, at most `maxBytes` of it. */
+  readonly raw: string;
+  /** True when the server holds more than `maxBytes` and `raw` was cut short. */
+  readonly truncated: boolean;
+}
+
 export interface ImapClient {
   connect(): Promise<void>;
   login(username: string, password: string): Promise<void>;
   select(mailbox: string): Promise<ImapMailboxStatus>;
   /** FETCH UID/FLAGS/INTERNALDATE/ENVELOPE for the sequence-number range `first`..`last` of the selected mailbox, newest first. */
   fetchSummaries(first: number, last: number): Promise<readonly ImapMessageSummary[]>;
+  /** `UID FETCH` of one message from the selected mailbox without setting `\Seen`; resolves to null when the UID does not exist. */
+  fetchMessage(uid: number, maxBytes: number): Promise<ImapFetchedMessage | null>;
+  /** `UID MOVE` (RFC 6851) of one message from the selected mailbox, creating `destination` first when it does not exist yet. */
+  moveMessage(uid: number, destination: string): Promise<void>;
   idle(onEvent: ImapIdleEventHandler): Promise<ImapIdleSession>;
   logout(): Promise<void>;
   close(): void;
@@ -90,6 +104,9 @@ const CRLF = '\r\n';
 const UNSAFE_CONTROL_CHARS = /[\r\n\0]/u;
 const EXISTS_OR_EXPUNGE = /^\*\s+(\d+)\s+(EXISTS|EXPUNGE)\b/iu;
 const UIDNEXT = /UIDNEXT\s+(\d+)/iu;
+const LITERAL_SUFFIX = /\{(\d+)\}$/u;
+const FETCH_FLAGS = /FLAGS\s+\(([^)]*)\)/iu;
+const MAX_LITERAL_BYTES = 8 * 1024 * 1024;
 
 function assertSafeAtom(value: unknown, name: string): string {
   if (typeof value !== 'string' || value.length === 0 || UNSAFE_CONTROL_CHARS.test(value)) {
@@ -116,26 +133,21 @@ function charIndexForBytes(text: string, byteCount: number): number {
   return index;
 }
 
-/** Re-joins `{N}` literals (RFC 3501 4.3) that line splitting cut into several untagged lines. */
-function mergeLiterals(lines: readonly string[]): string[] {
+/**
+ * Re-inlines the `{N}` literals (RFC 3501 4.3) that `command` pulled out of
+ * the untagged lines, so each FETCH response is one self-contained string
+ * again. `command` stores the line before a literal, the literal itself in
+ * `literals`, and the text after it as the next untagged entry.
+ */
+function joinLiterals(lines: readonly string[], literals: readonly string[]): string[] {
   const merged: string[] = [];
+  let next = 0;
   for (let i = 0; i < lines.length; i += 1) {
     let current = lines[i];
-    let tailStart = 0;
-    for (;;) {
-      const marker = /\{(\d+)\}$/u.exec(current.slice(tailStart));
-      if (marker === null || i + 1 >= lines.length) break;
-      const size = Number(marker[1]);
-      current += CRLF;
-      const literalStart = current.length;
-      let first = true;
-      while (i + 1 < lines.length) {
-        i += 1;
-        current += (first ? '' : CRLF) + lines[i];
-        first = false;
-        if (Buffer.byteLength(current.slice(literalStart)) >= size) break;
-      }
-      tailStart = literalStart + charIndexForBytes(current.slice(literalStart), size);
+    while (LITERAL_SUFFIX.test(current) && i + 1 < lines.length && next < literals.length) {
+      i += 1;
+      current += CRLF + literals[next] + lines[i];
+      next += 1;
     }
     merged.push(current);
   }
@@ -264,6 +276,7 @@ export function createImapClient(options: ImapClientOptions): ImapClient {
 
   let socket: ImapSocket | null = null;
   let buffer = '';
+  const decoder = new StringDecoder('utf8');
   let tagSequence = 0;
   let unsolicitedHandler: ((line: string) => boolean) | null = null;
   const pendingLines: string[] = [];
@@ -285,7 +298,7 @@ export function createImapClient(options: ImapClientOptions): ImapClient {
   }
 
   function onData(chunk: Buffer): void {
-    buffer += chunk.toString('utf8');
+    buffer += decoder.write(chunk);
     let index = buffer.indexOf(CRLF);
     while (index !== -1) {
       const line = buffer.slice(0, index);
@@ -316,7 +329,26 @@ export function createImapClient(options: ImapClientOptions): ImapClient {
     socket.write(`${line}${CRLF}`);
   }
 
-  async function command(text: string): Promise<readonly string[]> {
+  /**
+   * Reads one `{N}` literal that follows `line` and returns the literal plus
+   * the remainder of the response line that comes after it. The line-based
+   * reader has already split the literal at its own CRLFs, so they are put
+   * back until N bytes are collected.
+   */
+  async function readLiteral(size: number): Promise<{ literal: string; tail: string }> {
+    if (size > MAX_LITERAL_BYTES) throw imapClientError('server literal is too large', 'PROTOCOL_ERROR');
+    let collected = '';
+    while (Buffer.byteLength(collected, 'utf8') < size) {
+      collected += `${await readLine()}${CRLF}`;
+    }
+    const bytes = Buffer.from(collected, 'utf8');
+    const literal = bytes.subarray(0, size).toString('utf8');
+    const rest = bytes.subarray(size).toString('utf8');
+    const tail = rest.length === 0 ? await readLine() : rest.replace(/\r\n$/u, '');
+    return { literal, tail };
+  }
+
+  async function command(text: string, literals?: string[]): Promise<readonly string[]> {
     const tag = nextTag();
     writeLine(`${tag} ${text}`);
     const untagged: string[] = [];
@@ -329,6 +361,15 @@ export function createImapClient(options: ImapClientOptions): ImapClient {
         throw imapClientError(`command failed: ${rest}`, status === 'NO' ? 'COMMAND_REJECTED' : 'PROTOCOL_ERROR');
       }
       untagged.push(line);
+      let current = line;
+      let literalMatch = LITERAL_SUFFIX.exec(current);
+      while (literalMatch !== null) {
+        const { literal, tail } = await readLiteral(Number(literalMatch[1]));
+        literals?.push(literal);
+        untagged.push(tail);
+        current = tail;
+        literalMatch = LITERAL_SUFFIX.exec(current);
+      }
     }
   }
 
@@ -410,13 +451,42 @@ export function createImapClient(options: ImapClientOptions): ImapClient {
     if (!Number.isSafeInteger(first) || !Number.isSafeInteger(last) || first < 1 || last < first) {
       throw imapClientError('fetch range is invalid', 'INVALID_INPUT');
     }
-    const untagged = await command(`FETCH ${first}:${last} (UID FLAGS INTERNALDATE ENVELOPE)`);
+    const literals: string[] = [];
+    const untagged = await command(`FETCH ${first}:${last} (UID FLAGS INTERNALDATE ENVELOPE)`, literals);
     const summaries: ImapMessageSummary[] = [];
-    for (const line of mergeLiterals(untagged)) {
+    for (const line of joinLiterals(untagged, literals)) {
       const summary = parseSummary(line);
       if (summary !== null) summaries.push(summary);
     }
     return Object.freeze(summaries.sort((a, b) => b.sequence - a.sequence));
+  }
+
+  async function fetchMessage(uid: number, maxBytes: number): Promise<ImapFetchedMessage | null> {
+    if (!Number.isSafeInteger(uid) || uid < 1 || !Number.isSafeInteger(maxBytes) || maxBytes < 1 || maxBytes > MAX_LITERAL_BYTES) {
+      throw imapClientError('fetch arguments are invalid', 'INVALID_INPUT');
+    }
+    const literals: string[] = [];
+    // Ask for one byte more than the cap so a message that exactly fills it is not mistaken for a cut one.
+    const untagged = await command(`UID FETCH ${uid} (UID FLAGS BODY.PEEK[]<0.${maxBytes + 1}>)`, literals);
+    if (literals.length === 0) return null;
+    const header = untagged.find((line) => /\sFETCH\s/iu.test(line)) ?? '';
+    const flagsMatch = FETCH_FLAGS.exec(header);
+    const flags = flagsMatch === null ? [] : flagsMatch[1].split(/\s+/u).filter((flag) => flag.length > 0);
+    const bytes = Buffer.from(literals[0], 'utf8');
+    const truncated = bytes.length > maxBytes;
+    return Object.freeze({ uid, flags: Object.freeze(flags), raw: truncated ? bytes.subarray(0, maxBytes).toString('utf8') : literals[0], truncated });
+  }
+
+  async function moveMessage(uid: number, destination: string): Promise<void> {
+    if (!Number.isSafeInteger(uid) || uid < 1) throw imapClientError('uid is invalid', 'INVALID_INPUT');
+    assertSafeAtom(destination, 'destination');
+    try {
+      await command(`CREATE ${quotedString(destination)}`);
+    } catch (error) {
+      // An existing mailbox is answered with NO; any other failure surfaces on the MOVE below.
+      if (!(error instanceof Error && (error as CodedError).code === 'COMMAND_REJECTED')) throw error;
+    }
+    await command(`UID MOVE ${uid} ${quotedString(destination)}`);
   }
 
   async function idle(onEvent: ImapIdleEventHandler): Promise<ImapIdleSession> {
@@ -501,7 +571,7 @@ export function createImapClient(options: ImapClientOptions): ImapClient {
     socket = null;
   }
 
-  return Object.freeze({ connect, login, select, fetchSummaries, idle, logout, close });
+  return Object.freeze({ connect, login, select, fetchSummaries, fetchMessage, moveMessage, idle, logout, close });
 }
 
 export { imapClientError };
