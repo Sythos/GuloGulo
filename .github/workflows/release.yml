@@ -51,7 +51,7 @@ concurrency:
 jobs:
   detect-version:
     name: Validate the pushed tag and resolve the release version
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     timeout-minutes: 5
     outputs:
       version: ${{ steps.resolve.outputs.version }}
@@ -72,7 +72,7 @@ jobs:
   build-standalone:
     name: Build the standalone package
     needs: detect-version
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     timeout-minutes: 20
     steps:
       - name: Checkout
@@ -124,7 +124,7 @@ jobs:
   build-cpanel:
     name: Build the cPanel package
     needs: detect-version
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     container: almalinux:9
     timeout-minutes: 20
     steps:
@@ -191,7 +191,7 @@ jobs:
   build-plesk:
     name: Build the Plesk package
     needs: detect-version
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     container: debian:trixie
     timeout-minutes: 20
     steps:
@@ -259,7 +259,7 @@ jobs:
   publish-release:
     name: Publish the GitHub Release
     needs: [detect-version, build-standalone, build-cpanel, build-plesk]
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     timeout-minutes: 10
     # Belt-and-suspenders: the workflow only triggers on tag pushes (no
     # pull_request/workflow_dispatch trigger exists), but this job re-checks

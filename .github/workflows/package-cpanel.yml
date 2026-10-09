@@ -14,7 +14,7 @@ name: Package cPanel archive
 # gulogulo-<version>_cpanel_.tar.gz until a code-signing key exists.
 #
 # This still runs inside a real `almalinux:9` container (not the
-# ubuntu-latest runner the standalone workflow uses) because cPanel & WHM
+# ubuntu-26.04 runner the standalone workflow uses) because cPanel & WHM
 # only runs on RHEL-family Linux, and this remains a genuinely useful check:
 # it proves Node.js 26 installs correctly on the actual OS family this
 # target is for, and that packaging/cpanel/scripts/install.sh - a straight
@@ -49,7 +49,7 @@ concurrency:
 jobs:
   build-and-verify-package:
     name: Build the tar.gz and install it end to end
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     container: almalinux:9
     timeout-minutes: 20
     steps:
