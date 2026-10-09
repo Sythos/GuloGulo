@@ -302,8 +302,10 @@ the checked contracts belongs in [INSTALL.md](INSTALL.md).
   `/dav/calendars/{tenantId}/{ownerUserId}/{collectionId}/...` and
   `/dav/contacts/{tenantId}/{userId}/{addressBookId}/...` to the real
   `PlatformAdapter.createDavStore()` Postgres-backed stores, authenticated by
-  the same session cookie as `/api/*` (see `doc/dav-and-discovery.md` for the
-  method-by-method coverage); tested end to end against a fake pool
+  HTTP Basic over TLS with the LDAP credentials, or the `/api/*` session
+  cookie, with `OPTIONS` and principal/calendar-home/address-book-home
+  discovery (see `doc/dav-and-discovery.md` for the method-by-method coverage
+  and the real-client checklist); tested end to end against a fake pool
   (`src/runtime/dav-runtime.test.ts`) — verification against a real
   PostgreSQL instance and a real CalDAV/CardDAV client (Apple Calendar,
   Thunderbird, DAVx5, ...) is still outstanding, and calendar/address-book

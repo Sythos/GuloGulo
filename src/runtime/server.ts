@@ -12,6 +12,7 @@ import { createDependencyRegistry, createMetrics } from './metrics.js';
 import { createLogger } from './logger.js';
 import { getWellKnownResource, WELL_KNOWN_PATHS } from '../core/dav/discovery/index.ts';
 import { createRateLimiter } from '../core/ops/abuse/index.ts';
+import { createTenantContext } from '../integrations/tenant-context.ts';
 import { parsePatchStatus, type PatchStatusDto } from '../core/ops/patch/status.ts';
 import { CSRF_HEADER_NAME, createWebSecurity } from '../web/security/index.ts';
 import type { SessionIdentity, WebSecurity, WebSession } from '../web/security/index.ts';
@@ -57,6 +58,8 @@ export interface RuntimeServerOptions {
   apiResources?: Partial<ApiResources>;
   /** The persistent CalDAV/CardDAV storage backends (`PlatformAdapter.createDavStore()`). Undefined means the `/dav/*` surface responds 503 instead of touching a store. */
   davStore?: DavStore;
+  /** Peer addresses of the TLS-terminating reverse proxies whose `X-Forwarded-*` headers are believed. Defaults to `GULOGULO_TRUSTED_PROXIES` (comma-separated), then loopback only. */
+  trustedProxyAddresses?: readonly string[];
   /** IMAP/SMTP client factories used by the message-detail, send and archive routes. Defaults to the local mail server (`createLocalMailClients()`). */
   mailClients?: MailRouteClients;
 }
@@ -81,6 +84,8 @@ export interface RuntimeServer {
   /** Cached result of the lazy IMAP IDLE capability probe, per active session. Computed once on first `/api/mail/idle-status` read; cleared alongside `sessionMailAddress`/`webSecurity.mailCredentials` on logout. */
   imapIdleAvailability: Map<string, boolean>;
   davStore: DavStore | undefined;
+  /** Socket peer addresses allowed to tell us the client's protocol and address (`X-Forwarded-Proto`/`X-Forwarded-For`). */
+  trustedProxyAddresses: ReadonlySet<string>;
   server: Server;
 }
 
@@ -128,11 +133,20 @@ const DAV_XML_CONTENT_TYPE = 'application/xml; charset=utf-8';
 // PROPFIND/GET/HEAD are read-only; PUT/DELETE/REPORT are the minimal
 // interoperable WebDAV/CalDAV/CardDAV write and report surface this adapter
 // implements against the Postgres-backed contracts. Anything else (MKCOL,
-// PROPPATCH, COPY, MOVE, LOCK, ACL, OPTIONS, ...) is explicitly out of scope
-// for this milestone and answers 501 Not Implemented rather than being
-// silently ignored or falling through to the generic 405 handler.
-const SUPPORTED_DAV_METHODS = new Set(['PROPFIND', 'GET', 'HEAD', 'PUT', 'DELETE', 'REPORT']);
+// PROPPATCH, COPY, MOVE, LOCK, ACL, ...) is explicitly out of scope for this
+// milestone and answers 501 Not Implemented rather than being silently
+// ignored or falling through to the generic 405 handler. OPTIONS is answered
+// without authentication (capability advertisement only, no tenant data).
+const SUPPORTED_DAV_METHODS = new Set(['OPTIONS', 'PROPFIND', 'GET', 'HEAD', 'PUT', 'DELETE', 'REPORT']);
 const DAV_ALLOW_HEADER = [...SUPPORTED_DAV_METHODS].join(', ');
+const LOOPBACK_PROXY_ADDRESSES: readonly string[] = ['127.0.0.1', '::1', '::ffff:127.0.0.1'];
+const DAV_DISCOVERY_ALLOW_HEADER = 'OPTIONS, PROPFIND';
+const DAV_BASIC_REALM = 'Gulo Gulo DAV';
+const DAV_ROOT_PATTERN = /^\/dav\/?$/u;
+const DAV_PRINCIPAL_PATTERN = /^\/dav\/principals\/([^/]+)\/([^/]+)\/$/u;
+const CALDAV_HOME_PATTERN = /^\/dav\/calendars\/([^/]+)\/([^/]+)\/$/u;
+const CARDDAV_HOME_PATTERN = /^\/dav\/contacts\/([^/]+)\/([^/]+)\/$/u;
+const DAV_WRITE_METHODS = new Set(['PUT', 'DELETE']);
 const CALDAV_COLLECTION_PATTERN = /^\/dav\/calendars\/([^/]+)\/([^/]+)\/([^/]+)\/$/u;
 const CALDAV_OBJECT_PATTERN = /^\/dav\/calendars\/([^/]+)\/([^/]+)\/([^/]+)\/([^/]+)$/u;
 const CARDDAV_COLLECTION_PATTERN = /^\/dav\/contacts\/([^/]+)\/([^/]+)\/([^/]+)\/$/u;
@@ -320,6 +334,12 @@ function routeName(path: string | null): string {
   if (path !== null && path.startsWith('/dav/contacts/')) {
     return '/dav/contacts';
   }
+  if (path !== null && path.startsWith('/dav/principals/')) {
+    return '/dav/principals';
+  }
+  if (path === '/dav' || path === '/dav/') {
+    return '/dav';
+  }
   if (path === '/assets/gulo-gulo-calendar-mail.png') {
     return '/assets';
   }
@@ -397,7 +417,7 @@ function readPatchStatus(config: RuntimeConfig): PatchStatusDto {
 function abuseChannelForPath(path: string | null): string {
   if (path === '/api/session/login' || (path !== null && MFA_ROUTES.has(path))) return 'login';
   if (path !== null && path.startsWith('/api/')) return 'api';
-  if (path !== null && (WELL_KNOWN_PATH_VALUES.has(path) || path.startsWith('/dav/'))) return 'dav';
+  if (path !== null && (WELL_KNOWN_PATH_VALUES.has(path) || path === '/dav' || path.startsWith('/dav/'))) return 'dav';
   return 'http';
 }
 
@@ -470,27 +490,27 @@ function readJsonBody(request: IncomingMessage, maxBytes = API_BODY_MAX_BYTES): 
 // to already exist (created directly against the contract, e.g. during
 // provisioning) before a client ever reaches this HTTP surface.
 //
-// Authentication reuses the exact same cookie session as every other
-// `/api/*` route (`runtime.webSecurity.authenticate()` in the request
-// handler below) — there is no separate DAV credential path. Authorization
-// never trusts the tenantId/ownerUserId path segments on their own: the
-// authenticated session's tenantId must match the URL's tenantId segment
-// (checked here) and every store call is made with an actor/scope built
-// from the *session*, so PostgreSQL RLS and the contract's own ACL checks
-// are always evaluated against who is actually logged in, never against
-// what the URL claims. CardDAV has no delegate/sharing concept in this
+// Authentication accepts either HTTP Basic credentials (the LDAP-backed
+// `runtime.authenticateLogin()`, the same verifier as the web login, for
+// standard DAV clients; TLS only, with the web login's failure lockout) or
+// the browser session cookie. Authorization never trusts the
+// tenantId/ownerUserId path segments on their own: the authenticated
+// principal's tenantId must match the URL's tenantId segment (checked here)
+// and every store call is made with an actor/scope built from the
+// *principal*, so PostgreSQL RLS and the contract's own ACL checks are always
+// evaluated against who is actually authenticated, never against what the
+// URL claims. CardDAV has no delegate/sharing concept in this
 // codebase, so its URL's userId segment must equal the session's userId;
 // CalDAV's ownerUserId segment may legitimately differ from the session
 // user for a delegated (shared, read or write) calendar — the contract's
 // own ACL check (owner vs. delegate) decides that, not this router.
 //
-// Real DAV clients (Apple Calendar, Thunderbird, DAVx5, ...) cannot obtain
-// or send the double-submit CSRF token the browser SPA uses for its own
-// mutating requests (POST /api/session/logout), so PUT/DELETE/REPORT here
-// are authenticated by session cookie alone, relying on the session
-// cookie's own SameSite=Lax/Strict attribute (src/web/security/session-
-// manager.ts) as the cross-site request forgery mitigation. This is a
-// deliberate, documented trade-off, not an oversight — see doc/dav-and-
+// Basic-authenticated requests carry no ambient credential, so they need no
+// CSRF token. Cookie-authenticated PUT/DELETE are browser writes and must
+// send the session's CSRF header like every other mutating browser request.
+// Discovery (OPTIONS, then PROPFIND on /dav/, the principal and the calendar
+// and address book homes) follows RFC 5397/4791/6352 so a client can find its
+// collections from the `.well-known` redirect alone — see doc/dav-and-
 // discovery.md.
 
 function xmlEscapeDav(value: unknown): string {
@@ -673,13 +693,259 @@ function matchDavRoute(path: string): DavRouteMatch | null {
   return null;
 }
 
+interface DavPrincipal {
+  readonly tenantId: string;
+  readonly domain: string;
+  readonly userId: string;
+  readonly role: WebSession['role'];
+}
+
+type DavAuthResult =
+  | { readonly ok: true; readonly principal: DavPrincipal; readonly via: 'basic' | 'cookie' }
+  | { readonly ok: false; readonly status: number; readonly code: string; readonly message: string; readonly headers: Record<string, string> };
+
+const DAV_CHALLENGE_HEADERS: Readonly<Record<string, string>> = Object.freeze({
+  'www-authenticate': `Basic realm="${DAV_BASIC_REALM}", charset="UTF-8"`,
+});
+
+function davAuthFailure(status: number, code: string, message: string, headers: Record<string, string> = {}): DavAuthResult {
+  return { ok: false, status, code, message, headers };
+}
+
+/** Parses the comma-separated `GULOGULO_TRUSTED_PROXIES` list; unset or empty means loopback only. */
+function parseTrustedProxyAddresses(value: string | undefined): readonly string[] {
+  const configured = (value ?? '').split(',').map((entry) => entry.trim()).filter((entry) => entry !== '');
+  return configured.length > 0 ? configured : LOOPBACK_PROXY_ADDRESSES;
+}
+
+function isTrustedProxy(runtime: RuntimeServer, request: IncomingMessage): boolean {
+  const peer = request.socket.remoteAddress;
+  return peer !== undefined && runtime.trustedProxyAddresses.has(peer);
+}
+
+/** HTTP Basic credentials are only accepted over TLS: a TLS-terminating socket, or `https` reported by a trusted reverse proxy (never by an arbitrary peer). */
+function isTlsRequest(runtime: RuntimeServer, request: IncomingMessage): boolean {
+  if ('encrypted' in request.socket && request.socket.encrypted === true) return true;
+  if (!isTrustedProxy(runtime, request)) return false;
+  const forwarded = requestHeader(request, 'x-forwarded-proto');
+  return typeof forwarded === 'string' && forwarded.split(',')[0].trim().toLowerCase() === 'https';
+}
+
+/** The client's address for lockout keys: the last `X-Forwarded-For` entry (appended by our own proxy) when the peer is a trusted proxy, else the socket peer. */
+function davClientAddress(runtime: RuntimeServer, request: IncomingMessage): string {
+  const peer = request.socket.remoteAddress ?? 'unknown';
+  if (!isTrustedProxy(runtime, request)) return peer;
+  const forwardedFor = requestHeader(request, 'x-forwarded-for');
+  const last = forwardedFor?.split(',').pop()?.trim();
+  return last !== undefined && /^[A-Za-z0-9.:]{1,64}$/u.test(last) ? last : peer;
+}
+
+/**
+ * Authenticates one DAV request: HTTP Basic (verified by the same LDAP-backed
+ * `runtime.authenticateLogin()` as the web login, with its own failure
+ * lockout) when an Authorization header is present, otherwise the browser
+ * session cookie. The principal is rebuilt from the verified identity, never
+ * from the URL.
+ */
+async function authenticateDavRequest(runtime: RuntimeServer, request: IncomingMessage, session: WebSession | null, requestDetails: RequestDetails): Promise<DavAuthResult> {
+  const authorization = requestHeader(request, 'authorization')?.trim();
+  if (authorization === undefined || authorization === '') {
+    if (session !== null) {
+      return { ok: true, via: 'cookie', principal: { tenantId: session.tenantId, domain: session.domain, userId: session.userId, role: session.role } };
+    }
+    // No Basic challenge over plaintext: a client would answer it with its password.
+    if (!isTlsRequest(runtime, request)) {
+      return davAuthFailure(403, 'TLS_REQUIRED', 'HTTP Basic credentials are only accepted over TLS.');
+    }
+    return davAuthFailure(401, 'AUTHENTICATION_REQUIRED', 'Authentication is required.', DAV_CHALLENGE_HEADERS);
+  }
+  if (!isTlsRequest(runtime, request)) {
+    return davAuthFailure(403, 'TLS_REQUIRED', 'HTTP Basic credentials are only accepted over TLS.');
+  }
+  const match = /^Basic +([A-Za-z0-9+/]+={0,2})$/iu.exec(authorization);
+  if (match === null) {
+    return davAuthFailure(401, 'AUTH_SCHEME_UNSUPPORTED', 'Only HTTP Basic authentication is supported.', DAV_CHALLENGE_HEADERS);
+  }
+  const decoded = Buffer.from(match[1], 'base64').toString('utf8');
+  const separator = decoded.indexOf(':');
+  const email = separator > 0 ? decoded.slice(0, separator).trim().toLowerCase() : '';
+  const password = separator > 0 ? decoded.slice(separator + 1) : '';
+  const failureKey = `dav:${davClientAddress(runtime, request)}:${email.slice(0, 254)}`;
+  const now = runtime.clock().getTime();
+  const previousFailure = runtime.loginFailures.get(failureKey);
+  if (previousFailure && now - previousFailure.startedAt < LOGIN_FAILURE_WINDOW_MS && previousFailure.count >= LOGIN_FAILURE_LIMIT) {
+    return davAuthFailure(429, 'SIGN_IN_UNAVAILABLE', 'Unable to sign in.', {
+      'retry-after': String(Math.ceil((LOGIN_FAILURE_WINDOW_MS - (now - previousFailure.startedAt)) / 1000)),
+    });
+  }
+  let identity: SessionIdentity | null = null;
+  if (/^[^\s@]+@[^\s@]+$/u.test(email) && password.length >= 1 && password.length <= 1024) {
+    try {
+      identity = await runtime.authenticateLogin({ email, password, rememberMe: false }, requestDetails);
+    } catch {
+      identity = null;
+    }
+  }
+  let principal: DavPrincipal | null = null;
+  if (identity !== null && typeof identity === 'object' && typeof identity.userId === 'string' && identity.userId !== '') {
+    try {
+      const role = identity.role ?? 'user';
+      createTenantContext({ tenantId: identity.tenantId, domain: identity.domain, actorId: identity.actorId ?? identity.userId, role });
+      principal = { tenantId: identity.tenantId, domain: identity.domain, userId: identity.userId, role };
+    } catch {
+      principal = null;
+    }
+  }
+  if (principal === null) {
+    const active = previousFailure && now - previousFailure.startedAt < LOGIN_FAILURE_WINDOW_MS
+      ? { startedAt: previousFailure.startedAt, count: previousFailure.count + 1 }
+      : { startedAt: now, count: 1 };
+    runtime.loginFailures.set(failureKey, active);
+    return active.count >= LOGIN_FAILURE_LIMIT
+      ? davAuthFailure(429, 'SIGN_IN_UNAVAILABLE', 'Unable to sign in.', { 'retry-after': String(Math.ceil(LOGIN_FAILURE_WINDOW_MS / 1000)) })
+      : davAuthFailure(401, 'SIGN_IN_FAILED', 'Unable to sign in.', DAV_CHALLENGE_HEADERS);
+  }
+  runtime.loginFailures.delete(failureKey);
+  return { ok: true, via: 'basic', principal };
+}
+
+type DavDiscoveryRoute =
+  | { readonly kind: 'root' }
+  | { readonly kind: 'principal' | 'caldav-home' | 'carddav-home'; readonly tenantId: string; readonly userId: string };
+
+function davPrincipalHref(tenantId: string, userId: string): string {
+  return `/dav/principals/${encodeURIComponent(tenantId)}/${encodeURIComponent(userId)}/`;
+}
+
+function caldavHomeHref(tenantId: string, userId: string): string {
+  return `/dav/calendars/${encodeURIComponent(tenantId)}/${encodeURIComponent(userId)}/`;
+}
+
+function carddavHomeHref(tenantId: string, userId: string): string {
+  return `/dav/contacts/${encodeURIComponent(tenantId)}/${encodeURIComponent(userId)}/`;
+}
+
+/** Matches the discovery resources a client walks from the `.well-known` redirect: `/dav/`, the principal, and the calendar/address book homes. */
+function matchDavDiscoveryRoute(path: string): DavDiscoveryRoute | null {
+  if (DAV_ROOT_PATTERN.test(path)) return { kind: 'root' };
+  const patterns = [
+    [DAV_PRINCIPAL_PATTERN, 'principal'],
+    [CALDAV_HOME_PATTERN, 'caldav-home'],
+    [CARDDAV_HOME_PATTERN, 'carddav-home'],
+  ] as const;
+  for (const [pattern, kind] of patterns) {
+    const found = pattern.exec(path);
+    if (found === null) continue;
+    const tenantId = decodeSegment(found[1]);
+    const userId = decodeSegment(found[2]);
+    return tenantId === null || userId === null ? null : { kind, tenantId, userId };
+  }
+  return null;
+}
+
+interface DavDiscoveryContext {
+  runtime: RuntimeServer;
+  request: IncomingMessage;
+  method: string;
+  principal: DavPrincipal;
+  discovery: DavDiscoveryRoute;
+  finishDav: (statusCode: number, body: string, contentType: string, extraHeaders?: Record<string, string>) => void;
+  scopedLogger: RuntimeLogger;
+}
+
+/**
+ * PROPFIND-only discovery (RFC 5397 current-user-principal, RFC 4791
+ * calendar-home-set, RFC 6352 addressbook-home-set). A principal and its homes
+ * are only visible to the user they belong to, in their own tenant.
+ */
+async function handleDavDiscovery(context: DavDiscoveryContext): Promise<void> {
+  const { runtime, request, method, principal, discovery, finishDav, scopedLogger } = context;
+  if (method !== 'PROPFIND') {
+    finishDav(405, davErrorXml('METHOD_NOT_ALLOWED', 'only PROPFIND is supported on DAV discovery resources'), DAV_XML_CONTENT_TYPE, { allow: DAV_DISCOVERY_ALLOW_HEADER });
+    return;
+  }
+  if (discovery.kind !== 'root') {
+    if (discovery.tenantId !== principal.tenantId) {
+      finishDav(403, davErrorXml('CROSS_TENANT_DENIED', 'cross-tenant DAV access is denied'), DAV_XML_CONTENT_TYPE);
+      return;
+    }
+    if (discovery.userId !== principal.userId) {
+      finishDav(403, davErrorXml('SCOPE_TARGET_DENIED', 'a principal and its homes may only be accessed by their own user'), DAV_XML_CONTENT_TYPE);
+      return;
+    }
+  }
+  const depth = parseDavDepth(request);
+  if (depth === 'infinity') {
+    finishDav(403, davErrorXml('DEPTH_NOT_SUPPORTED', 'Depth: infinity is not supported'), DAV_XML_CONTENT_TYPE);
+    return;
+  }
+
+  const principalHref = davPrincipalHref(principal.tenantId, principal.userId);
+  const calendarHome = caldavHomeHref(principal.tenantId, principal.userId);
+  const contactsHome = carddavHomeHref(principal.tenantId, principal.userId);
+  const homeProps = '        <D:resourcetype><D:collection/></D:resourcetype>';
+  try {
+    if (discovery.kind === 'root') {
+      const props = `${homeProps}\n        <D:current-user-principal><D:href>${xmlEscapeDav(principalHref)}</D:href></D:current-user-principal>`;
+      finishDav(207, davMultistatus(davPropResponse('/dav/', props)), DAV_XML_CONTENT_TYPE);
+      return;
+    }
+    if (discovery.kind === 'principal') {
+      const props = [
+        '        <D:resourcetype><D:collection/><D:principal/></D:resourcetype>',
+        `        <D:displayname>${xmlEscapeDav(principal.userId)}</D:displayname>`,
+        `        <D:current-user-principal><D:href>${xmlEscapeDav(principalHref)}</D:href></D:current-user-principal>`,
+        `        <D:principal-URL><D:href>${xmlEscapeDav(principalHref)}</D:href></D:principal-URL>`,
+        `        <C:calendar-home-set><D:href>${xmlEscapeDav(calendarHome)}</D:href></C:calendar-home-set>`,
+        `        <CARD:addressbook-home-set><D:href>${xmlEscapeDav(contactsHome)}</D:href></CARD:addressbook-home-set>`,
+      ].join('\n');
+      finishDav(207, davMultistatus(davPropResponse(principalHref, props)), DAV_XML_CONTENT_TYPE);
+      return;
+    }
+
+    const davStore = runtime.davStore;
+    if (discovery.kind === 'caldav-home') {
+      let innerXml = davPropResponse(calendarHome, homeProps);
+      if (depth === '1') {
+        if (davStore === undefined || !davStore.caldav.enabled) {
+          finishDav(503, davErrorXml('DAV_STORE_UNAVAILABLE', 'CalDAV storage is not configured'), DAV_XML_CONTENT_TYPE);
+          return;
+        }
+        const actor = { tenantId: principal.tenantId, domain: principal.domain, userId: principal.userId, role: principal.role };
+        for (const collection of await davStore.caldav.listCalendarCollections(actor)) {
+          innerXml += davPropResponse(caldavCollectionHref(principal.tenantId, collection.ownerUserId, collection.collectionId), caldavCollectionPropXml(collection));
+        }
+      }
+      finishDav(207, davMultistatus(innerXml), DAV_XML_CONTENT_TYPE);
+      return;
+    }
+
+    let innerXml = davPropResponse(contactsHome, homeProps);
+    if (depth === '1') {
+      if (davStore === undefined || !davStore.carddav.enabled) {
+        finishDav(503, davErrorXml('DAV_STORE_UNAVAILABLE', 'CardDAV storage is not configured'), DAV_XML_CONTENT_TYPE);
+        return;
+      }
+      const scope = { tenantId: principal.tenantId, domain: principal.domain, userId: principal.userId, role: principal.role };
+      for (const addressBook of await davStore.carddav.listAddressBooks(scope)) {
+        innerXml += davPropResponse(carddavCollectionHref(principal.tenantId, principal.userId, addressBook.addressBookId), carddavCollectionPropXml(addressBook));
+      }
+    }
+    finishDav(207, davMultistatus(innerXml), DAV_XML_CONTENT_TYPE);
+  } catch (error) {
+    const mapped = davErrorFromCaught(error);
+    scopedLogger.warn('dav_request_failed', { error: { code: mapped.code }, status_code: mapped.status });
+    finishDav(mapped.status, davErrorXml(mapped.code, mapped.message), DAV_XML_CONTENT_TYPE);
+  }
+}
+
 interface DavRouteContext {
   runtime: RuntimeServer;
   request: IncomingMessage;
   response: ServerResponse;
   method: string;
   path: string;
-  session: WebSession;
+  session: WebSession | null;
   requestDetails: RequestDetails;
   scopedLogger: RuntimeLogger;
   startedAt: bigint;
@@ -710,9 +976,56 @@ async function handleDavRoute(context: DavRouteContext): Promise<void> {
     });
   };
 
+  // OPTIONS lists the methods only (no tenant data) and, as clients probe it
+  // before they have credentials, needs no authentication. No `DAV:` header:
+  // every compliance class (1, 3, calendar-access, addressbook) promises
+  // methods and reports this adapter does not implement.
+  if (method === 'OPTIONS') {
+    finishDav(200, '', DAV_XML_CONTENT_TYPE, { allow: DAV_ALLOW_HEADER });
+    return;
+  }
+
+  const auth = await authenticateDavRequest(runtime, request, session, requestDetails);
+  if (!auth.ok) {
+    finishDav(auth.status, davErrorXml(auth.code, auth.message), DAV_XML_CONTENT_TYPE, auth.headers);
+    return;
+  }
+  const principal = auth.principal;
+
+  // The generic limiter saw a Basic request as anonymous (per client address).
+  // Now that the tenant is known, apply the tenant-wide DAV limit too: the
+  // tenant dimension only, as the client address was already counted.
+  if (auth.via === 'basic') {
+    const tenantDecision = runtime.rateLimiter.consume({ channel: 'dav', tenantId: principal.tenantId });
+    runtime.metrics.increment(tenantDecision.allowed ? 'gulogulo_abuse_allowed_total' : 'gulogulo_abuse_limited_total', 1, { channel: 'dav' });
+    if (!tenantDecision.allowed) {
+      const retryAfterSeconds = Math.max(1, Math.ceil(Number(tenantDecision.retryAfterMs ?? 1000) / 1000));
+      scopedLogger.warn('abuse_rate_limited', { channel: 'dav', limited_by: tenantDecision.limitedBy, retry_after_seconds: retryAfterSeconds });
+      finishDav(429, davErrorXml('RATE_LIMITED', 'Request rate exceeded.'), DAV_XML_CONTENT_TYPE, { 'retry-after': String(retryAfterSeconds) });
+      return;
+    }
+  }
+
+  // Only a browser (cookie) write needs the CSRF token: Basic credentials are
+  // never sent ambiently by a browser.
+  if (auth.via === 'cookie' && session !== null && DAV_WRITE_METHODS.has(method)) {
+    try {
+      runtime.webSecurity.csrf.validateRequest(session, { headerToken: requestHeader(request, CSRF_HEADER_NAME) });
+    } catch {
+      finishDav(403, davErrorXml('CSRF_INVALID', 'the request could not be verified'), DAV_XML_CONTENT_TYPE);
+      return;
+    }
+  }
+
   if (!SUPPORTED_DAV_METHODS.has(method)) {
     response.setHeader('allow', DAV_ALLOW_HEADER);
     finishDav(501, davErrorXml('NOT_IMPLEMENTED', `method ${method} is not implemented for DAV resources`), DAV_XML_CONTENT_TYPE);
+    return;
+  }
+
+  const discovery = matchDavDiscoveryRoute(path);
+  if (discovery !== null) {
+    await handleDavDiscovery({ runtime, request, method, principal, discovery, finishDav, scopedLogger });
     return;
   }
 
@@ -727,14 +1040,14 @@ async function handleDavRoute(context: DavRouteContext): Promise<void> {
     return;
   }
 
-  // Authorization never trusts the URL: the session's own tenant must match
+  // Authorization never trusts the URL: the principal's own tenant must match
   // the URL's tenant segment. CardDAV additionally has no delegate concept,
-  // so its "owner" segment must be the session user itself.
-  if (match.tenantId !== session.tenantId) {
+  // so its "owner" segment must be the authenticated user itself.
+  if (match.tenantId !== principal.tenantId) {
     finishDav(403, davErrorXml('CROSS_TENANT_DENIED', 'cross-tenant DAV access is denied'), DAV_XML_CONTENT_TYPE);
     return;
   }
-  if (match.kind === 'carddav' && match.ownerUserId !== session.userId) {
+  if (match.kind === 'carddav' && match.ownerUserId !== principal.userId) {
     finishDav(403, davErrorXml('SCOPE_TARGET_DENIED', 'an address book may only be accessed by its own user'), DAV_XML_CONTENT_TYPE);
     return;
   }
@@ -747,7 +1060,7 @@ async function handleDavRoute(context: DavRouteContext): Promise<void> {
         finishDav(503, davErrorXml('DAV_STORE_UNAVAILABLE', 'CalDAV storage is not configured'), DAV_XML_CONTENT_TYPE);
         return;
       }
-      const actor = { tenantId: session.tenantId, domain: session.domain, userId: session.userId, role: session.role };
+      const actor = { tenantId: principal.tenantId, domain: principal.domain, userId: principal.userId, role: principal.role };
       const calendarId = `${match.ownerUserId}/${match.collectionId}`;
       const collectionHref = caldavCollectionHref(match.tenantId, match.ownerUserId, match.collectionId);
 
@@ -843,7 +1156,7 @@ async function handleDavRoute(context: DavRouteContext): Promise<void> {
       finishDav(503, davErrorXml('DAV_STORE_UNAVAILABLE', 'CardDAV storage is not configured'), DAV_XML_CONTENT_TYPE);
       return;
     }
-    const scope = { tenantId: session.tenantId, domain: session.domain, userId: session.userId, role: session.role };
+    const scope = { tenantId: principal.tenantId, domain: principal.domain, userId: principal.userId, role: principal.role };
     const addressBookId = match.collectionId;
     const collectionHref = carddavCollectionHref(match.tenantId, match.ownerUserId, match.collectionId);
 
@@ -1047,6 +1360,7 @@ export function createRuntimeServer({
   mfaGate = createDefaultMfaGate({ config, clock }),
   apiResources = defaultApiResources(),
   davStore,
+  trustedProxyAddresses = parseTrustedProxyAddresses(process.env.GULOGULO_TRUSTED_PROXIES),
   mailClients: injectedMailClients,
 }: RuntimeServerOptions = {}): RuntimeServer {
   const runtimeMetrics = metrics ?? createMetrics({ clock });
@@ -1086,6 +1400,7 @@ export function createRuntimeServer({
     sessionMailAddress: new Map(),
     imapIdleAvailability: new Map(),
     davStore,
+    trustedProxyAddresses: new Set(trustedProxyAddresses),
     server: undefined as unknown as Server,
   };
   const mailClients = createLocalMailClients(config ?? {}, { logger });
@@ -1191,10 +1506,15 @@ export function createRuntimeServer({
     };
 
     const abuseChannel = abuseChannelForPath(path);
+    // DAV clients sit behind a reverse proxy: limit them by their own address
+    // (from a trusted proxy) rather than the proxy's, and keep unauthenticated
+    // and Basic traffic out of one shared anonymous tenant bucket.
+    const isDavChannel = abuseChannel === 'dav';
+    const clientAddress = isDavChannel ? davClientAddress(runtime, request) : (request.socket.remoteAddress ?? 'unknown');
     const abuseDecision = runtime.rateLimiter.consume({
       channel: abuseChannel,
-      tenantId: session?.tenantId ?? 'anonymous',
-      ipAddress: request.socket.remoteAddress ?? 'unknown',
+      tenantId: session?.tenantId ?? (isDavChannel ? `anonymous:${clientAddress}` : 'anonymous'),
+      ipAddress: clientAddress,
     });
     runtime.metrics.increment(abuseDecision.allowed ? 'gulogulo_abuse_allowed_total' : 'gulogulo_abuse_limited_total', 1, {
       channel: abuseChannel,
@@ -1548,8 +1868,7 @@ export function createRuntimeServer({
       return;
     }
 
-    if (path.startsWith('/dav/calendars/') || path.startsWith('/dav/contacts/')) {
-      if (session === null) { unauthorized(); return; }
+    if (path === '/dav' || path.startsWith('/dav/')) {
       completed = true;
       await handleDavRoute({
         runtime,
