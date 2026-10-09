@@ -975,6 +975,20 @@ async function handleDavRoute(context: DavRouteContext): Promise<void> {
   }
   const principal = auth.principal;
 
+  // The generic limiter saw a Basic request as anonymous (per client address).
+  // Now that the tenant is known, apply the tenant-wide DAV limit too: the
+  // tenant dimension only, as the client address was already counted.
+  if (auth.via === 'basic') {
+    const tenantDecision = runtime.rateLimiter.consume({ channel: 'dav', tenantId: principal.tenantId });
+    runtime.metrics.increment(tenantDecision.allowed ? 'gulogulo_abuse_allowed_total' : 'gulogulo_abuse_limited_total', 1, { channel: 'dav' });
+    if (!tenantDecision.allowed) {
+      const retryAfterSeconds = Math.max(1, Math.ceil(Number(tenantDecision.retryAfterMs ?? 1000) / 1000));
+      scopedLogger.warn('abuse_rate_limited', { channel: 'dav', limited_by: tenantDecision.limitedBy, retry_after_seconds: retryAfterSeconds });
+      finishDav(429, davErrorXml('RATE_LIMITED', 'Request rate exceeded.'), DAV_XML_CONTENT_TYPE, { 'retry-after': String(retryAfterSeconds) });
+      return;
+    }
+  }
+
   // Only a browser (cookie) write needs the CSRF token: Basic credentials are
   // never sent ambiently by a browser.
   if (auth.via === 'cookie' && session !== null && DAV_WRITE_METHODS.has(method)) {

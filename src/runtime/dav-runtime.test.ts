@@ -756,6 +756,30 @@ test('DAV Basic clients write with conditional requests and no CSRF token; cooki
   }
 });
 
+test('DAV Basic requests also count against the tenant-wide limit once the tenant is known', async () => {
+  const { davStore } = makeDavStore();
+  const calls: { tenantId: string; ipAddress?: string }[] = [];
+  const rateLimiter = {
+    consume(input: { channel: string; tenantId: string; ipAddress?: string }) {
+      calls.push({ tenantId: input.tenantId, ipAddress: input.ipAddress });
+      // Deny only the tenant-only check that follows Basic authentication.
+      const allowed = !(input.tenantId === 'acme' && input.ipAddress === undefined);
+      return { allowed, limitedBy: allowed ? [] : ['tenant'], retryAfterMs: 5000 };
+    },
+  };
+  const { runtime } = makeTestRuntime({ davStore, rateLimiter });
+  await startServer(runtime);
+  try {
+    const limited = await rawRequest(runtime, '/dav/', { method: 'PROPFIND', headers: { ...basicHeaders(), depth: '0' } });
+    assert.equal(limited.statusCode, 429);
+    assert.equal(limited.headers['retry-after'], '5');
+    assert.ok(calls.some((call) => call.tenantId.startsWith('anonymous:') && call.ipAddress !== undefined));
+    assert.ok(calls.some((call) => call.tenantId === 'acme' && call.ipAddress === undefined));
+  } finally {
+    await stopServer(runtime);
+  }
+});
+
 test('DAV Basic only trusts X-Forwarded-Proto from a configured proxy address', async () => {
   const { davStore } = makeDavStore();
   const { runtime } = makeTestRuntime({ davStore, trustedProxyAddresses: ['203.0.113.1'] });

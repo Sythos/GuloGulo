@@ -346,7 +346,9 @@ the last `X-Forwarded-For` entry when the peer is a trusted proxy, otherwise
 the socket peer, so one client cannot lock out the same account for others.
 The shared `dav` rate limiter uses the same client address, and
 unauthenticated or Basic traffic gets a per-client tenant bucket instead of
-one shared anonymous bucket.
+one shared anonymous bucket; once Basic authentication succeeds, the
+tenant-wide DAV limit is applied as well, so clients at different addresses
+cannot multiply a tenant's allowance.
 Other schemes answer `401`. Without an `Authorization` header the browser
 session cookie is still accepted, as for every `/api/*` route; with neither,
 the answer is `401` plus the Basic challenge.
