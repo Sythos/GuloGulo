@@ -306,7 +306,7 @@ otherwise).
 
 | Method | Level | What it does | What it deliberately does not do |
 | --- | --- | --- | --- |
-| `OPTIONS` | any `/dav/` path | `200` with `DAV: 1, 3` and `Allow` (`calendar-access`/`addressbook` are not advertised until the multiget reports exist); needs no credentials and returns no tenant data | — |
+| `OPTIONS` | any `/dav/` path | `200` with `Allow` and no `DAV:` header (no compliance class is advertised: class 1/3 need `PROPPATCH`/`COPY`/`MOVE`, `calendar-access`/`addressbook` need the multiget reports); needs no credentials and returns no tenant data | — |
 | `PROPFIND` | discovery resources | see "URL structure" | — |
 | `PROPFIND` | collection (Depth 0/1) | `207 Multi-Status` with `resourcetype`, `displayname`, `getlastmodified`, `sync-token` for the collection, plus one entry per object at Depth 1 (`getetag`, `getcontenttype`, empty `resourcetype`) | ignores the requested `<D:prop>` selection and always returns this fixed set; `Depth: infinity` is rejected with `403` |
 | `PROPFIND` | object (Depth 0) | `207` with that object's `getetag`/`getcontenttype` | same fixed-property-set limitation |
@@ -344,6 +344,9 @@ client address and mail address within 15 minutes answer `429` with
 `Retry-After` (counted separately from the web login). The client address is
 the last `X-Forwarded-For` entry when the peer is a trusted proxy, otherwise
 the socket peer, so one client cannot lock out the same account for others.
+The shared `dav` rate limiter uses the same client address, and
+unauthenticated or Basic traffic gets a per-client tenant bucket instead of
+one shared anonymous bucket.
 Other schemes answer `401`. Without an `Authorization` header the browser
 session cookie is still accepted, as for every `/api/*` route; with neither,
 the answer is `401` plus the Basic challenge.
@@ -368,7 +371,7 @@ neither ownership nor a delegate grant), not the router.
 
 Against the deployed service (HTTPS, behind the TLS proxy):
 
-1. `curl -i -X OPTIONS https://HOST/dav/` — expect `200` and `DAV: 1, 3`.
+1. `curl -i -X OPTIONS https://HOST/dav/` — expect `200`, an `Allow` header and no `DAV:` header.
    If step 2 or 3 answers `403 TLS_REQUIRED`, the proxy is not sending
    `X-Forwarded-Proto: https` or its address is not in
    `GULOGULO_TRUSTED_PROXIES`.

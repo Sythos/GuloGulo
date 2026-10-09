@@ -129,9 +129,6 @@ const DAV_XML_CONTENT_TYPE = 'application/xml; charset=utf-8';
 // without authentication (capability advertisement only, no tenant data).
 const SUPPORTED_DAV_METHODS = new Set(['OPTIONS', 'PROPFIND', 'GET', 'HEAD', 'PUT', 'DELETE', 'REPORT']);
 const DAV_ALLOW_HEADER = [...SUPPORTED_DAV_METHODS].join(', ');
-// `calendar-access`/`addressbook` are deliberately not advertised: they promise
-// the mandatory multiget reports, which this adapter does not implement yet.
-const DAV_COMPLIANCE_HEADER = '1, 3';
 const LOOPBACK_PROXY_ADDRESSES: readonly string[] = ['127.0.0.1', '::1', '::ffff:127.0.0.1'];
 const DAV_DISCOVERY_ALLOW_HEADER = 'OPTIONS, PROPFIND';
 const DAV_BASIC_REALM = 'Gulo Gulo DAV';
@@ -723,7 +720,7 @@ function davClientAddress(runtime: RuntimeServer, request: IncomingMessage): str
   if (!isTrustedProxy(runtime, request)) return peer;
   const forwardedFor = requestHeader(request, 'x-forwarded-for');
   const last = forwardedFor?.split(',').pop()?.trim();
-  return last !== undefined && last !== '' && last.length <= 64 ? last : peer;
+  return last !== undefined && /^[A-Za-z0-9.:]{1,64}$/u.test(last) ? last : peer;
 }
 
 /**
@@ -962,10 +959,12 @@ async function handleDavRoute(context: DavRouteContext): Promise<void> {
     });
   };
 
-  // OPTIONS advertises capabilities only (no tenant data) and, as clients
-  // probe it before they have credentials, needs no authentication.
+  // OPTIONS lists the methods only (no tenant data) and, as clients probe it
+  // before they have credentials, needs no authentication. No `DAV:` header:
+  // every compliance class (1, 3, calendar-access, addressbook) promises
+  // methods and reports this adapter does not implement.
   if (method === 'OPTIONS') {
-    finishDav(200, '', DAV_XML_CONTENT_TYPE, { allow: DAV_ALLOW_HEADER, dav: DAV_COMPLIANCE_HEADER });
+    finishDav(200, '', DAV_XML_CONTENT_TYPE, { allow: DAV_ALLOW_HEADER });
     return;
   }
 
@@ -1419,10 +1418,15 @@ export function createRuntimeServer({
     };
 
     const abuseChannel = abuseChannelForPath(path);
+    // DAV clients sit behind a reverse proxy: limit them by their own address
+    // (from a trusted proxy) rather than the proxy's, and keep unauthenticated
+    // and Basic traffic out of one shared anonymous tenant bucket.
+    const isDavChannel = abuseChannel === 'dav';
+    const clientAddress = isDavChannel ? davClientAddress(runtime, request) : (request.socket.remoteAddress ?? 'unknown');
     const abuseDecision = runtime.rateLimiter.consume({
       channel: abuseChannel,
-      tenantId: session?.tenantId ?? 'anonymous',
-      ipAddress: request.socket.remoteAddress ?? 'unknown',
+      tenantId: session?.tenantId ?? (isDavChannel ? `anonymous:${clientAddress}` : 'anonymous'),
+      ipAddress: clientAddress,
     });
     runtime.metrics.increment(abuseDecision.allowed ? 'gulogulo_abuse_allowed_total' : 'gulogulo_abuse_limited_total', 1, {
       channel: abuseChannel,

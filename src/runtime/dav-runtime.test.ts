@@ -611,7 +611,7 @@ test('OPTIONS advertises DAV capabilities without credentials', async () => {
   try {
     const response = await rawRequest(runtime, '/dav/', { method: 'OPTIONS' });
     assert.equal(response.statusCode, 200);
-    assert.equal(response.headers.dav, '1, 3');
+    assert.equal(response.headers.dav, undefined);
     for (const method of ['OPTIONS', 'PROPFIND', 'REPORT', 'PUT']) assert.match(response.headers.allow as string, new RegExp(method, 'u'));
     assert.equal(response.body, '');
   } finally {
