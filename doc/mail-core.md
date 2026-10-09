@@ -407,3 +407,30 @@ Postfix interoperability.
    included.
 7. Inspect logs and queue views to confirm that no body, credential, or secret
    is present and that tenant/master visibility remains metadata-only.
+
+## Web message routes
+
+The web UI reaches the mailbox through three authenticated routes in
+`src/runtime/server.ts` (backend calls in `src/runtime/mail-routes.ts`):
+
+| Route | Backend | Notes |
+|---|---|---|
+| `GET /api/mail/messages/:id` | IMAP `UID FETCH ... BODY.PEEK[]` | Does not set `\Seen`. At most 1 MiB is read; `truncated` is set if the message is longer. |
+| `POST /api/mail/messages/:id/archive` | IMAP `UID MOVE` to `Archive` | The folder is created if missing. |
+| `POST /api/mail/send` | SMTP submission with STARTTLS and AUTH | Plain-text body only. No attachments yet (`ATTACHMENTS_NOT_SUPPORTED`). |
+
+`:id` is `<folder>:<uid>` with `folder` one of `inbox`, `sent`, `drafts`,
+`trash`, `archive`, or a bare UID for `inbox`.
+
+- Every call opens its own connection logged in with the session's own mailbox
+  address and password, so one user can never reach another user's mailbox.
+  A mailbox outside the session's tenant domain is refused with 403.
+- Changes need the `x-csrf-token` header. A successful change spends the token
+  and returns the next one in `csrfToken`; a failed change leaves it usable.
+  Only one change per session runs at a time (409 otherwise).
+- Limits: send body 512 KiB, text 256 KiB, subject 255 characters, 50
+  recipients. The sender is always the session mailbox.
+- Errors are `{ error: { code, message } }` with no backend detail. Logs only
+  carry the error code, never credentials or message content.
+- Real Dovecot/Postfix interoperability (MOVE support, `Archive` naming) still
+  needs field validation.
