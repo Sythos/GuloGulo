@@ -46,6 +46,7 @@ class FakeImap implements ImapClient {
     if (password !== PASSWORD) throw imapClientError('authentication failed', 'AUTHENTICATION_FAILED');
   }
   async select(mailbox: string) { this.calls.push(`select:${mailbox}`); return { exists: 1, uidNext: 8 }; }
+  async fetchSummaries(): Promise<[]> { return []; }
   async fetchMessage(uid: number): Promise<ImapFetchedMessage | null> { this.calls.push(`fetch:${uid}`); return FakeImap.message; }
   async moveMessage(uid: number, destination: string): Promise<void> { this.calls.push(`move:${uid}:${destination}`); }
   async idle(): Promise<{ stop: () => Promise<void> }> { return { stop: async () => {} }; }

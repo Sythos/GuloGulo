@@ -56,6 +56,8 @@ class FakeImapClient implements ImapClient {
   async fetchSummaries(first: number, last: number): Promise<readonly ImapMessageSummary[]> {
     return this.mailbox.filter((message) => message.sequence >= first && message.sequence <= last).sort((a, b) => b.sequence - a.sequence);
   }
+  async fetchMessage(): Promise<null> { return null; }
+  async moveMessage(): Promise<void> {}
   async idle(): Promise<ImapIdleSession> { return { stop: async () => {} }; }
   async logout(): Promise<void> {}
   close(): void {}
