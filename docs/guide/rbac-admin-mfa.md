@@ -158,6 +158,48 @@ factor, but neither the recovery endpoint nor an administrator may retrieve the
 original codes. An administrative recovery action must be auditable without
 including the code or a session token.
 
+## Enforcing MFA at web login
+
+`src/runtime/mfa.ts` sits between a verified password and the web session.
+When `webAuth` demands a second factor, `POST /api/session/login` answers
+`200` with `authenticated: false`, `mfaRequired: true` and a short-lived
+(5 minutes), single-use `mfaToken`. No cookie is set and no session exists, so
+a password alone never reaches any protected route. The token is not a
+credential for the API.
+
+Meaning of the `webAuth.totp` / `webAuth.webauthn` values:
+
+- `disabled`: never used.
+- `optional`: not demanded until the user has an active factor of that type;
+  from then on it is demanded at every login.
+- `required`: always demanded; a user without one must enroll it first.
+
+When both factors are demanded, **both** must be satisfied in the same
+challenge. A recovery code satisfies exactly one outstanding factor that the
+user has already enrolled; it never replaces an enrollment.
+
+Challenge steps (all `POST`, JSON, same-origin):
+
+| Route | Purpose |
+|---|---|
+| `/api/session/mfa/totp/enroll` | Start TOTP enrollment; returns the secret and `otpauth://` URI once. |
+| `/api/session/mfa/verify` | `{ mfaToken, method: "totp" \| "recovery", code }`; confirms enrollment or verifies the code. |
+| `/api/session/mfa/webauthn/options` | Assertion or registration options for the passkey ceremony. |
+| `/api/session/mfa/webauthn/complete` | Finishes the ceremony. |
+
+Only when every demanded factor is satisfied does the response carry the
+session cookie, CSRF token and user. The first enrollment also returns the
+one-time recovery codes. Challenges are bound to the user and tenant that
+passed the password check; factor lookups are scoped by tenant and user, wrong
+codes use up a five-attempt budget, TOTP codes cannot be replayed, and the
+TOTP and recovery managers keep their own lockouts across challenges.
+
+A new factor may only be added once every factor the user already has is
+satisfied in the challenge. A user with no factor yet can enroll after the
+password alone, so the password is the only protection until the first
+enrollment. WebAuthn is fail-closed: `required` without an injected
+`credentialVerifier` manager answers `503` at login.
+
 ## Test and integration commands
 
 The focused M6 suite is intentionally sequential, which is friendlier to the
@@ -194,7 +236,10 @@ M6 intentionally leaves these production tasks for later integration work:
 - LDAP password update and account lock mapping;
 - a selected WebAuthn verifier and browser interoperability tests;
 - encrypted secret-store/key-ring rotation;
-- HTTP/MCP route wiring, session CSRF checks, and user-facing recovery UX;
+- persistent TOTP, recovery-code and WebAuthn factor stores (the runtime gate
+  currently keeps factors in memory under an ephemeral key, so they do not
+  survive a restart) and the browser WebAuthn ceremony UI;
+- MCP route wiring;
 - live Postfix/Dovecot queue and audit sinks.
 
 Keeping these items explicit prevents the in-memory contracts from being
