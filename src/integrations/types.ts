@@ -199,6 +199,12 @@ export interface TenantIdentity {
   readonly displayName: string | null;
   readonly dn?: string;
   readonly active: boolean;
+  /**
+   * The role the platform's own identity source assigns to this account,
+   * unvalidated: `src/runtime/login.ts` checks it against a tenant-bound
+   * allowlist. Absent means "no explicit assignment" (least privilege: `user`).
+   */
+  readonly role?: string;
 }
 
 export interface TenantScopedRequest {

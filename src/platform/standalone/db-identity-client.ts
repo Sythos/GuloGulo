@@ -46,6 +46,7 @@ interface LocalUserRow extends Record<string, unknown> {
   readonly username: string;
   readonly password_hash: string;
   readonly display_name: string | null;
+  readonly role: string;
   readonly active: boolean;
 }
 
@@ -114,7 +115,7 @@ export function createDatabaseIdentityClient({
     const normalizedUsername = username.toLowerCase();
     return enabledStore.withTenantTransaction(context, async (client) => {
       const result = await client.query<LocalUserRow>(
-        'SELECT id, username, password_hash, display_name, active FROM local_users WHERE tenant_id = $1 AND username = $2',
+        'SELECT id, username, password_hash, display_name, role, active FROM local_users WHERE tenant_id = $1 AND username = $2',
         [context.tenantId, normalizedUsername],
       );
       const row = result.rows[0];
@@ -124,6 +125,7 @@ export function createDatabaseIdentityClient({
         mailAddress: `${row.username}@${context.domain}`,
         displayName: row.display_name,
         active: row.active !== false,
+        role: row.role,
       };
     });
   }
