@@ -279,6 +279,10 @@ the checked contracts belongs in [INSTALL.md](INSTALL.md).
   standalone, UAPI for cPanel, REST for Plesk — instead of the fixture
   authenticator; field verification against real backends belongs in
   INSTALL.md;
+- [ ] wire the IMAP IDLE adapter (`src/core/mail/imap-idle-adapter.ts`) into
+  the running server so that a continuing watch delivers mailbox changes to
+  the event transport; today the server only runs the one-shot capability
+  probe (`src/core/mail/imap-idle-probe.ts`);
 - [x] persistent DAV backend: PostgreSQL-backed CalDAV/CardDAV storage
   (`src/core/dav/caldav/postgres-caldav-store.ts`,
   `src/core/dav/carddav/postgres-carddav-store.ts`,

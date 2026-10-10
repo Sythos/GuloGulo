@@ -1065,6 +1065,8 @@ The tester checks these results:
 For each test, record the server type, the server version, the test date, and
 the result. Do not call a test complete until a tester supplies the result.
 A result for one server type does not prove operation on other server types.
+The running server does not use the IMAP IDLE adapter yet. Test the adapter
+with the client code until the repository item for this wiring is done.
 
 ## IMAP IDLE availability
 
@@ -1144,6 +1146,10 @@ as tester work:
   the DB-backed identity option (today's workaround is inserting rows
   directly with `createPasswordHasher().hash(password)`, see
   `doc/identity-and-postgres.md`);
+- [ ] wire the IMAP IDLE adapter (`src/core/mail/imap-idle-adapter.ts`) into
+  the running server so that a continuing watch delivers mailbox changes to
+  the event transport; today the server only runs the one-shot capability
+  probe (`src/core/mail/imap-idle-probe.ts`);
 - [x] web resource APIs wired to real data (`src/runtime/wiring.ts`,
   `src/runtime/api-resources.ts`): `/api/mail/messages` lists the newest
   INBOX messages over IMAP (`fetchSummaries()` in `imap-client.ts`: headers
