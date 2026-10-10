@@ -1065,6 +1065,8 @@ The tester checks these results:
 - IMAP IDLE reports a mailbox change.
 - The client connects again after a connection failure.
 - The system handles temporary SMTP errors without duplicate delivery.
+- The system holds a message in the `quarantined` state when the connection
+  fails after the end-of-data line. It does not retry that message.
 - The system handles permanent SMTP errors with the expected failure result.
 
 For each test, record the server type, the server version, the test date, and

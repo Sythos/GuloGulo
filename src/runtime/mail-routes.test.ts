@@ -58,6 +58,7 @@ class FakeSmtp implements SmtpClient {
   static instances: FakeSmtp[] = [];
   static rejectRecipient: string | null = null;
   static failConnect = false;
+  readonly tls = 'starttls' as const;
   readonly calls: string[] = [];
   payload = '';
   constructor() { FakeSmtp.instances.push(this); }
@@ -69,6 +70,8 @@ class FakeSmtp implements SmtpClient {
   async ehlo() { this.calls.push('ehlo'); return { response: ok(), capabilities: ['STARTTLS'] }; }
   async startTls() { this.calls.push('starttls'); return ok(); }
   async authLogin(username: string) { this.calls.push(`auth:${username}`); return ok(); }
+  async authPlain(username: string) { this.calls.push(`auth:${username}`); return ok(); }
+  async authenticate(username: string) { this.calls.push(`auth:${username}`); return ok(); }
   async mailFrom(address: string) { this.calls.push(`from:${address}`); return ok(); }
   async rcptTo(address: string) {
     this.calls.push(`rcpt:${address}`);

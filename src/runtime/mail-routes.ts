@@ -119,10 +119,12 @@ export async function submitMessage(clients: MailRouteClients, credentials: Mail
   const client = clients.createSmtpClient();
   try {
     await client.connect();
-    await client.ehlo(SMTP_CLIENT_HOSTNAME);
-    await client.startTls();
-    await client.ehlo(SMTP_CLIENT_HOSTNAME);
-    await client.authLogin(credentials.mailAddress, credentials.password);
+    let { capabilities } = await client.ehlo(SMTP_CLIENT_HOSTNAME);
+    if (client.tls === 'starttls') {
+      await client.startTls();
+      ({ capabilities } = await client.ehlo(SMTP_CLIENT_HOSTNAME));
+    }
+    await client.authenticate(credentials.mailAddress, credentials.password, capabilities);
     await client.mailFrom(credentials.mailAddress);
     for (const recipient of input.recipients) await client.rcptTo(recipient);
     await client.data(payload);

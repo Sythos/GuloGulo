@@ -102,6 +102,7 @@
         "smtpInboundPort": { "type": "integer", "minimum": 1, "maximum": 65535, "default": 25 },
         "smtpSubmissionPort": { "type": "integer", "minimum": 1, "maximum": 65535, "default": 587 },
         "smtpImplicitTlsPort": { "type": "integer", "minimum": 1, "maximum": 65535, "default": 465 },
+        "smtpSubmissionTls": { "type": "string", "enum": ["starttls", "implicit"], "default": "starttls" },
         "imapsPort": { "type": "integer", "minimum": 1, "maximum": 65535, "default": 993 },
         "lmtpSocket": { "type": "string", "pattern": "^/[A-Za-z0-9._/-]{1,255}$", "default": "/var/run/dovecot/lmtp" },
         "mailboxRoot": { "type": "string", "pattern": "^/[A-Za-z0-9._/-]{1,255}$", "default": "/var/lib/gulogulo/mail" },

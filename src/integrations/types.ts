@@ -102,6 +102,7 @@ export interface MailNetworkSettings {
   imapsPort: number;
   smtpSubmissionPort: number;
   smtpImplicitTlsPort: number;
+  smtpSubmissionTls: 'starttls' | 'implicit';
 }
 
 /**

@@ -37,18 +37,20 @@ function createTestQueue(options: { readonly retryBaseMs?: number; readonly maxA
   return createMailQueue(options);
 }
 
-type Behavior = 'accept' | 'reject-recipient-permanent' | 'reject-recipient-temporary' | 'reject-data-temporary';
+type Behavior = 'accept' | 'reject-recipient-permanent' | 'reject-recipient-temporary' | 'reject-data-temporary' | 'drop-after-data';
 
 interface FakeSmtpServer {
   readonly port: number;
   readonly dataReceived: string[];
+  readonly authCommands: string[];
   close(): Promise<void>;
 }
 
 /** A tiny scripted SMTP server covering EHLO/MAIL FROM/RCPT TO/DATA/QUIT, with a switchable per-test behavior. */
-function startFakeSmtpServer(behavior: Behavior): Promise<FakeSmtpServer> {
+function startFakeSmtpServer(behavior: Behavior, authMechanisms: readonly string[] = []): Promise<FakeSmtpServer> {
   return new Promise((resolve, reject) => {
     const dataReceived: string[] = [];
+    const authCommands: string[] = [];
     const server: Server = createServer((socket: Socket) => {
       let buffer = '';
       let inData = false;
@@ -81,7 +83,9 @@ function startFakeSmtpServer(behavior: Behavior): Promise<FakeSmtpServer> {
           inData = false;
           dataReceived.push(dataLines.map((l) => (l.startsWith('..') ? l.slice(1) : l)).join('\n'));
           dataLines = [];
-          if (behavior === 'reject-data-temporary') {
+          if (behavior === 'drop-after-data') {
+            socket.destroy();
+          } else if (behavior === 'reject-data-temporary') {
             socket.write('450 4.3.0 mailbox temporarily unavailable\r\n');
           } else {
             socket.write('250 2.0.0 OK queued as 12345\r\n');
@@ -95,7 +99,13 @@ function startFakeSmtpServer(behavior: Behavior): Promise<FakeSmtpServer> {
         const [verb, ...rest] = line.split(' ');
         const command = verb.toUpperCase();
         if (command === 'EHLO') {
-          socket.write('250-fake.example greets you\r\n250 8BITMIME\r\n');
+          const auth = authMechanisms.length > 0 ? `250-AUTH ${authMechanisms.join(' ')}\r\n` : '';
+          socket.write(`250-fake.example greets you\r\n${auth}250 8BITMIME\r\n`);
+          return;
+        }
+        if (command === 'AUTH') {
+          authCommands.push(line.split(' ').slice(0, 2).join(' '));
+          socket.write('235 2.7.0 Authentication successful\r\n');
           return;
         }
         if (command === 'MAIL') {
@@ -135,6 +145,7 @@ function startFakeSmtpServer(behavior: Behavior): Promise<FakeSmtpServer> {
       resolve(Object.freeze({
         port: address.port,
         dataReceived,
+        authCommands,
         close: () => new Promise<void>((resolveClose) => server.close(() => resolveClose())),
       }));
     });
@@ -213,6 +224,69 @@ test('SMTP queue adapter retries a deferred item until it exhausts attempts and 
 
     const second = await adapter.deliver(context, queued.queueId);
     assert.equal(second.state, 'bounced');
+  } finally {
+    await fake.close();
+  }
+});
+
+test('SMTP queue adapter quarantines an entry when the connection drops after the data end line', async () => {
+  const fake = await startFakeSmtpServer('drop-after-data');
+  try {
+    const queue = createTestQueue({ retryBaseMs: 1_000, maxAttempts: 3 });
+    const queued = queue.enqueue(context, { sender: 'sales@acme.example', recipients: ['alice@example.net'], sizeBytes: 100 });
+
+    const adapter = createSmtpQueueAdapter({ queue, host: '127.0.0.1', port: fake.port, tls: 'none', readMessage });
+    const result = await adapter.deliver(context, queued.queueId);
+
+    assert.equal(result.state, 'quarantined');
+    assert.equal(fake.dataReceived.length, 1);
+    assert.equal(queue.view(context, { state: 'deferred' }).length, 0);
+  } finally {
+    await fake.close();
+  }
+});
+
+test('SMTP queue adapter authenticates with AUTH PLAIN when the server offers it', async () => {
+  const fake = await startFakeSmtpServer('accept', ['PLAIN', 'LOGIN']);
+  try {
+    const queue = createTestQueue({ retryBaseMs: 1_000 });
+    const queued = queue.enqueue(context, { sender: 'sales@acme.example', recipients: ['alice@example.net'], sizeBytes: 100 });
+
+    const adapter = createSmtpQueueAdapter({
+      queue,
+      host: '127.0.0.1',
+      port: fake.port,
+      tls: 'none',
+      readMessage,
+      resolveCredentials: () => ({ username: 'sales@acme.example', password: 'secret' }),
+    });
+    const result = await adapter.deliver(context, queued.queueId);
+
+    assert.equal(result.state, 'delivered');
+    assert.deepEqual(fake.authCommands, ['AUTH PLAIN']);
+  } finally {
+    await fake.close();
+  }
+});
+
+test('SMTP queue adapter defers when the server offers no supported AUTH mechanism', async () => {
+  const fake = await startFakeSmtpServer('accept', ['CRAM-MD5']);
+  try {
+    const queue = createTestQueue({ retryBaseMs: 1_000, maxAttempts: 3 });
+    const queued = queue.enqueue(context, { sender: 'sales@acme.example', recipients: ['alice@example.net'], sizeBytes: 100 });
+
+    const adapter = createSmtpQueueAdapter({
+      queue,
+      host: '127.0.0.1',
+      port: fake.port,
+      tls: 'none',
+      readMessage,
+      resolveCredentials: () => ({ username: 'sales@acme.example', password: 'secret' }),
+    });
+    const result = await adapter.deliver(context, queued.queueId);
+
+    assert.equal(result.state, 'deferred');
+    assert.deepEqual(fake.authCommands, []);
   } finally {
     await fake.close();
   }
