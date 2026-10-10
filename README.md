@@ -279,6 +279,15 @@ the checked contracts belongs in [INSTALL.md](INSTALL.md).
   standalone, UAPI for cPanel, REST for Plesk — instead of the fixture
   authenticator; field verification against real backends belongs in
   INSTALL.md;
+- [ ] configurable and securely verified mail TLS endpoints: today
+  `createLocalMailClients()` (`src/platform/contract/platform-adapter.ts`)
+  always connects to `127.0.0.1` and passes no TLS server name or CA option
+  from configuration, so Node checks a server certificate against the IP
+  address and rejects a certificate issued to a DNS name;
+- [ ] reconnect and liveness handling for IMAP IDLE: when the socket closes,
+  `src/core/mail/imap-client.ts` only clears its socket, and
+  `src/core/mail/imap-idle-adapter.ts` gets no disconnect signal and does not
+  create a new client, so the watch stays open and delivers no event;
 - [ ] wire the SMTP queue adapter (`src/core/mail/smtp-queue-adapter.ts`) and
   its retry scheduling into the running server; today
   `src/runtime/mail-routes.ts` submits directly through the SMTP client and

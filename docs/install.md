@@ -1052,6 +1052,9 @@ Preparation:
 
 - Use a dedicated test account and a dedicated test mailbox.
 - Use the configured SMTP and IMAP ports and TLS settings.
+- Use a server certificate that is valid for `127.0.0.1`. The client does not
+  accept a certificate that only names a DNS host until the repository item
+  for mail TLS endpoints is done.
 - Do not put passwords, tokens, or real user messages in a test report.
 
 The tester checks these results:
@@ -1069,7 +1072,9 @@ the result. Do not call a test complete until a tester supplies the result.
 A result for one server type does not prove operation on other server types.
 The running server does not use the IMAP IDLE adapter or the SMTP queue
 adapter yet. Test these adapters with the client code until the repository
-items for this wiring are done. The running server maps a temporary SMTP error
+items for this wiring are done. The IMAP IDLE adapter does not connect again
+after a dropped connection. The reconnect test needs the repository item for
+IMAP IDLE reconnect handling. The running server maps a temporary SMTP error
 to a 502 answer and does not retry.
 
 ## IMAP IDLE availability
@@ -1150,6 +1155,15 @@ as tester work:
   the DB-backed identity option (today's workaround is inserting rows
   directly with `createPasswordHasher().hash(password)`, see
   `doc/identity-and-postgres.md`);
+- [ ] configurable and securely verified mail TLS endpoints: today
+  `createLocalMailClients()` (`src/platform/contract/platform-adapter.ts`)
+  always connects to `127.0.0.1` and passes no TLS server name or CA option
+  from configuration, so Node checks a server certificate against the IP
+  address and rejects a certificate issued to a DNS name;
+- [ ] reconnect and liveness handling for IMAP IDLE: when the socket closes,
+  `src/core/mail/imap-client.ts` only clears its socket, and
+  `src/core/mail/imap-idle-adapter.ts` gets no disconnect signal and does not
+  create a new client, so the watch stays open and delivers no event;
 - [ ] wire the SMTP queue adapter (`src/core/mail/smtp-queue-adapter.ts`) and
   its retry scheduling into the running server; today
   `src/runtime/mail-routes.ts` submits directly through the SMTP client and
