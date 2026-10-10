@@ -279,16 +279,6 @@ the checked contracts belongs in [INSTALL.md](INSTALL.md).
   standalone, UAPI for cPanel, REST for Plesk — instead of the fixture
   authenticator; field verification against real backends belongs in
   INSTALL.md;
-- [ ] production mail server adapters: minimal IMAP IDLE and SMTP submission
-  protocol clients and their adapters (`src/core/mail/imap-client.ts`,
-  `src/core/mail/imap-idle-adapter.ts`, `src/core/mail/smtp-client.ts`,
-  `src/core/mail/smtp-queue-adapter.ts`) are RFC-compliant and
-  implementation-agnostic (they depend on no vendor-specific behavior, only
-  standard SMTP and IMAP4rev1 + the IDLE extension) and are implemented and
-  tested end to end against a local TCP protocol fake (see
-  `doc/mail-core.md`); verification against a real SMTP/IMAP server
-  installation (Postfix/Exim + Dovecot are the common examples) is still
-  outstanding;
 - [x] persistent DAV backend: PostgreSQL-backed CalDAV/CardDAV storage
   (`src/core/dav/caldav/postgres-caldav-store.ts`,
   `src/core/dav/carddav/postgres-carddav-store.ts`,

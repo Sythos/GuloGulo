@@ -1036,6 +1036,36 @@ release evidence system as sanitized records.
 - Measure latency, memory, queue depth, storage pressure, connection counts,
   RPO, and RTO on each of the three targets that will actually be deployed.
 
+## Mail server tests on an installed system
+
+The SMTP and IMAP clients are implemented in `src/core/mail/imap-client.ts`,
+`src/core/mail/imap-idle-adapter.ts`, `src/core/mail/smtp-client.ts`, and
+`src/core/mail/smtp-queue-adapter.ts`. Their tests use a local protocol fake.
+See `doc/mail-core.md` for the clients and these tests.
+
+The tests below need an installed SMTP and IMAP server. The tester does these
+tests. They are not missing repository code.
+
+Preparation:
+
+- Use a dedicated test account and a dedicated test mailbox.
+- Use the configured SMTP and IMAP ports and TLS settings.
+- Do not put passwords, tokens, or real user messages in a test report.
+
+The tester checks these results:
+
+- SMTP accepts a permitted message and gives the expected reply.
+- SMTP rejects a relay attempt that is not permitted.
+- IMAP accepts valid credentials and rejects invalid credentials.
+- IMAP IDLE reports a mailbox change.
+- The client connects again after a connection failure.
+- The system handles temporary SMTP errors without duplicate delivery.
+- The system handles permanent SMTP errors with the expected failure result.
+
+For each test, record the server type, the server version, the test date, and
+the result. Do not call a test complete until a tester supplies the result.
+A result for one server type does not prove operation on other server types.
+
 ## IMAP IDLE availability
 
 Gulo Gulo never assumes the local IMAP server supports RFC 2177 IDLE — it
@@ -1114,13 +1144,6 @@ as tester work:
   the DB-backed identity option (today's workaround is inserting rows
   directly with `createPasswordHasher().hash(password)`, see
   `doc/identity-and-postgres.md`);
-- [ ] production Postfix/Dovecot mail adapters: minimal IMAP IDLE and SMTP
-  submission protocol clients and their adapters (`src/core/mail/imap-client.ts`,
-  `src/core/mail/imap-idle-adapter.ts`, `src/core/mail/imap-idle-probe.ts`,
-  `src/core/mail/smtp-client.ts`, `src/core/mail/smtp-queue-adapter.ts`) are
-  implemented and tested end to end against a local TCP protocol fake (see
-  `doc/mail-core.md`); verification against a real Dovecot/Postfix
-  installation is still outstanding;
 - [x] web resource APIs wired to real data (`src/runtime/wiring.ts`,
   `src/runtime/api-resources.ts`): `/api/mail/messages` lists the newest
   INBOX messages over IMAP (`fetchSummaries()` in `imap-client.ts`: headers
