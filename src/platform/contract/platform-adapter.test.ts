@@ -10,7 +10,6 @@ import type { AddressInfo } from 'node:net';
 import test from 'node:test';
 
 import { createConfiguredAlertDelivery, createLocalMailClients } from './platform-adapter.ts';
-import type { IntegrationConfig } from '../../integrations/types.ts';
 import type { PlatformAdapter } from './platform-adapter.ts';
 import type { AlertRecord } from '../../core/observability/webhook-alert-adapter.ts';
 import type { WebSession } from '../../web/security/session-manager.ts';
@@ -179,7 +178,7 @@ test('createConfiguredAlertDelivery with the default minSeverity delivers both w
 });
 
 test('createLocalMailClients uses STARTTLS on the submission port by default', () => {
-  const clients = createLocalMailClients({ mail: { smtpSubmissionPort: 2587, smtpImplicitTlsPort: 2465 } } as unknown as IntegrationConfig);
+  const clients = createLocalMailClients({ mail: { smtpSubmissionPort: 2587, smtpImplicitTlsPort: 2465 } });
   assert.equal(clients.createSmtpClient().tls, 'starttls');
 });
 
@@ -192,8 +191,7 @@ test('createLocalMailClients connects to the implicit-TLS port when mail.smtpSub
   await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
   try {
     const port = (server.address() as AddressInfo).port;
-    const config = { mail: { smtpSubmissionPort: 1, smtpImplicitTlsPort: port, smtpSubmissionTls: 'implicit' } } as unknown as IntegrationConfig;
-    const client = createLocalMailClients(config).createSmtpClient();
+    const client = createLocalMailClients({ mail: { smtpSubmissionPort: 1, smtpImplicitTlsPort: port, smtpSubmissionTls: 'implicit' } }).createSmtpClient();
     assert.equal(client.tls, 'implicit');
     await assert.rejects(client.connect());
     client.close();
