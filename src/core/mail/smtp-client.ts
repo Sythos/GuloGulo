@@ -308,7 +308,13 @@ export function createSmtpClient(options: SmtpClientOptions): SmtpClient {
   async function data(content: string | Buffer): Promise<SmtpResponse> {
     await runCommand('DATA', [354]);
     const body = typeof content === 'string' ? content : content.toString('utf8');
-    write(`${dotStuff(body)}${CRLF}.${CRLF}`);
+    if (socket === null) throw smtpClientError('not connected', 'NOT_CONNECTED');
+    const active = socket;
+    const flushed = await new Promise<boolean>((resolve) => {
+      active.write(`${dotStuff(body)}${CRLF}.${CRLF}`, (error) => resolve(error === undefined || error === null));
+    });
+    // A failed write means the end-of-data line did not reach the server, so the message was not accepted.
+    if (!flushed) throw smtpClientError('the connection failed while the message was sent', 'CONNECTION_CLOSED');
     try {
       return await expect([250]);
     } catch (error) {
