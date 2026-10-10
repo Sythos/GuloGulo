@@ -279,6 +279,10 @@ the checked contracts belongs in [INSTALL.md](INSTALL.md).
   standalone, UAPI for cPanel, REST for Plesk — instead of the fixture
   authenticator; field verification against real backends belongs in
   INSTALL.md;
+- [ ] wire the SMTP queue adapter (`src/core/mail/smtp-queue-adapter.ts`) and
+  its retry scheduling into the running server; today
+  `src/runtime/mail-routes.ts` submits directly through the SMTP client and
+  maps a temporary error to a 502 answer without a queue or a retry;
 - [ ] wire the IMAP IDLE adapter (`src/core/mail/imap-idle-adapter.ts`) into
   the running server so that a continuing watch delivers mailbox changes to
   the event transport; today the server only runs the one-shot capability

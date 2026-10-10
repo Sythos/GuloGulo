@@ -1044,7 +1044,9 @@ The SMTP and IMAP clients are implemented in `src/core/mail/imap-client.ts`,
 See `doc/mail-core.md` for the clients and these tests.
 
 The tests below need an installed SMTP and IMAP server. The tester does these
-tests. They are not missing repository code.
+tests. The wiring of the IMAP IDLE adapter and the SMTP queue adapter into the
+running server is repository work. See the open items under "Repository
+implementation work still open".
 
 Preparation:
 
@@ -1065,8 +1067,10 @@ The tester checks these results:
 For each test, record the server type, the server version, the test date, and
 the result. Do not call a test complete until a tester supplies the result.
 A result for one server type does not prove operation on other server types.
-The running server does not use the IMAP IDLE adapter yet. Test the adapter
-with the client code until the repository item for this wiring is done.
+The running server does not use the IMAP IDLE adapter or the SMTP queue
+adapter yet. Test these adapters with the client code until the repository
+items for this wiring are done. The running server maps a temporary SMTP error
+to a 502 answer and does not retry.
 
 ## IMAP IDLE availability
 
@@ -1146,6 +1150,10 @@ as tester work:
   the DB-backed identity option (today's workaround is inserting rows
   directly with `createPasswordHasher().hash(password)`, see
   `doc/identity-and-postgres.md`);
+- [ ] wire the SMTP queue adapter (`src/core/mail/smtp-queue-adapter.ts`) and
+  its retry scheduling into the running server; today
+  `src/runtime/mail-routes.ts` submits directly through the SMTP client and
+  maps a temporary error to a 502 answer without a queue or a retry;
 - [ ] wire the IMAP IDLE adapter (`src/core/mail/imap-idle-adapter.ts`) into
   the running server so that a continuing watch delivers mailbox changes to
   the event transport; today the server only runs the one-shot capability
