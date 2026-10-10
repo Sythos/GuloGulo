@@ -264,14 +264,20 @@ assume that an IDLE event is a complete message list.
   replace `imap-idle-adapter.ts`, which stays the module for an actual
   ongoing IDLE subscription once one is wired into the running server.
 - `src/core/mail/smtp-client.ts` is a minimal SMTP (RFC 5321) client for the
-  same reason: EHLO, STARTTLS, AUTH LOGIN, MAIL FROM/RCPT TO/DATA (with
-  dot-stuffing), and QUIT, over `node:net`/`node:tls`.
+  same reason: EHLO, STARTTLS or implicit TLS, AUTH PLAIN or AUTH LOGIN (the
+  client picks PLAIN first, from the mechanisms in the EHLO reply), MAIL
+  FROM/RCPT TO/DATA (with dot-stuffing), and QUIT, over `node:net`/`node:tls`.
+  If the connection fails after the client sent the end-of-data line, the
+  outcome is unknown and the client reports `DATA_OUTCOME_UNKNOWN`.
 - `src/core/mail/smtp-queue-adapter.ts` connects that client to the existing,
   unchanged `mail-queue.ts` contract: `deliver(context, queueId)` claims one
   queued item, submits it to the local Postfix submission port, and reports
   the outcome back onto the *same* queue instance — a 5xx (or an
   unrecognized/malformed reply) bounces, a 4xx or a connection failure
-  defers. Retry counting, exponential backoff, and bounce-after-
+  defers. A `DATA_OUTCOME_UNKNOWN` failure puts the entry in the `quarantined`
+  state with the reason `smtp_outcome_unknown`. The adapter does not retry it,
+  because a retry can deliver the message twice. An operator checks the
+  destination and decides. Retry counting, exponential backoff, and bounce-after-
   `queueMaxAttempts` stay entirely owned by `mail-queue.ts`; the adapter
   never keeps a second counter.
 
@@ -324,6 +330,7 @@ The M3 configuration fields are secret-free and available both in
 | `GULOGULO_MAIL_SMTP_INBOUND_PORT` | `25` | Server-to-server SMTP |
 | `GULOGULO_MAIL_SMTP_SUBMISSION_PORT` | `587` | Authenticated submission |
 | `GULOGULO_MAIL_SMTP_IMPLICIT_TLS_PORT` | `465` | Optional implicit-TLS submission |
+| `GULOGULO_MAIL_SMTP_SUBMISSION_TLS` | `starttls` | Submission mode of the SMTP client: `starttls` uses the submission port, `implicit` uses the implicit-TLS port |
 | `GULOGULO_MAIL_IMAPS_PORT` | `993` | Primary IMAPS access |
 | `GULOGULO_MAIL_LMTP_SOCKET` | `/var/run/dovecot/lmtp` | Dovecot LMTP boundary |
 | `GULOGULO_MAILBOX_ROOT` | `/var/lib/gulogulo/mail` | External mail volume mount |

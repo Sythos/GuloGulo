@@ -12,7 +12,7 @@
 // `mail-queue.ts` (`queueMaxAttempts`/`queueRetryBaseMs`), not duplicated
 // here.
 
-import { createSmtpClient, SmtpCommandError } from './smtp-client.ts';
+import { createSmtpClient, SMTP_DATA_OUTCOME_UNKNOWN, SmtpCommandError } from './smtp-client.ts';
 import type { SmtpClient, SmtpClientLogger, SmtpTlsMode } from './smtp-client.ts';
 
 export interface MailQueueEntry {
@@ -118,15 +118,15 @@ export function createSmtpQueueAdapter(options: SmtpQueueAdapterOptions): SmtpQu
 
     try {
       await client.connect();
-      await client.ehlo(clientHostname);
+      let { capabilities } = await client.ehlo(clientHostname);
       if (tls === 'starttls') {
         await client.startTls();
-        await client.ehlo(clientHostname);
+        ({ capabilities } = await client.ehlo(clientHostname));
       }
 
       const credentials = typeof resolveCredentials === 'function' ? await resolveCredentials(context, claimed) : null;
       if (credentials !== null && credentials !== undefined) {
-        await client.authLogin(credentials.username, credentials.password);
+        await client.authenticate(credentials.username, credentials.password, capabilities);
       }
 
       await client.mailFrom(claimed.sender);
@@ -155,7 +155,13 @@ export function createSmtpQueueAdapter(options: SmtpQueueAdapterOptions): SmtpQu
       return Object.freeze({ queueId, state: updated.state, accepted: Object.freeze(accepted), rejected: Object.freeze(rejected) });
     } catch (error) {
       client.close();
-      const temporary = !(error instanceof SmtpCommandError) || error.temporary;
+      if ((error as { code?: unknown } | null)?.code === SMTP_DATA_OUTCOME_UNKNOWN) {
+        // The server may have accepted the message. A retry could deliver it twice, so hold the entry for an operator.
+        logger.warn?.('smtp_delivery_outcome_unknown', { queueId, error: { name: error instanceof Error ? error.name : 'Error' } });
+        const held = queue.complete(queueId, context, { state: 'quarantined', reason: 'smtp_outcome_unknown' });
+        return Object.freeze({ queueId, state: held.state, accepted: Object.freeze(accepted), rejected: Object.freeze(rejected) });
+      }
+      const temporary =!(error instanceof SmtpCommandError) || error.temporary;
       logger.warn?.('smtp_delivery_failed', {
         queueId,
         temporary,

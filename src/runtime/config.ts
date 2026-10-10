@@ -118,6 +118,7 @@ const SECTION_KEYS = Object.freeze({
     'smtpInboundPort',
     'smtpSubmissionPort',
     'smtpImplicitTlsPort',
+    'smtpSubmissionTls',
     'imapsPort',
     'lmtpSocket',
     'mailboxRoot',
@@ -215,6 +216,7 @@ const ENVIRONMENT_VARIABLES = Object.freeze({
     smtpInboundPort: ['GULOGULO_MAIL_SMTP_INBOUND_PORT', 'MAIL_SMTP_INBOUND_PORT'],
     smtpSubmissionPort: ['GULOGULO_MAIL_SMTP_SUBMISSION_PORT', 'MAIL_SMTP_SUBMISSION_PORT'],
     smtpImplicitTlsPort: ['GULOGULO_MAIL_SMTP_IMPLICIT_TLS_PORT', 'MAIL_SMTP_IMPLICIT_TLS_PORT'],
+    smtpSubmissionTls: ['GULOGULO_MAIL_SMTP_SUBMISSION_TLS', 'MAIL_SMTP_SUBMISSION_TLS'],
     imapsPort: ['GULOGULO_MAIL_IMAPS_PORT', 'MAIL_IMAPS_PORT'],
     lmtpSocket: ['GULOGULO_MAIL_LMTP_SOCKET', 'MAIL_LMTP_SOCKET'],
     mailboxRoot: ['GULOGULO_MAILBOX_ROOT', 'MAILBOX_ROOT'],
@@ -631,6 +633,7 @@ function buildConfiguration(fileConfiguration, environment) {
       smtpInboundPort: readPort(mailFile.smtpInboundPort ?? 25, 'mail.smtpInboundPort'),
       smtpSubmissionPort: readPort(mailFile.smtpSubmissionPort ?? 587, 'mail.smtpSubmissionPort'),
       smtpImplicitTlsPort: readPort(mailFile.smtpImplicitTlsPort ?? 465, 'mail.smtpImplicitTlsPort'),
+      smtpSubmissionTls: readEnum(mailFile.smtpSubmissionTls ?? 'starttls', 'mail.smtpSubmissionTls', ['starttls', 'implicit']),
       imapsPort: readPort(mailFile.imapsPort ?? 993, 'mail.imapsPort'),
       lmtpSocket: readPath(mailFile.lmtpSocket ?? '/var/run/dovecot/lmtp', 'mail.lmtpSocket'),
       mailboxRoot: readPath(mailFile.mailboxRoot ?? '/var/lib/gulogulo/mail', 'mail.mailboxRoot'),
@@ -789,6 +792,7 @@ function buildConfiguration(fileConfiguration, environment) {
       applyEnvironmentValue(target, 'smtpInboundPort', environment, variables.smtpInboundPort, (value, name) => readEnvironmentInteger(value, name, 1, 65_535));
       applyEnvironmentValue(target, 'smtpSubmissionPort', environment, variables.smtpSubmissionPort, (value, name) => readEnvironmentInteger(value, name, 1, 65_535));
       applyEnvironmentValue(target, 'smtpImplicitTlsPort', environment, variables.smtpImplicitTlsPort, (value, name) => readEnvironmentInteger(value, name, 1, 65_535));
+      applyEnvironmentValue(target, 'smtpSubmissionTls', environment, variables.smtpSubmissionTls, (value, name) => readEnvironmentEnum(value, name, ['starttls', 'implicit']));
       applyEnvironmentValue(target, 'imapsPort', environment, variables.imapsPort, (value, name) => readEnvironmentInteger(value, name, 1, 65_535));
       applyEnvironmentValue(target, 'lmtpSocket', environment, variables.lmtpSocket, readPath);
       applyEnvironmentValue(target, 'mailboxRoot', environment, variables.mailboxRoot, readPath);

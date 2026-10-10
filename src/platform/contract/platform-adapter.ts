@@ -41,17 +41,25 @@ function asMailConfigRecord(value: unknown): Record<string, unknown> {
   return value !== null && typeof value === 'object' ? value as Record<string, unknown> : {};
 }
 
-function readMailPort(config: IntegrationConfig, field: 'imapsPort' | 'smtpSubmissionPort', fallback: number): number {
+function readMailSettings(config: IntegrationConfig): Record<string, unknown> {
   const root = asMailConfigRecord(config);
   const contract = asMailConfigRecord(root.contract);
-  const mail = asMailConfigRecord(contract.mail ?? root.mail);
-  const value = mail[field];
+  return asMailConfigRecord(contract.mail ?? root.mail);
+}
+
+function readMailPort(config: IntegrationConfig, field: 'imapsPort' | 'smtpSubmissionPort' | 'smtpImplicitTlsPort', fallback: number): number {
+  const value = readMailSettings(config)[field];
   return typeof value === 'number' && Number.isSafeInteger(value) && value >= 1 && value <= 65_535 ? value : fallback;
+}
+
+function readSubmissionTls(config: IntegrationConfig): 'starttls' | 'implicit' {
+  return readMailSettings(config).smtpSubmissionTls === 'implicit' ? 'implicit' : 'starttls';
 }
 
 const LOCAL_MAIL_HOST = '127.0.0.1';
 const DEFAULT_IMAPS_PORT = 993;
 const DEFAULT_SMTP_SUBMISSION_PORT = 587;
+const DEFAULT_SMTP_IMPLICIT_TLS_PORT = 465;
 /** Matches `src/runtime/config.ts`'s own `mail.mailboxRoot` default, so the same-device check has a sensible fallback even when the loaded config never set it explicitly. */
 const DEFAULT_MAILBOX_ROOT = '/var/lib/gulogulo/mail';
 /** `%{_localstatedir}`-style default shared by every current target (see `packaging/cpanel/gulogulo.spec`'s `/var/lib/gulogulo`); always overridable via `contract.backup.path`. */
@@ -77,6 +85,8 @@ export function createLocalMailClients(
   const logger = options.logger;
   const imapsPort = readMailPort(config, 'imapsPort', DEFAULT_IMAPS_PORT);
   const smtpSubmissionPort = readMailPort(config, 'smtpSubmissionPort', DEFAULT_SMTP_SUBMISSION_PORT);
+  const smtpImplicitTlsPort = readMailPort(config, 'smtpImplicitTlsPort', DEFAULT_SMTP_IMPLICIT_TLS_PORT);
+  const smtpSubmissionTls = readSubmissionTls(config);
   return Object.freeze({
     createImapClient: (overrides: { readonly tls?: boolean; readonly connectTimeoutMs?: number; readonly commandTimeoutMs?: number } = {}) => createImapClient({
       host,
@@ -86,12 +96,15 @@ export function createLocalMailClients(
       commandTimeoutMs: overrides.commandTimeoutMs,
       logger,
     }),
-    createSmtpClient: (overrides: { readonly tls?: SmtpTlsMode } = {}) => createSmtpClient({
-      host,
-      port: smtpSubmissionPort,
-      tls: overrides.tls ?? 'starttls',
-      logger,
-    }),
+    createSmtpClient: (overrides: { readonly tls?: SmtpTlsMode } = {}) => {
+      const tls = overrides.tls ?? smtpSubmissionTls;
+      return createSmtpClient({
+        host,
+        port: tls === 'implicit' ? smtpImplicitTlsPort : smtpSubmissionPort,
+        tls,
+        logger,
+      });
+    },
   });
 }
 

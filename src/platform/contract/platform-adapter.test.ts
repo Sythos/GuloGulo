@@ -5,10 +5,12 @@
 import assert from 'node:assert/strict';
 import { createServer } from 'node:http';
 import type { IncomingMessage, Server, ServerResponse } from 'node:http';
+import { createServer as createTcpServer } from 'node:net';
 import type { AddressInfo } from 'node:net';
 import test from 'node:test';
 
-import { createConfiguredAlertDelivery } from './platform-adapter.ts';
+import { createConfiguredAlertDelivery, createLocalMailClients } from './platform-adapter.ts';
+import type { IntegrationConfig } from '../../integrations/types.ts';
 import type { PlatformAdapter } from './platform-adapter.ts';
 import type { AlertRecord } from '../../core/observability/webhook-alert-adapter.ts';
 import type { WebSession } from '../../web/security/session-manager.ts';
@@ -173,5 +175,30 @@ test('createConfiguredAlertDelivery with the default minSeverity delivers both w
     assert.equal(fake.bodies.length, 2);
   } finally {
     await fake.close();
+  }
+});
+
+test('createLocalMailClients uses STARTTLS on the submission port by default', () => {
+  const clients = createLocalMailClients({ mail: { smtpSubmissionPort: 2587, smtpImplicitTlsPort: 2465 } } as unknown as IntegrationConfig);
+  assert.equal(clients.createSmtpClient().tls, 'starttls');
+});
+
+test('createLocalMailClients connects to the implicit-TLS port when mail.smtpSubmissionTls is implicit', async () => {
+  let connections = 0;
+  const server = createTcpServer((socket) => {
+    connections += 1;
+    socket.destroy();
+  });
+  await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+  try {
+    const port = (server.address() as AddressInfo).port;
+    const config = { mail: { smtpSubmissionPort: 1, smtpImplicitTlsPort: port, smtpSubmissionTls: 'implicit' } } as unknown as IntegrationConfig;
+    const client = createLocalMailClients(config).createSmtpClient();
+    assert.equal(client.tls, 'implicit');
+    await assert.rejects(client.connect());
+    client.close();
+    assert.equal(connections, 1);
+  } finally {
+    await new Promise<void>((resolve) => server.close(() => resolve()));
   }
 });

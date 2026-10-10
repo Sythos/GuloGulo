@@ -3,7 +3,7 @@
 // Author: Sythos (https://www.sythos.net)
 
 // A deliberately minimal SMTP client (RFC 5321) covering only what
-// submission needs: EHLO, STARTTLS, AUTH LOGIN, MAIL FROM/RCPT TO/DATA, and
+// submission needs: EHLO, STARTTLS, AUTH PLAIN/LOGIN, MAIL FROM/RCPT TO/DATA, and
 // QUIT. Commands are exposed individually (not as one `sendMail()` call) so
 // `smtp-queue-adapter.ts` can decide per-recipient accept/reject and map SMTP
 // reply codes onto the existing queue's defer/bounce states itself.
@@ -52,11 +52,19 @@ export class SmtpCommandError extends Error {
   }
 }
 
+/** `SmtpClientError.code` when the connection fails after the message and the end-of-data line were sent: the server may or may not have accepted the message. */
+export const SMTP_DATA_OUTCOME_UNKNOWN = 'DATA_OUTCOME_UNKNOWN';
+
 export interface SmtpClient {
+  /** The TLS mode this client was created with; callers run `startTls()` only when it is 'starttls'. */
+  readonly tls: SmtpTlsMode;
   connect(): Promise<SmtpResponse>;
   ehlo(clientHostname: string): Promise<{ readonly response: SmtpResponse; readonly capabilities: readonly string[] }>;
   startTls(): Promise<SmtpResponse>;
   authLogin(username: string, password: string): Promise<SmtpResponse>;
+  authPlain(username: string, password: string): Promise<SmtpResponse>;
+  /** Picks AUTH PLAIN, else AUTH LOGIN, from the mechanisms in the latest EHLO `capabilities`; fails when the server offers neither. */
+  authenticate(username: string, password: string, capabilities: readonly string[]): Promise<SmtpResponse>;
   mailFrom(address: string): Promise<SmtpResponse>;
   rcptTo(address: string): Promise<SmtpResponse>;
   data(content: string | Buffer): Promise<SmtpResponse>;
@@ -105,7 +113,7 @@ export function createSmtpClient(options: SmtpClientOptions): SmtpClient {
   let socket: SmtpSocket | null = null;
   let buffer = '';
   const pendingLines: string[] = [];
-  let lineWaiters: Array<(line: string) => void> = [];
+  let lineWaiters: Array<(line: string | null) => void> = [];
 
   function dispatchLine(line: string): void {
     const waiter = lineWaiters.shift();
@@ -135,6 +143,10 @@ export function createSmtpClient(options: SmtpClientOptions): SmtpClient {
     });
     s.on('close', () => {
       socket = null;
+      // A `null` line tells every pending reader that the connection is gone.
+      const waiters = lineWaiters;
+      lineWaiters = [];
+      for (const waiter of waiters) waiter(null);
     });
   }
 
@@ -146,9 +158,10 @@ export function createSmtpClient(options: SmtpClientOptions): SmtpClient {
         lineWaiters = lineWaiters.filter((waiter) => waiter !== onLine);
         reject(smtpClientError('timed out waiting for a server response', 'TIMEOUT'));
       }, commandTimeoutMs);
-      function onLine(line: string): void {
+      function onLine(line: string | null): void {
         clearTimeout(timer);
-        resolve(line);
+        if (line === null) reject(smtpClientError('connection closed while waiting for a server response', 'CONNECTION_CLOSED'));
+        else resolve(line);
       }
       lineWaiters.push(onLine);
     });
@@ -240,21 +253,46 @@ export function createSmtpClient(options: SmtpClientOptions): SmtpClient {
     return response;
   }
 
-  async function authLogin(username: string, password: string): Promise<SmtpResponse> {
+  function assertCredentials(username: string, password: string): void {
     assertSafeAtom(username, 'username');
     if (typeof password !== 'string' || password.length === 0 || UNSAFE_CONTROL_CHARS.test(password)) {
       throw smtpClientError('password is invalid', 'INVALID_INPUT');
     }
+  }
+
+  function authenticationFailed(error: unknown): unknown {
+    return error instanceof SmtpCommandError ? smtpClientError('authentication failed', 'AUTHENTICATION_FAILED') : error;
+  }
+
+  async function authLogin(username: string, password: string): Promise<SmtpResponse> {
+    assertCredentials(username, password);
     await runCommand('AUTH LOGIN', [334]);
     await runCommand(Buffer.from(username, 'utf8').toString('base64'), [334]);
     try {
       return await runCommand(Buffer.from(password, 'utf8').toString('base64'), [235]);
     } catch (error) {
-      if (error instanceof SmtpCommandError) {
-        throw smtpClientError('authentication failed', 'AUTHENTICATION_FAILED');
-      }
-      throw error;
+      throw authenticationFailed(error);
     }
+  }
+
+  async function authPlain(username: string, password: string): Promise<SmtpResponse> {
+    assertCredentials(username, password);
+    try {
+      return await runCommand(`AUTH PLAIN ${Buffer.from(`\0${username}\0${password}`, 'utf8').toString('base64')}`, [235]);
+    } catch (error) {
+      throw authenticationFailed(error);
+    }
+  }
+
+  async function authenticate(username: string, password: string, capabilities: readonly string[]): Promise<SmtpResponse> {
+    const mechanisms = new Set<string>();
+    for (const capability of capabilities) {
+      const match = /^AUTH[ =](.+)$/u.exec(capability.trim().toUpperCase());
+      if (match !== null) for (const mechanism of match[1].split(/[ =]+/u)) mechanisms.add(mechanism);
+    }
+    if (mechanisms.has('PLAIN')) return authPlain(username, password);
+    if (mechanisms.has('LOGIN')) return authLogin(username, password);
+    throw smtpClientError('the server offers no supported AUTH mechanism', 'AUTH_UNSUPPORTED');
   }
 
   async function mailFrom(address: string): Promise<SmtpResponse> {
@@ -271,7 +309,13 @@ export function createSmtpClient(options: SmtpClientOptions): SmtpClient {
     await runCommand('DATA', [354]);
     const body = typeof content === 'string' ? content : content.toString('utf8');
     write(`${dotStuff(body)}${CRLF}.${CRLF}`);
-    return expect([250]);
+    try {
+      return await expect([250]);
+    } catch (error) {
+      // An explicit reply code is a definite answer. Any other failure here leaves the outcome unknown.
+      if (error instanceof SmtpCommandError) throw error;
+      throw smtpClientError('the connection failed before the server confirmed the message', SMTP_DATA_OUTCOME_UNKNOWN);
+    }
   }
 
   async function quit(): Promise<SmtpResponse> {
@@ -288,7 +332,7 @@ export function createSmtpClient(options: SmtpClientOptions): SmtpClient {
     socket = null;
   }
 
-  return Object.freeze({ connect, ehlo, startTls, authLogin, mailFrom, rcptTo, data, quit, close });
+  return Object.freeze({ tls: tlsMode, connect, ehlo, startTls, authLogin, authPlain, authenticate, mailFrom, rcptTo, data, quit, close });
 }
 
 export { smtpClientError };
