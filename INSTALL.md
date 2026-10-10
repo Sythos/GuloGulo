@@ -1168,6 +1168,11 @@ as tester work:
   its retry scheduling into the running server; today
   `src/runtime/mail-routes.ts` submits directly through the SMTP client and
   maps a temporary error to a 502 answer without a queue or a retry;
+- [ ] submission policy wiring: `submitMessage()` in
+  `src/runtime/mail-routes.ts` sends mail without `createMailPolicy()`
+  (`src/core/mail/mail-policy.ts`), so the `mail.maxMessagesPerUserPerMinute`,
+  `maxRecipients`, and related settings from `src/runtime/config.ts` are not
+  enforced on the running send path;
 - [ ] persistent production mail queue and message storage: the queue from
   `createMailQueue()` (`src/core/mail/mail-queue.ts`) keeps entries and
   `messageRef` values in memory and is a contract-test double (see
