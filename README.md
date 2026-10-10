@@ -279,16 +279,36 @@ the checked contracts belongs in [INSTALL.md](INSTALL.md).
   standalone, UAPI for cPanel, REST for Plesk — instead of the fixture
   authenticator; field verification against real backends belongs in
   INSTALL.md;
-- [ ] production mail server adapters: minimal IMAP IDLE and SMTP submission
-  protocol clients and their adapters (`src/core/mail/imap-client.ts`,
-  `src/core/mail/imap-idle-adapter.ts`, `src/core/mail/smtp-client.ts`,
-  `src/core/mail/smtp-queue-adapter.ts`) are RFC-compliant and
-  implementation-agnostic (they depend on no vendor-specific behavior, only
-  standard SMTP and IMAP4rev1 + the IDLE extension) and are implemented and
-  tested end to end against a local TCP protocol fake (see
-  `doc/mail-core.md`); verification against a real SMTP/IMAP server
-  installation (Postfix/Exim + Dovecot are the common examples) is still
-  outstanding;
+- [ ] configurable and securely verified mail TLS endpoints: today
+  `createLocalMailClients()` (`src/platform/contract/platform-adapter.ts`)
+  always connects to `127.0.0.1` and passes no TLS server name or CA option
+  from configuration, so Node checks a server certificate against the IP
+  address and rejects a certificate issued to a DNS name;
+- [ ] reconnect and liveness handling for IMAP IDLE: when the socket closes,
+  `src/core/mail/imap-client.ts` only clears its socket, and
+  `src/core/mail/imap-idle-adapter.ts` gets no disconnect signal and does not
+  create a new client, so the watch stays open and delivers no event;
+- [ ] wire the SMTP queue adapter (`src/core/mail/smtp-queue-adapter.ts`) and
+  its retry scheduling into the running server; today
+  `src/runtime/mail-routes.ts` submits directly through the SMTP client and
+  maps a temporary error to a 502 answer without a queue or a retry;
+- [ ] submission policy wiring: `submitMessage()` in
+  `src/runtime/mail-routes.ts` sends mail without `createMailPolicy()`
+  (`src/core/mail/mail-policy.ts`), so the `mail.maxMessagesPerUserPerMinute`,
+  `maxRecipients`, and related settings from `src/runtime/config.ts` are not
+  enforced on the running send path;
+- [ ] persistent production mail queue and message storage: the queue from
+  `createMailQueue()` (`src/core/mail/mail-queue.ts`) keeps entries and
+  `messageRef` values in memory and is a contract-test double (see
+  `doc/mail-core.md`), so a restart loses queued and deferred messages;
+- [ ] per-recipient queue and bounce handling: when some recipients are
+  accepted and some are rejected, `src/core/mail/smtp-queue-adapter.ts` marks
+  the whole queue entry `delivered` and keeps the rejected recipients only in
+  the returned result, with no retry or bounce state for them;
+- [ ] wire the IMAP IDLE adapter (`src/core/mail/imap-idle-adapter.ts`) into
+  the running server so that a continuing watch delivers mailbox changes to
+  the event transport; today the server only runs the one-shot capability
+  probe (`src/core/mail/imap-idle-probe.ts`);
 - [x] persistent DAV backend: PostgreSQL-backed CalDAV/CardDAV storage
   (`src/core/dav/caldav/postgres-caldav-store.ts`,
   `src/core/dav/carddav/postgres-carddav-store.ts`,

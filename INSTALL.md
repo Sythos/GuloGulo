@@ -1036,6 +1036,47 @@ release evidence system as sanitized records.
 - Measure latency, memory, queue depth, storage pressure, connection counts,
   RPO, and RTO on each of the three targets that will actually be deployed.
 
+## Mail server tests on an installed system
+
+The SMTP and IMAP clients are implemented in `src/core/mail/imap-client.ts`,
+`src/core/mail/imap-idle-adapter.ts`, `src/core/mail/smtp-client.ts`, and
+`src/core/mail/smtp-queue-adapter.ts`. Their tests use a local protocol fake.
+See `doc/mail-core.md` for the clients and these tests.
+
+The tests below need an installed SMTP and IMAP server. The tester does these
+tests. The wiring of the IMAP IDLE adapter and the SMTP queue adapter into the
+running server is repository work. See the open items under "Repository
+implementation work still open".
+
+Preparation:
+
+- Use a dedicated test account and a dedicated test mailbox.
+- Use the configured SMTP and IMAP ports and TLS settings.
+- Use a server certificate that is valid for `127.0.0.1`. The client does not
+  accept a certificate that only names a DNS host until the repository item
+  for mail TLS endpoints is done.
+- Do not put passwords, tokens, or real user messages in a test report.
+
+The tester checks these results:
+
+- SMTP accepts a permitted message and gives the expected reply.
+- SMTP rejects a relay attempt that is not permitted.
+- IMAP accepts valid credentials and rejects invalid credentials.
+- IMAP IDLE reports a mailbox change.
+- The client connects again after a connection failure.
+- The system handles temporary SMTP errors without duplicate delivery.
+- The system handles permanent SMTP errors with the expected failure result.
+
+For each test, record the server type, the server version, the test date, and
+the result. Do not call a test complete until a tester supplies the result.
+A result for one server type does not prove operation on other server types.
+The running server does not use the IMAP IDLE adapter or the SMTP queue
+adapter yet. Test these adapters with the client code until the repository
+items for this wiring are done. The IMAP IDLE adapter does not connect again
+after a dropped connection. The reconnect test needs the repository item for
+IMAP IDLE reconnect handling. The running server maps a temporary SMTP error
+to a 502 answer and does not retry.
+
 ## IMAP IDLE availability
 
 Gulo Gulo never assumes the local IMAP server supports RFC 2177 IDLE — it
@@ -1114,13 +1155,36 @@ as tester work:
   the DB-backed identity option (today's workaround is inserting rows
   directly with `createPasswordHasher().hash(password)`, see
   `doc/identity-and-postgres.md`);
-- [ ] production Postfix/Dovecot mail adapters: minimal IMAP IDLE and SMTP
-  submission protocol clients and their adapters (`src/core/mail/imap-client.ts`,
-  `src/core/mail/imap-idle-adapter.ts`, `src/core/mail/imap-idle-probe.ts`,
-  `src/core/mail/smtp-client.ts`, `src/core/mail/smtp-queue-adapter.ts`) are
-  implemented and tested end to end against a local TCP protocol fake (see
-  `doc/mail-core.md`); verification against a real Dovecot/Postfix
-  installation is still outstanding;
+- [ ] configurable and securely verified mail TLS endpoints: today
+  `createLocalMailClients()` (`src/platform/contract/platform-adapter.ts`)
+  always connects to `127.0.0.1` and passes no TLS server name or CA option
+  from configuration, so Node checks a server certificate against the IP
+  address and rejects a certificate issued to a DNS name;
+- [ ] reconnect and liveness handling for IMAP IDLE: when the socket closes,
+  `src/core/mail/imap-client.ts` only clears its socket, and
+  `src/core/mail/imap-idle-adapter.ts` gets no disconnect signal and does not
+  create a new client, so the watch stays open and delivers no event;
+- [ ] wire the SMTP queue adapter (`src/core/mail/smtp-queue-adapter.ts`) and
+  its retry scheduling into the running server; today
+  `src/runtime/mail-routes.ts` submits directly through the SMTP client and
+  maps a temporary error to a 502 answer without a queue or a retry;
+- [ ] submission policy wiring: `submitMessage()` in
+  `src/runtime/mail-routes.ts` sends mail without `createMailPolicy()`
+  (`src/core/mail/mail-policy.ts`), so the `mail.maxMessagesPerUserPerMinute`,
+  `maxRecipients`, and related settings from `src/runtime/config.ts` are not
+  enforced on the running send path;
+- [ ] persistent production mail queue and message storage: the queue from
+  `createMailQueue()` (`src/core/mail/mail-queue.ts`) keeps entries and
+  `messageRef` values in memory and is a contract-test double (see
+  `doc/mail-core.md`), so a restart loses queued and deferred messages;
+- [ ] per-recipient queue and bounce handling: when some recipients are
+  accepted and some are rejected, `src/core/mail/smtp-queue-adapter.ts` marks
+  the whole queue entry `delivered` and keeps the rejected recipients only in
+  the returned result, with no retry or bounce state for them;
+- [ ] wire the IMAP IDLE adapter (`src/core/mail/imap-idle-adapter.ts`) into
+  the running server so that a continuing watch delivers mailbox changes to
+  the event transport; today the server only runs the one-shot capability
+  probe (`src/core/mail/imap-idle-probe.ts`);
 - [x] web resource APIs wired to real data (`src/runtime/wiring.ts`,
   `src/runtime/api-resources.ts`): `/api/mail/messages` lists the newest
   INBOX messages over IMAP (`fetchSummaries()` in `imap-client.ts`: headers
