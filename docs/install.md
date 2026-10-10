@@ -1168,6 +1168,14 @@ as tester work:
   its retry scheduling into the running server; today
   `src/runtime/mail-routes.ts` submits directly through the SMTP client and
   maps a temporary error to a 502 answer without a queue or a retry;
+- [ ] persistent production mail queue and message storage: the queue from
+  `createMailQueue()` (`src/core/mail/mail-queue.ts`) keeps entries and
+  `messageRef` values in memory and is a contract-test double (see
+  `doc/mail-core.md`), so a restart loses queued and deferred messages;
+- [ ] per-recipient queue and bounce handling: when some recipients are
+  accepted and some are rejected, `src/core/mail/smtp-queue-adapter.ts` marks
+  the whole queue entry `delivered` and keeps the rejected recipients only in
+  the returned result, with no retry or bounce state for them;
 - [ ] wire the IMAP IDLE adapter (`src/core/mail/imap-idle-adapter.ts`) into
   the running server so that a continuing watch delivers mailbox changes to
   the event transport; today the server only runs the one-shot capability
