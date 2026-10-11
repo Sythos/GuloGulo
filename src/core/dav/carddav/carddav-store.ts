@@ -4,8 +4,25 @@
 
 import { createHash } from 'node:crypto';
 
-type DavValue = any;
+type DavValue = unknown;
 type DavRecord = Record<string, DavValue>;
+export interface CardDavScope { tenantId: string; userId: string }
+export interface ParsedVCard {
+  canonical: string; version: string; uid: string; fullName: string; mediaType: string;
+  propertyNames: readonly string[]; emailCount: number; telCount: number;
+}
+interface VCardProperty { name: string; parameters: string; value: string }
+interface CardDavContact {
+  href: string; uid: string; fullName: string; vCard: string; etag: string; mediaType: string;
+  sizeBytes: number; createdAt: string; updatedAt: string; propertyNames: readonly string[];
+  emailCount: number; telCount: number; revision: number; tenantId: string; userId: string; addressBookId: string;
+}
+interface CardDavChange { version: number; operation: string; href: string; uid: string; etag: string | null }
+interface AddressBookState {
+  tenantId: string; userId: string; addressBookId: string; href: string; displayName: string;
+  description: string; color: string | null; supportedAddressData: string[]; createdAt: string;
+  updatedAt: string; revision: number; contacts: Map<string, CardDavContact>; changes: CardDavChange[];
+}
 
 const ADDRESS_BOOK_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/u;
 const SCOPE_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._:@/-]{0,127}$/u;
@@ -43,7 +60,7 @@ function cardDavError(message: string, code = 'CARD_DAV_ERROR', status = 400): C
   return new CardDavError(message, code, status);
 }
 
-function assertString(value: DavValue, field: string, { pattern, maxLength = 1024, allowEmpty = false }: DavRecord = {}): string {
+function assertString(value: DavValue, field: string, { pattern, maxLength = 1024, allowEmpty = false }: { pattern?: RegExp; maxLength?: number; allowEmpty?: boolean } = {}): string {
   if (typeof value !== 'string' || (!allowEmpty && value.length === 0) || value.length > maxLength) {
     throw cardDavError(`${field} is invalid`, `INVALID_${field.toUpperCase()}`);
   }
@@ -59,25 +76,26 @@ function assertString(value: DavValue, field: string, { pattern, maxLength = 102
 function readClock(clock: () => DavValue): number {
   const value = clock();
   const timestamp = value instanceof Date ? value.getTime() : value;
-  if (!Number.isFinite(timestamp) || timestamp < 0) {
+  if (typeof timestamp !== 'number' || !Number.isFinite(timestamp) || timestamp < 0) {
     throw cardDavError('clock must return a valid non-negative timestamp', 'INVALID_CLOCK', 500);
   }
   return Math.trunc(timestamp);
 }
 
-export function normalizeScope(scope: DavValue): Readonly<DavRecord> {
+export function normalizeScope(scope: DavValue): Readonly<CardDavScope> {
   if (scope === null || typeof scope !== 'object') {
     throw cardDavError('an authenticated tenant/user scope is required', 'SCOPE_INVALID', 401);
   }
-  const tenantId = assertString(scope.tenantId, 'tenantId', { pattern: SCOPE_ID_PATTERN, maxLength: 128 });
-  const userId = assertString(scope.userId, 'userId', { pattern: SCOPE_ID_PATTERN, maxLength: 128 });
+  const record = scope as Record<string, unknown>;
+  const tenantId = assertString(record.tenantId, 'tenantId', { pattern: SCOPE_ID_PATTERN, maxLength: 128 });
+  const userId = assertString(record.userId, 'userId', { pattern: SCOPE_ID_PATTERN, maxLength: 128 });
   // DAV content operations are intentionally user-scoped. A master/provider
   // caller must first obtain an explicitly delegated user session; passing a
   // role or target-user marker directly to this contract never grants access.
-  if (scope.role !== undefined && scope.role !== 'user') {
+  if (record.role !== undefined && record.role !== 'user') {
     throw cardDavError('CardDAV content requires an authenticated user scope', 'SCOPE_ROLE_DENIED', 403);
   }
-  if (scope.targetUserId !== undefined && scope.targetUserId !== userId) {
+  if (record.targetUserId !== undefined && record.targetUserId !== userId) {
     throw cardDavError('targetUserId does not match the authenticated user', 'SCOPE_TARGET_DENIED', 403);
   }
   return Object.freeze({ tenantId, userId });
@@ -100,22 +118,22 @@ function normalizeOptionalText(value: DavValue, field: string, maxLength: number
   return assertString(value, field, { maxLength, allowEmpty: true });
 }
 
-function keyFor(scope: DavRecord, addressBookId: string): string {
+function keyFor(scope: CardDavScope, addressBookId: string): string {
   return `${scope.tenantId}\u0000${scope.userId}\u0000${addressBookId}`;
 }
 
-export function scopeFingerprint(scope: DavRecord, addressBookId: string): string {
+export function scopeFingerprint(scope: CardDavScope, addressBookId: string): string {
   return createHash('sha256')
     .update(`${scope.tenantId}\u0000${scope.userId}\u0000${addressBookId}`, 'utf8')
     .digest('base64url')
     .slice(0, 22);
 }
 
-export function makeSyncToken(scope: DavRecord, addressBookId: string, version: number): string {
+export function makeSyncToken(scope: CardDavScope, addressBookId: string, version: number): string {
   return `${CARD_DAV_SYNC_TOKEN_PREFIX}${scopeFingerprint(scope, addressBookId)}:${version}`;
 }
 
-export function parseSyncToken(token: DavValue, scope: DavRecord, addressBookId: string): number {
+export function parseSyncToken(token: DavValue, scope: CardDavScope, addressBookId: string): number {
   if (typeof token !== 'string') {
     throw cardDavError('syncToken must be a string', 'SYNC_TOKEN_INVALID', 400);
   }
@@ -134,7 +152,7 @@ export function makeEtag(canonicalVCard: string): string {
   return `"${createHash('sha256').update(canonicalVCard, 'utf8').digest('base64url')}"`;
 }
 
-export function makeCollectionEtag(state: DavRecord): string {
+export function makeCollectionEtag(state: Pick<AddressBookState, 'addressBookId' | 'displayName' | 'description' | 'color' | 'revision'>): string {
   const value = `${state.addressBookId}\u0000${state.displayName}\u0000${state.description}\u0000${state.color}\u0000${state.revision}`;
   return `"${createHash('sha256').update(value, 'utf8').digest('base64url')}"`;
 }
@@ -186,7 +204,7 @@ function unfoldVCardLines(text: string): string[] {
   return lines;
 }
 
-function parseVCardProperty(line: string): DavRecord {
+function parseVCardProperty(line: string): VCardProperty {
   const match = /^(?:[A-Za-z][A-Za-z0-9-]*\.)?(?<name>[A-Za-z][A-Za-z0-9-]*)(?<parameters>(?:;[^:;]*)*):(?<value>.*)$/u.exec(line);
   if (match === null) {
     throw cardDavError('vCard property syntax is invalid', 'VCARD_INVALID', 400);
@@ -209,7 +227,7 @@ function unescapeVCardText(value: string): string {
   });
 }
 
-function validateVCardText(value: DavValue): Readonly<DavRecord> {
+function validateVCardText(value: DavValue): Readonly<ParsedVCard> {
   if (typeof value !== 'string') {
     throw cardDavError('vCard must be a string', 'VCARD_INVALID', 400);
   }
@@ -266,7 +284,7 @@ function validateVCardText(value: DavValue): Readonly<DavRecord> {
 }
 
 /** Validate and normalize one vCard object without storing it. */
-export function validateVCardObject(vCard: unknown): Readonly<DavRecord> {
+export function validateVCardObject(vCard: unknown): Readonly<ParsedVCard> {
   return validateVCardText(vCard);
 }
 
@@ -277,7 +295,7 @@ function freezeObject<T extends object>(object: T): Readonly<T> {
   return Object.freeze(object);
 }
 
-function contactMetadata(contact: DavRecord): Readonly<DavRecord> {
+function contactMetadata(contact: CardDavContact) {
   return freezeObject({
     href: contact.href,
     uid: contact.uid,
@@ -293,14 +311,14 @@ function contactMetadata(contact: DavRecord): Readonly<DavRecord> {
   });
 }
 
-function publicContact(contact: DavRecord): Readonly<DavRecord> {
+function publicContact(contact: CardDavContact) {
   return freezeObject({
     ...contactMetadata(contact),
     vCard: contact.vCard,
   });
 }
 
-function publicAddressBook(state: DavRecord, scope: DavRecord): Readonly<DavRecord> {
+function publicAddressBook(state: AddressBookState, scope: CardDavScope) {
   return freezeObject({
     schemaVersion: CARD_DAV_SCHEMA_VERSION,
     addressBookId: state.addressBookId,
@@ -317,7 +335,7 @@ function publicAddressBook(state: DavRecord, scope: DavRecord): Readonly<DavReco
   });
 }
 
-function publicChange(change: DavRecord): Readonly<DavRecord> {
+function publicChange(change: CardDavChange) {
   return freezeObject({
     version: change.version,
     operation: change.operation,
@@ -336,17 +354,17 @@ function publicChange(change: DavRecord): Readonly<DavRecord> {
  */
 export class CardDavStore {
   readonly clock: () => DavValue;
-  readonly addressBooks: Map<string, DavRecord>;
+  readonly addressBooks: Map<string, AddressBookState>;
 
-  constructor({ clock = () => Date.now() }: DavRecord = {}) {
+  constructor({ clock = () => Date.now() }: { clock?: () => unknown } = {}) {
     if (typeof clock !== 'function') {
       throw cardDavError('clock must be a function', 'INVALID_CONFIGURATION', 500);
     }
     this.clock = clock;
-    this.addressBooks = new Map<string, DavRecord>();
+    this.addressBooks = new Map<string, AddressBookState>();
   }
 
-  #getState(scopeInput: DavValue, addressBookIdInput: DavValue): DavRecord {
+  #getState(scopeInput: DavValue, addressBookIdInput: DavValue): { scope: Readonly<CardDavScope>; addressBookId: string; state: AddressBookState } {
     const scope = normalizeScope(scopeInput);
     const addressBookId = normalizeAddressBookId(addressBookIdInput);
     const state = this.addressBooks.get(keyFor(scope, addressBookId));
@@ -356,7 +374,7 @@ export class CardDavStore {
     return { scope, addressBookId, state };
   }
 
-  createAddressBook({ scope: scopeInput, addressBookId: addressBookIdInput, displayName, description = '', color = null }: DavRecord = {}): Readonly<DavRecord> {
+  createAddressBook({ scope: scopeInput, addressBookId: addressBookIdInput, displayName, description = '', color = null }: DavRecord = {}) {
     const scope = normalizeScope(scopeInput);
     const addressBookId = normalizeAddressBookId(addressBookIdInput);
     const key = keyFor(scope, addressBookId);
@@ -381,21 +399,21 @@ export class CardDavStore {
       createdAt: now,
       updatedAt: now,
       revision: 0,
-      contacts: new Map<string, DavRecord>(),
-      changes: [] as DavRecord[],
+      contacts: new Map<string, CardDavContact>(),
+      changes: [] as CardDavChange[],
     };
     this.addressBooks.set(key, state);
     return publicAddressBook(state, scope);
   }
 
-  getAddressBook({ scope: scopeInput, addressBookId: addressBookIdInput }: DavRecord = {}): Readonly<DavRecord> {
+  getAddressBook({ scope: scopeInput, addressBookId: addressBookIdInput }: DavRecord = {}) {
     const { scope, state } = this.#getState(scopeInput, addressBookIdInput);
     return publicAddressBook(state, scope);
   }
 
-  listAddressBooks({ scope: scopeInput }: DavRecord = {}): readonly Readonly<DavRecord>[] {
+  listAddressBooks({ scope: scopeInput }: DavRecord = {}) {
     const scope = normalizeScope(scopeInput);
-    const result: Readonly<DavRecord>[] = [];
+    const result: ReturnType<typeof publicAddressBook>[] = [];
     for (const state of this.addressBooks.values()) {
       if (state.tenantId === scope.tenantId && state.userId === scope.userId) {
         result.push(publicAddressBook(state, scope));
@@ -404,27 +422,27 @@ export class CardDavStore {
     return Object.freeze(result.sort((left, right) => left.addressBookId.localeCompare(right.addressBookId)));
   }
 
-  deleteAddressBook({ scope: scopeInput, addressBookId: addressBookIdInput, ifMatch }: DavRecord = {}): Readonly<DavRecord> {
+  deleteAddressBook({ scope: scopeInput, addressBookId: addressBookIdInput, ifMatch }: DavRecord = {}) {
     const { scope, addressBookId, state } = this.#getState(scopeInput, addressBookIdInput);
     assertIfMatch(ifMatch, makeCollectionEtag(state), 'address book');
     this.addressBooks.delete(keyFor(scope, addressBookId));
     return freezeObject({ addressBookId, status: 'deleted' });
   }
 
-  #touch(state: DavRecord, scope: DavRecord, addressBookId: string): string {
+  #touch(state: AddressBookState, scope: CardDavScope, addressBookId: string): string {
     state.revision += 1;
     state.updatedAt = new Date(readClock(this.clock)).toISOString();
     return makeSyncToken(scope, addressBookId, state.revision);
   }
 
-  #findUid(state: DavRecord, uid: string): DavRecord | null {
+  #findUid(state: AddressBookState, uid: string): CardDavContact | null {
     for (const contact of state.contacts.values()) {
       if (contact.uid === uid) return contact;
     }
     return null;
   }
 
-  #buildContact({ state, scope, addressBookId, href, parsed, now }: DavRecord): DavRecord {
+  #buildContact({ state, scope, addressBookId, href, parsed, now }: { state: AddressBookState; scope: CardDavScope; addressBookId: string; href: string; parsed: ParsedVCard; now: string }): CardDavContact {
     const revision = state.revision + 1;
     const etag = makeEtag(parsed.canonical);
     return {
@@ -447,7 +465,7 @@ export class CardDavStore {
     };
   }
 
-  #record(state: DavRecord, scope: DavRecord, addressBookId: string, contact: DavRecord, operation: string, etag: string | null = null): string {
+  #record(state: AddressBookState, scope: CardDavScope, addressBookId: string, contact: CardDavContact, operation: string, etag: string | null = null): string {
     const syncToken = this.#touch(state, scope, addressBookId);
     state.changes.push({
       version: state.revision,
@@ -459,7 +477,7 @@ export class CardDavStore {
     return syncToken;
   }
 
-  createContact({ scope: scopeInput, addressBookId: addressBookIdInput, href: hrefInput, ifNoneMatch, ...options }: DavRecord = {}): Readonly<DavRecord> {
+  createContact({ scope: scopeInput, addressBookId: addressBookIdInput, href: hrefInput, ifNoneMatch, ...options }: DavRecord = {}) {
     const { scope, addressBookId, state } = this.#getState(scopeInput, addressBookIdInput);
     const parsed = validateVCardText(readVCardInput(options));
     const href = hrefInput === undefined ? normalizeHref(`${parsed.uid}.vcf`) : normalizeHref(hrefInput);
@@ -480,7 +498,7 @@ export class CardDavStore {
     return publicContact(contact);
   }
 
-  getContact({ scope: scopeInput, addressBookId: addressBookIdInput, href: hrefInput }: DavRecord = {}): Readonly<DavRecord> {
+  getContact({ scope: scopeInput, addressBookId: addressBookIdInput, href: hrefInput }: DavRecord = {}) {
     const { state } = this.#getState(scopeInput, addressBookIdInput);
     const href = normalizeHref(hrefInput);
     const contact = state.contacts.get(href);
@@ -490,7 +508,7 @@ export class CardDavStore {
     return publicContact(contact);
   }
 
-  getContactMetadata({ scope: scopeInput, addressBookId: addressBookIdInput, href: hrefInput }: DavRecord = {}): Readonly<DavRecord> {
+  getContactMetadata({ scope: scopeInput, addressBookId: addressBookIdInput, href: hrefInput }: DavRecord = {}) {
     const { state } = this.#getState(scopeInput, addressBookIdInput);
     const href = normalizeHref(hrefInput);
     const contact = state.contacts.get(href);
@@ -500,14 +518,14 @@ export class CardDavStore {
     return contactMetadata(contact);
   }
 
-  listContacts({ scope: scopeInput, addressBookId: addressBookIdInput }: DavRecord = {}): readonly Readonly<DavRecord>[] {
+  listContacts({ scope: scopeInput, addressBookId: addressBookIdInput }: DavRecord = {}) {
     const { state } = this.#getState(scopeInput, addressBookIdInput);
     return Object.freeze([...state.contacts.values()]
       .sort((left, right) => left.href.localeCompare(right.href))
       .map((contact) => contactMetadata(contact)));
   }
 
-  putContact({ scope: scopeInput, addressBookId: addressBookIdInput, href: hrefInput, ifMatch, ifNoneMatch, ...options }: DavRecord = {}): Readonly<DavRecord> {
+  putContact({ scope: scopeInput, addressBookId: addressBookIdInput, href: hrefInput, ifMatch, ifNoneMatch, ...options }: DavRecord = {}) {
     const { scope, addressBookId, state } = this.#getState(scopeInput, addressBookIdInput);
     const parsed = validateVCardText(readVCardInput(options));
     const href = normalizeHref(hrefInput === undefined ? `${parsed.uid}.vcf` : hrefInput);
@@ -539,15 +557,15 @@ export class CardDavStore {
     return publicContact(replacement);
   }
 
-  updateContact(options: DavRecord = {}): Readonly<DavRecord> {
+  updateContact(options: DavRecord = {}) {
     return this.putContact(options);
   }
 
-  upsertContact(options: DavRecord = {}): Readonly<DavRecord> {
+  upsertContact(options: DavRecord = {}) {
     return this.putContact(options);
   }
 
-  deleteContact({ scope: scopeInput, addressBookId: addressBookIdInput, href: hrefInput, ifMatch }: DavRecord = {}): Readonly<DavRecord> {
+  deleteContact({ scope: scopeInput, addressBookId: addressBookIdInput, href: hrefInput, ifMatch }: DavRecord = {}) {
     const { scope, addressBookId, state } = this.#getState(scopeInput, addressBookIdInput);
     const href = normalizeHref(hrefInput);
     const contact = state.contacts.get(href);
@@ -565,7 +583,7 @@ export class CardDavStore {
     });
   }
 
-  syncCollection({ scope: scopeInput, addressBookId: addressBookIdInput, syncToken: suppliedToken }: DavRecord = {}): Readonly<DavRecord> {
+  syncCollection({ scope: scopeInput, addressBookId: addressBookIdInput, syncToken: suppliedToken }: DavRecord = {}) {
     const { scope, addressBookId, state } = this.#getState(scopeInput, addressBookIdInput);
     const currentToken = makeSyncToken(scope, addressBookId, state.revision);
     if (suppliedToken === undefined || suppliedToken === null) {
@@ -590,8 +608,8 @@ export class CardDavStore {
       syncToken: currentToken,
       ctag: currentToken,
       changes: Object.freeze(state.changes
-        .filter((change: DavRecord) => change.version > fromVersion)
-        .map((change: DavRecord) => publicChange(change))),
+        .filter((change) => change.version > fromVersion)
+        .map((change) => publicChange(change))),
     });
   }
 
@@ -602,7 +620,7 @@ export class CardDavStore {
    * session identifiers, credentials, and storage paths. A future explicit
    * user export endpoint may call getContact() after authorization.
    */
-  exportAddressBookMetadata({ scope: scopeInput, addressBookId: addressBookIdInput }: DavRecord = {}): Readonly<DavRecord> {
+  exportAddressBookMetadata({ scope: scopeInput, addressBookId: addressBookIdInput }: DavRecord = {}) {
     const { scope, state } = this.#getState(scopeInput, addressBookIdInput);
     const addressBook = publicAddressBook(state, scope);
     return freezeObject({
@@ -617,7 +635,7 @@ export class CardDavStore {
 }
 
 export const CardDAVStore = CardDavStore;
-export const createCardDavStore = (options: DavRecord = {}): CardDavStore => new CardDavStore(options);
+export const createCardDavStore = (options: { clock?: () => unknown } = {}): CardDavStore => new CardDavStore(options);
 export const createCardDAVStore = createCardDavStore;
 
 export const cardDavConstants = Object.freeze({

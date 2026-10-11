@@ -12,7 +12,7 @@ import {
   resolveDiscoveryService,
 } from './index.ts';
 
-function createContract(overrides: any = {}) {
+function createContract(overrides: Record<string, unknown> = {}) {
   return createDiscoveryContract({
     tenantId: 'acme',
     domain: 'example.test',
@@ -81,7 +81,7 @@ test('supports explicit safe manual overrides while preserving service fields', 
 
 test('keeps POP3S absent unless explicitly enabled', () => {
   const disabled = createContract();
-  assert.throws(() => resolveDiscoveryService(disabled, 'pop3s'), (error: any) => error.code === 'SERVICE_DISABLED');
+  assert.throws(() => resolveDiscoveryService(disabled, 'pop3s'), (error: unknown) => error instanceof Error && 'code' in error && error.code === 'SERVICE_DISABLED');
   const enabled = createContract({ services: {
     pop3s: { enabled: true, host: 'mail.example.test', port: 995, tls: true },
   } });
@@ -98,7 +98,7 @@ test('defaults POP3S to disabled when the tenant does not opt in', () => {
 
 test('fails closed for cross-tenant and unsafe well-known requests', () => {
   const contract = createContract();
-  assert.throws(() => getWellKnownResource(contract, WELL_KNOWN_PATHS.discovery, { tenantId: 'other' }), (error: any) => error.code === 'TENANT_MISMATCH');
+  assert.throws(() => getWellKnownResource(contract, WELL_KNOWN_PATHS.discovery, { tenantId: 'other' }), (error: unknown) => error instanceof Error && 'code' in error && error.code === 'TENANT_MISMATCH');
   for (const path of ['/.well-known/../discovery.json', '/.well-known/gulogulo/discovery.json?tenant=other', '/.well-known\\gulogulo\\discovery.json', '/.well-known/gulogulo/%64iscovery.json', '/.well-known/unknown']) {
     assert.throws(() => getWellKnownResource(contract, path, { tenantId: 'acme' }), /Discovery error:/u);
   }
@@ -123,5 +123,5 @@ test('rejects malformed or unsafe discovery endpoints before publication', () =>
 });
 
 test('rejects attempts to re-enable a disabled service through a manual override', () => {
-  assert.throws(() => createContract({ manualOverrides: { pop3s: { enabled: true, host: 'mail.example.test' } } }), (error: any) => error.code === 'SERVICE_DISABLED');
+  assert.throws(() => createContract({ manualOverrides: { pop3s: { enabled: true, host: 'mail.example.test' } } }), (error: unknown) => error instanceof Error && 'code' in error && error.code === 'SERVICE_DISABLED');
 });

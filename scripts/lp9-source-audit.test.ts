@@ -12,6 +12,7 @@ test('LP9 source audit finds only documented behavior-free JavaScript bridges', 
   assert.equal(summary.milestone, 'LP9');
   assert.equal(summary.status, 'passed');
   assert.equal(summary.executableJavaScriptSources, 0);
+  assert.equal(summary.waiverCount, 0);
   assert.equal(summary.bridgeSources, summary.bridgePaths.length);
   assert.ok(summary.typescriptSources > 100);
   assert.ok(summary.bridgeSources >= 0);

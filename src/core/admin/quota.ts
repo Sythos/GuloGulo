@@ -2,36 +2,38 @@
 // SPDX-FileCopyrightText: 2026 Sythos (https://www.sythos.net)
 // Author: Sythos (https://www.sythos.net)
 
-// @ts-nocheck
+import type { AdminActor } from './rbac.ts';
+type InitialQuotaUser = { userId?: unknown; allocatedQuotaBytes?: unknown; usedBytes?: unknown };
+type QuotaInput = { userId?: unknown; allocatedQuotaBytes?: unknown; sizeBytes?: unknown };
 
 import { assertTenantContext } from '../../integrations/tenant-context.ts';
 import { assertAdminActor, assertSafeUserId, authorize } from './rbac.ts';
 
 const TENANT_ID_PATTERN = /^[a-z0-9][a-z0-9._-]{0,63}$/u;
 
-function quotaError(message, code = 'QUOTA_ERROR', status = 403) {
-  const error = new Error(`Quota error: ${message}`);
+function quotaError(message: string, code = 'QUOTA_ERROR', status = 403) {
+  const error = Object.assign(new Error(`Quota error: ${message}`), { code, status });
   error.name = 'QuotaError';
   error.code = code;
   error.status = status;
   return error;
 }
 
-function assertBytes(value, field, { positive = false } = {}) {
-  if (!Number.isSafeInteger(value) || (positive ? value <= 0 : value < 0)) {
+function assertBytes(value: unknown, field: string, { positive = false } = {}) {
+  if (typeof value !== 'number' || !Number.isSafeInteger(value) || (positive ? value <= 0 : value < 0)) {
     throw quotaError(`${field} must be a ${positive ? 'positive' : 'non-negative'} safe integer`, 'INVALID_QUOTA', 400);
   }
   return value;
 }
 
-function assertTenantId(value) {
+function assertTenantId(value: unknown) {
   if (typeof value !== 'string' || !TENANT_ID_PATTERN.test(value)) {
     throw quotaError('tenantId is invalid', 'INVALID_TENANT', 400);
   }
   return value;
 }
 
-function cloneAllocation(tenantId, userId, allocatedQuotaBytes, usedBytes) {
+function cloneAllocation(tenantId: string, userId: string, allocatedQuotaBytes: number, usedBytes: number) {
   return Object.freeze({
     tenantId,
     userId,
@@ -46,15 +48,15 @@ function cloneAllocation(tenantId, userId, allocatedQuotaBytes, usedBytes) {
  * PostgreSQL remains the durable source of truth; the production adapter must
  * preserve the same locked, all-or-nothing allocation decision.
  */
-export function createQuotaLedger({ tenantId, grossQuotaBytes, initialUsers = [] } = {}) {
+export function createQuotaLedger({ tenantId, grossQuotaBytes, initialUsers = [] }: { tenantId?: unknown; grossQuotaBytes?: unknown; initialUsers?: readonly InitialQuotaUser[] } = {}) {
   const canonicalTenantId = assertTenantId(tenantId);
   const gross = assertBytes(grossQuotaBytes, 'grossQuotaBytes', { positive: true });
-  const allocations = new Map();
-  const usage = new Map();
+  const allocations = new Map<string, number>();
+  const usage = new Map<string, number>();
   let reservationSequence = 0;
-  const reservations = new Map();
+  const reservations = new Map<string, { tenantId: string; userId: string; sizeBytes: number; released: boolean }>();
 
-  function totalAllocated(excludeUserId = null) {
+  function totalAllocated(excludeUserId: string | null = null) {
     let total = 0;
     for (const [userId, allocated] of allocations.entries()) {
       if (userId === excludeUserId) continue;
@@ -64,7 +66,7 @@ export function createQuotaLedger({ tenantId, grossQuotaBytes, initialUsers = []
     return total;
   }
 
-  function assertSameTenant(context) {
+  function assertSameTenant(context: unknown) {
     let canonical;
     try {
       canonical = assertTenantContext(context);
@@ -75,18 +77,18 @@ export function createQuotaLedger({ tenantId, grossQuotaBytes, initialUsers = []
     return canonical;
   }
 
-  function assertLedgerTenant(canonical) {
+  function assertLedgerTenant(canonical: AdminActor) {
     if (canonical.tenantId !== canonicalTenantId) throw quotaError('cross-tenant quota access denied', 'CROSS_TENANT_DENIED');
     return canonical;
   }
 
-  function requireKnownUser(userId) {
+  function requireKnownUser(userId: unknown) {
     const canonical = assertSafeUserId(userId, 'userId');
     if (!allocations.has(canonical)) throw quotaError('user quota allocation does not exist', 'NOT_FOUND', 404);
     return canonical;
   }
 
-  function setAllocation(userId, allocatedQuotaBytes) {
+  function setAllocation(userId: string, allocatedQuotaBytes: unknown) {
     const allocated = assertBytes(allocatedQuotaBytes, 'allocatedQuotaBytes');
     const nextTotal = totalAllocated(userId) + allocated;
     if (!Number.isSafeInteger(nextTotal)) throw quotaError('quota total exceeds safe integer range', 'QUOTA_OVERFLOW', 500);
@@ -103,11 +105,11 @@ export function createQuotaLedger({ tenantId, grossQuotaBytes, initialUsers = []
     if (allocations.has(userId)) throw quotaError('duplicate initial user', 'CONFLICT', 409);
     setAllocation(userId, initial.allocatedQuotaBytes ?? 0);
     const initialUsed = assertBytes(initial.usedBytes ?? 0, 'initialUsers.usedBytes');
-    if (initialUsed > allocations.get(userId)) throw quotaError('initial usage exceeds user allocation', 'INVALID_USAGE', 400);
+    if (initialUsed > (allocations.get(userId) ?? 0)) throw quotaError('initial usage exceeds user allocation', 'INVALID_USAGE', 400);
     usage.set(userId, initialUsed);
   }
 
-  function registerUser(actor, { userId, allocatedQuotaBytes = 0 } = {}) {
+  function registerUser(actor: unknown, { userId, allocatedQuotaBytes = 0 }: QuotaInput = {}) {
     const canonical = assertLedgerTenant(assertAdminActor(actor));
     const target = assertSafeUserId(userId, 'userId');
     authorize(canonical, { permission: 'user.manage', targetUserId: target });
@@ -116,7 +118,7 @@ export function createQuotaLedger({ tenantId, grossQuotaBytes, initialUsers = []
     return read(canonical, { userId: target });
   }
 
-  function allocate(actor, { userId, allocatedQuotaBytes } = {}) {
+  function allocate(actor: unknown, { userId, allocatedQuotaBytes }: QuotaInput = {}) {
     const canonical = assertLedgerTenant(assertAdminActor(actor));
     const target = requireKnownUser(userId);
     authorize(canonical, { permission: 'quota.manage', targetUserId: target, resource: 'quota' });
@@ -129,20 +131,20 @@ export function createQuotaLedger({ tenantId, grossQuotaBytes, initialUsers = []
     return read(canonical, { userId: target });
   }
 
-  function read(actor, { userId = actor?.userId } = {}) {
+  function read(actor: unknown, { userId }: QuotaInput = {}) {
     const canonical = assertLedgerTenant(assertAdminActor(actor));
-    const target = requireKnownUser(userId);
+    const target = requireKnownUser(userId === undefined ? canonical.userId : userId);
     authorize(canonical, { permission: 'quota.read', targetUserId: target, resource: 'quota' });
-    return cloneAllocation(canonicalTenantId, target, allocations.get(target), usage.get(target) ?? 0);
+    return cloneAllocation(canonicalTenantId, target, allocations.get(target) ?? 0, usage.get(target) ?? 0);
   }
 
-  function snapshot(actor) {
+  function snapshot(actor: unknown) {
     const canonical = assertLedgerTenant(assertAdminActor(actor));
     authorize(canonical, { permission: 'quota.read', resource: 'quota' });
     const values = [...allocations.keys()].sort().map((userId) => cloneAllocation(
       canonicalTenantId,
       userId,
-      allocations.get(userId),
+      allocations.get(userId) ?? 0,
       usage.get(userId) ?? 0,
     ));
     return Object.freeze({
@@ -158,12 +160,12 @@ export function createQuotaLedger({ tenantId, grossQuotaBytes, initialUsers = []
    * Reserve mailbox/DAV usage before acknowledging a delivery. The call is a
    * tenant-scoped protocol adapter operation, not an administrative mutation.
    */
-  function reserve(context, { userId, sizeBytes = 0 } = {}) {
+  function reserve(context: unknown, { userId, sizeBytes = 0 }: QuotaInput = {}) {
     assertSameTenant(context);
     const target = requireKnownUser(userId);
     const size = assertBytes(sizeBytes, 'sizeBytes');
     const currentUsage = usage.get(target) ?? 0;
-    const allocation = allocations.get(target);
+    const allocation = allocations.get(target) ?? 0;
     if (size > allocation - currentUsage) {
       return Object.freeze({ accepted: false, reason: 'quota_exceeded', tenantId: canonicalTenantId, userId: target });
     }
@@ -175,7 +177,7 @@ export function createQuotaLedger({ tenantId, grossQuotaBytes, initialUsers = []
     return Object.freeze({ accepted: true, reservationId, tenantId: canonicalTenantId, userId: target, sizeBytes: size });
   }
 
-  function release(context, reservationId) {
+  function release(context: unknown, reservationId: unknown) {
     assertSameTenant(context);
     if (typeof reservationId !== 'string' || !/^quota-[0-9]{8}$/u.test(reservationId)) {
       throw quotaError('reservationId is invalid', 'INVALID_RESERVATION', 400);

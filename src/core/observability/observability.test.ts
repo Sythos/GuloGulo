@@ -2,8 +2,6 @@
 // SPDX-FileCopyrightText: 2026 Sythos (https://www.sythos.net)
 // Author: Sythos (https://www.sythos.net)
 
-// @ts-nocheck
-
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
@@ -25,6 +23,7 @@ test('log rotation defaults are bounded and Docker-compatible', () => {
   assert.equal(policy.bounded, true);
   assert.equal(policy.max_size_bytes, 10_000_000);
   assert.equal(policy.max_files, 5);
+  assert.ok(policy.docker);
   assert.equal(policy.docker.driver, 'json-file');
   assert.equal(policy.docker.options['max-size'], '10m');
   assert.equal(policy.docker.options['max-file'], '5');
@@ -44,6 +43,7 @@ test('log rotation supports journald and sidecar bounds without unbounded fallba
     journald: { maxUse: '2g', maxFile: '100m' },
     auditSink: 'journald',
   });
+  assert.ok(journald.journald);
   assert.equal(journald.journald.max_use_bytes, 2_000_000_000);
   assert.equal(journald.journald.max_file_bytes, 100_000_000);
   assert.equal(journald.docker, null);
@@ -54,6 +54,7 @@ test('log rotation supports journald and sidecar bounds without unbounded fallba
     maxFiles: 4,
     sidecar: { name: 'vector-collector' },
   });
+  assert.ok(sidecar.sidecar);
   assert.equal(sidecar.sidecar.name, 'vector-collector');
   assert.equal(sidecar.sidecar.max_size_bytes, 8_000_000);
   assert.equal(sidecar.sidecar.max_files, 4);
@@ -89,7 +90,7 @@ test('structured events redact credentials and content while preserving audit me
   assert.equal(event.actor, 'user@example.test');
   assert.equal(event.details.token, '[REDACTED]');
   assert.equal(event.details.message_body, '[REDACTED]');
-  assert.equal(event.details.inline.includes('private-password'), false);
+  assert.equal(String(event.details.inline).includes('private-password'), false);
   assert.equal(isAuditEvent(event), true);
   assert.equal(serializeStructuredEvent(event).endsWith('\n'), true);
   assert.equal(serializeStructuredEvent(event).includes('private-password'), false);

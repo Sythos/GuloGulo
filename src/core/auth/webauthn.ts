@@ -2,7 +2,18 @@
 // SPDX-FileCopyrightText: 2026 Sythos (https://www.sythos.net)
 // Author: Sythos (https://www.sythos.net)
 
-// @ts-nocheck
+export interface WebAuthnIdentity { tenantId?: string; userId?: string; actorId?: string; role?: string; displayName?: string; allowCredentials?: string[] }
+export interface WebAuthnRequest extends WebAuthnIdentity { challenge?: string; credentialId?: string; clientDataJSON?: unknown; authenticatorData?: unknown; credentialPublicKey?: unknown; signature?: unknown; attestationObject?: unknown; label?: string; transports?: string[]; actorRole?: string; reason?: string }
+export interface WebAuthnCredential { credentialId: string; tenantId: string; userId: string; label: string; publicKey: Buffer | object; signCount: number; createdAt: number; lastUsedAt: number | undefined; revokedAt: number | undefined; transports: readonly string[] }
+export interface WebAuthnChallenge { challenge: string; type: string; tenantId: string; userId: string; allowCredentials: readonly string[]; createdAt: number; expiresAt: number }
+export interface WebAuthnVerifierPayload { operation: 'registration' | 'assertion'; tenantId: string; userId: string; credentialId: string; clientData: {type: string; challenge: string; origin: string}; clientDataJSON: Buffer; authenticatorData: ReturnType<typeof parseAuthenticatorData>; signature: Buffer | undefined; attestationObject?: Buffer | undefined; credentialPublicKey?: Buffer | object; credential?: WebAuthnCredential; signedData?: Buffer }
+export interface WebAuthnOptions {
+  clock?: () => number | Date; randomBytesFn?: (size: number) => Buffer; expectedOrigins?: string[]; rpId?: string; rpName?: string; challengeTtlMs?: number; requireUserVerification?: boolean;
+  credentialVerifier?: (payload: Readonly<WebAuthnVerifierPayload>) => unknown;
+  rateLimiter?: (request: { action: string; key: string; tenantId: string; userId: string; credentialId: string }) => boolean | {allowed: boolean};
+  authorizeRevocation?: (request: { actorId: string; actorRole: string; tenantId: string; userId: string; credentialId: string }) => boolean;
+  audit?: (event: Readonly<Record<string, string | number | boolean>>) => void; challenges?: Map<string, WebAuthnChallenge>; credentials?: Map<string, WebAuthnCredential>;
+}
 
 import {
   createHash,
@@ -19,13 +30,11 @@ const CHALLENGE_PATTERN = /^[A-Za-z0-9_-]{32,256}$/u;
 const CREDENTIAL_ID_PATTERN = /^[A-Za-z0-9_-]{16,1024}$/u;
 const FORBIDDEN_ROLES = new Set(['provider', 'tenant_master', 'master', 'monitor', 'admin']);
 
-function authError(message, code = 'WEBAUTHN_ERROR') {
-  const error = new Error(`WebAuthn error: ${message}`);
-  error.code = code;
-  return error;
+function authError(message: string, code = 'WEBAUTHN_ERROR') {
+  return Object.assign(new Error(`WebAuthn error: ${message}`), { code });
 }
 
-function readTime(clock) {
+function readTime(clock: () => number | Date) {
   const value = clock();
   const time = value instanceof Date ? value.getTime() : value;
   if (!Number.isFinite(time) || time < 0) {
@@ -34,14 +43,13 @@ function readTime(clock) {
   return Math.trunc(time);
 }
 
-function assertIdentityPart(value, name) {
+function assertIdentityPart(value: unknown, name: string): asserts value is string {
   if (typeof value !== 'string' || !ID_PATTERN.test(value)) {
     throw authError(`${name} is invalid`, 'INVALID_IDENTITY');
   }
-  return value;
 }
 
-function assertRandomBytes(randomBytesFn, size) {
+function assertRandomBytes(randomBytesFn: (size: number) => Buffer, size: number) {
   const bytes = randomBytesFn(size);
   if (!Buffer.isBuffer(bytes) || bytes.length !== size) {
     throw authError(`randomBytesFn must return ${size} bytes`, 'INVALID_RANDOM_SOURCE');
@@ -49,7 +57,7 @@ function assertRandomBytes(randomBytesFn, size) {
   return bytes;
 }
 
-function assertUserActor({ tenantId, userId, actorId = userId, role = 'user' }) {
+function assertUserActor({ tenantId, userId, actorId = userId, role = 'user' }: WebAuthnIdentity) {
   assertIdentityPart(tenantId, 'tenantId');
   assertIdentityPart(userId, 'userId');
   assertIdentityPart(actorId, 'actorId');
@@ -59,14 +67,14 @@ function assertUserActor({ tenantId, userId, actorId = userId, role = 'user' }) 
   return { tenantId, userId, actorId, role };
 }
 
-function assertCredentialId(value) {
+function assertCredentialId(value: unknown) {
   if (typeof value !== 'string' || !CREDENTIAL_ID_PATTERN.test(value)) {
     throw authError('credentialId is invalid', 'CREDENTIAL_INVALID');
   }
   return value;
 }
 
-function decodeBase64Url(value, name, { min = 1, max = 4096 } = {}) {
+function decodeBase64Url(value: unknown, name: string, { min = 1, max = 4096 } = {}) {
   if (typeof value !== 'string' || !/^[A-Za-z0-9_-]+$/u.test(value)) {
     throw authError(`${name} is not valid base64url`, 'MALFORMED_RESPONSE');
   }
@@ -77,17 +85,17 @@ function decodeBase64Url(value, name, { min = 1, max = 4096 } = {}) {
   return result;
 }
 
-function binaryValue(value, name, options) {
+function binaryValue(value: unknown, name: string, options: { min: number; max: number }) {
   if (Buffer.isBuffer(value)) return Buffer.from(value);
   if (value instanceof Uint8Array) return Buffer.from(value);
   return decodeBase64Url(value, name, options);
 }
 
-function base64Url(value) {
+function base64Url(value: Uint8Array) {
   return Buffer.from(value).toString('base64url');
 }
 
-function assertOrigin(origin) {
+function assertOrigin(origin: unknown) {
   if (typeof origin !== 'string' || origin.length > 512) {
     throw authError('origin is invalid', 'INVALID_ORIGIN');
   }
@@ -103,7 +111,7 @@ function assertOrigin(origin) {
   return parsed.origin;
 }
 
-function assertRpId(rpId) {
+function assertRpId(rpId: unknown) {
   if (typeof rpId !== 'string' || rpId.length < 1 || rpId.length > 253 || rpId !== rpId.toLowerCase()
     || !/^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)*[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/u.test(rpId)) {
     throw authError('rpId is invalid', 'INVALID_RP_ID');
@@ -111,22 +119,22 @@ function assertRpId(rpId) {
   return rpId;
 }
 
-function parseClientData(value) {
+function parseClientData(value: unknown) {
   const bytes = binaryValue(value, 'clientDataJSON', { min: 2, max: 16 * 1024 });
-  let clientData;
+  let clientData: unknown;
   try {
     clientData = JSON.parse(bytes.toString('utf8'));
   } catch {
     throw authError('clientDataJSON is not valid JSON', 'MALFORMED_RESPONSE');
   }
   if (clientData === null || typeof clientData !== 'object' || Array.isArray(clientData)
-    || typeof clientData.type !== 'string' || typeof clientData.challenge !== 'string' || typeof clientData.origin !== 'string') {
+    || !('type' in clientData) || typeof clientData.type !== 'string' || !('challenge' in clientData) || typeof clientData.challenge !== 'string' || !('origin' in clientData) || typeof clientData.origin !== 'string') {
     throw authError('clientDataJSON does not contain the required fields', 'MALFORMED_RESPONSE');
   }
   return Object.freeze({ type: clientData.type, challenge: clientData.challenge, origin: clientData.origin });
 }
 
-function parseAuthenticatorData(value, rpId, { registration = false, requireUserVerification = false } = {}) {
+function parseAuthenticatorData(value: unknown, rpId: string, { registration = false, requireUserVerification = false } = {}) {
   const bytes = binaryValue(value, 'authenticatorData', { min: 37, max: 16 * 1024 });
   const expectedRpHash = createHash('sha256').update(rpId, 'utf8').digest();
   if (!timingSafeEqual(bytes.subarray(0, 32), expectedRpHash)) {
@@ -153,13 +161,13 @@ function parseAuthenticatorData(value, rpId, { registration = false, requireUser
   });
 }
 
-function compareStrings(left, right) {
+function compareStrings(left: string, right: string) {
   const leftBuffer = Buffer.from(left, 'utf8');
   const rightBuffer = Buffer.from(right, 'utf8');
   return leftBuffer.length === rightBuffer.length && timingSafeEqual(leftBuffer, rightBuffer);
 }
 
-function metadata(record) {
+function metadata(record: WebAuthnCredential) {
   return Object.freeze({
     credentialId: record.credentialId,
     type: 'webauthn',
@@ -174,7 +182,7 @@ function metadata(record) {
   });
 }
 
-function auditEvent(audit, event) {
+function auditEvent(audit: NonNullable<WebAuthnOptions['audit']>, event: Record<string, string | number | boolean>) {
   try {
     audit(Object.freeze({ ...event }));
   } catch {
@@ -182,7 +190,7 @@ function auditEvent(audit, event) {
   }
 }
 
-function normalizeLabel(label) {
+function normalizeLabel(label: unknown) {
   if (label === undefined) return 'passkey';
   if (typeof label !== 'string' || label.length < 1 || label.length > 64 || /[\r\n]/u.test(label)) {
     throw authError('label is invalid', 'INVALID_LABEL');
@@ -190,11 +198,11 @@ function normalizeLabel(label) {
   return label;
 }
 
-function verifierSucceeded(result) {
-  return result === true || (result !== null && typeof result === 'object' && result.valid === true);
+function verifierSucceeded(result: unknown) {
+  return result === true || (result !== null && typeof result === 'object' && 'valid' in result && result.valid === true);
 }
 
-function isPublicKeyMaterial(value) {
+function isPublicKeyMaterial(value: unknown): value is Buffer | object {
   if (Buffer.isBuffer(value)) return value.length > 0 && value.length <= 16 * 1024;
   if (value === null || typeof value !== 'object' || Array.isArray(value)) return false;
   // COSE public keys do not contain these private-key fields. Refuse them at
@@ -220,9 +228,9 @@ export function createWebAuthnManager({
   rateLimiter = () => true,
   authorizeRevocation = () => false,
   audit = () => {},
-  challenges = new Map(),
-  credentials = new Map(),
-} = {}) {
+  challenges = new Map<string, WebAuthnChallenge>(),
+  credentials = new Map<string, WebAuthnCredential>(),
+}: WebAuthnOptions = {}) {
   if (!Array.isArray(expectedOrigins) || expectedOrigins.length === 0 || expectedOrigins.length > 8) {
     throw authError('expectedOrigins must contain one to eight origins', 'INVALID_ORIGIN');
   }
@@ -243,6 +251,7 @@ export function createWebAuthnManager({
   if (typeof credentialVerifier !== 'function') {
     throw authError('credentialVerifier is required', 'INVALID_VERIFIER');
   }
+  const verifier = credentialVerifier;
   if (typeof authorizeRevocation !== 'function') throw authError('authorizeRevocation must be a function', 'INVALID_AUTHORIZER');
   if (challenges === null || typeof challenges.get !== 'function' || typeof challenges.set !== 'function' || typeof challenges.delete !== 'function') {
     throw authError('challenges must implement get, set, and delete', 'INVALID_CHALLENGE_STORE');
@@ -251,7 +260,7 @@ export function createWebAuthnManager({
     throw authError('credentials must implement get, set, and delete', 'INVALID_CREDENTIAL_STORE');
   }
 
-  function issueChallenge(type, identity, allowCredentials = []) {
+  function issueChallenge(type: string, identity: { tenantId: string; userId: string }, allowCredentials: string[] = []) {
     const challenge = base64Url(assertRandomBytes(randomBytesFn, 32));
     const now = readTime(clock);
     const record = Object.freeze({
@@ -267,7 +276,7 @@ export function createWebAuthnManager({
     return record;
   }
 
-  function consumeChallenge(challenge, type, tenantId, userId, now) {
+  function consumeChallenge(challenge: unknown, type: string, tenantId: string, userId: string, now: number) {
     if (typeof challenge !== 'string' || !CHALLENGE_PATTERN.test(challenge)) return null;
     const record = challenges.get(challenge);
     challenges.delete(challenge);
@@ -277,7 +286,7 @@ export function createWebAuthnManager({
     return record;
   }
 
-  function verifyClientData(clientDataJSON, expectedType, challenge) {
+  function verifyClientData(clientDataJSON: unknown, expectedType: string, challenge: string) {
     const clientData = parseClientData(clientDataJSON);
     if (clientData.type !== expectedType || !compareStrings(clientData.challenge, challenge) || !origins.has(assertOrigin(clientData.origin))) {
       throw authError('clientData type, challenge, or origin does not match the ceremony', 'CLIENT_DATA_MISMATCH');
@@ -285,16 +294,17 @@ export function createWebAuthnManager({
     return clientData;
   }
 
-  function callVerifier(payload) {
+  function callVerifier(payload: WebAuthnVerifierPayload) {
     try {
-      return verifierSucceeded(credentialVerifier(Object.freeze(payload)));
+      return verifierSucceeded(verifier(Object.freeze(payload)));
     } catch {
       return false;
     }
   }
 
-  function beginRegistration({ tenantId, userId, actorId = userId, role = 'user', displayName = userId } = {}) {
+  function beginRegistration({ tenantId, userId, actorId = userId, role = 'user', displayName = userId }: WebAuthnIdentity = {}) {
     const identity = assertUserActor({ tenantId, userId, actorId, role });
+    assertIdentityPart(userId, 'userId');
     if (Buffer.byteLength(userId, 'utf8') > 64) throw authError('userId is too long for a WebAuthn user handle', 'INVALID_IDENTITY');
     if (typeof displayName !== 'string' || displayName.length < 1 || displayName.length > 64 || /[\r\n]/u.test(displayName)) {
       throw authError('displayName is invalid', 'INVALID_IDENTITY');
@@ -322,7 +332,7 @@ export function createWebAuthnManager({
     attestationObject,
     label,
     transports = [],
-  } = {}) {
+  }: WebAuthnRequest = {}) {
     assertIdentityPart(tenantId, 'tenantId');
     assertIdentityPart(userId, 'userId');
     const now = readTime(clock);
@@ -353,7 +363,7 @@ export function createWebAuthnManager({
       if (!Array.isArray(transports) || transports.some((value) => typeof value !== 'string' || !['usb', 'nfc', 'ble', 'internal', 'hybrid'].includes(value))) {
         return Object.freeze({ registered: false, code: 'TRANSPORTS_INVALID' });
       }
-      const record = {
+      const record: WebAuthnCredential = {
         credentialId: id,
         tenantId,
         userId,
@@ -369,14 +379,14 @@ export function createWebAuthnManager({
       auditEvent(audit, { eventType: 'auth.webauthn.enrolled', tenantId, userId, credentialId: id, occurredAt: now });
       return Object.freeze({ registered: true, credential: metadata(record) });
     } catch (error) {
-      if (error?.code === 'INVALID_ORIGIN' || error?.code === 'RP_ID_MISMATCH' || error?.code === 'CLIENT_DATA_MISMATCH' || error?.code === 'MALFORMED_RESPONSE' || error?.code === 'USER_PRESENCE_REQUIRED' || error?.code === 'ATTESTATION_REQUIRED') {
+      if (error !== null && typeof error === 'object' && 'code' in error && typeof error.code === 'string' && ['INVALID_ORIGIN', 'RP_ID_MISMATCH', 'CLIENT_DATA_MISMATCH', 'MALFORMED_RESPONSE', 'USER_PRESENCE_REQUIRED', 'ATTESTATION_REQUIRED'].includes(error.code)) {
         return Object.freeze({ registered: false, code: error.code });
       }
       throw error;
     }
   }
 
-  function beginAssertion({ tenantId, userId, actorId = userId, role = 'user', allowCredentials = [] } = {}) {
+  function beginAssertion({ tenantId, userId, actorId = userId, role = 'user', allowCredentials = [] }: WebAuthnIdentity = {}) {
     const identity = assertUserActor({ tenantId, userId, actorId, role });
     if (!Array.isArray(allowCredentials) || allowCredentials.length > 64) {
       throw authError('allowCredentials is invalid', 'CREDENTIAL_INVALID');
@@ -406,7 +416,7 @@ export function createWebAuthnManager({
     clientDataJSON,
     authenticatorData,
     signature,
-  } = {}) {
+  }: WebAuthnRequest = {}) {
     assertIdentityPart(tenantId, 'tenantId');
     assertIdentityPart(userId, 'userId');
     const now = readTime(clock);
@@ -459,20 +469,20 @@ export function createWebAuthnManager({
       auditEvent(audit, { eventType: 'auth.webauthn.verified', tenantId, userId, credentialId: id, occurredAt: now });
       return Object.freeze({ verified: true, credential: metadata(credential) });
     } catch (error) {
-      if (error?.code === 'INVALID_ORIGIN' || error?.code === 'RP_ID_MISMATCH' || error?.code === 'CLIENT_DATA_MISMATCH' || error?.code === 'MALFORMED_RESPONSE' || error?.code === 'USER_PRESENCE_REQUIRED' || error?.code === 'USER_VERIFICATION_REQUIRED') {
+      if (error !== null && typeof error === 'object' && 'code' in error && typeof error.code === 'string' && ['INVALID_ORIGIN', 'RP_ID_MISMATCH', 'CLIENT_DATA_MISMATCH', 'MALFORMED_RESPONSE', 'USER_PRESENCE_REQUIRED', 'USER_VERIFICATION_REQUIRED'].includes(error.code)) {
         return Object.freeze({ verified: false, code: error.code });
       }
       throw error;
     }
   }
 
-  function getCredential(credentialId) {
+  function getCredential(credentialId: unknown) {
     const id = assertCredentialId(credentialId);
     const record = credentials.get(id);
     return record === undefined ? null : metadata(record);
   }
 
-  function listCredentialMetadata({ tenantId, userId } = {}) {
+  function listCredentialMetadata({ tenantId, userId }: WebAuthnIdentity = {}) {
     assertIdentityPart(tenantId, 'tenantId');
     assertIdentityPart(userId, 'userId');
     return Object.freeze([...credentials.values()]
@@ -480,10 +490,11 @@ export function createWebAuthnManager({
       .map(metadata));
   }
 
-  function revokeCredential({ tenantId, userId, credentialId, actorId = userId, actorRole = 'user', reason = 'user_request' } = {}) {
+  function revokeCredential({ tenantId, userId, credentialId, actorId = userId, actorRole = 'user', reason = 'user_request' }: WebAuthnRequest = {}) {
     assertIdentityPart(tenantId, 'tenantId');
     assertIdentityPart(userId, 'userId');
     assertIdentityPart(actorId, 'actorId');
+    const id = assertCredentialId(credentialId);
     let authorized = actorId === userId && actorRole === 'user';
     if (!authorized && actorId !== userId) {
       try {
@@ -493,7 +504,6 @@ export function createWebAuthnManager({
       }
     }
     if (authorized !== true) throw authError('credential revocation is not authorized', 'FACTOR_SCOPE_VIOLATION');
-    const id = assertCredentialId(credentialId);
     const record = credentials.get(id);
     if (record === undefined || record.tenantId !== tenantId || record.userId !== userId) return Object.freeze({ revoked: false, code: 'CREDENTIAL_NOT_FOUND' });
     if (typeof reason !== 'string' || reason.length < 1 || reason.length > 128 || /[\r\n]/u.test(reason)) throw authError('reason is invalid', 'INVALID_REASON');
@@ -517,7 +527,7 @@ export function createWebAuthnManager({
   });
 }
 
-export function createAuthenticatorData({ rpId, flags = 0x41, signCount = 0, attestedCredentialData = Buffer.alloc(16 + 2 + 16) } = {}) {
+export function createAuthenticatorData({ rpId, flags = 0x41, signCount = 0, attestedCredentialData = Buffer.alloc(16 + 2 + 16) }: { rpId?: string; flags?: number; signCount?: number; attestedCredentialData?: Uint8Array } = {}) {
   const canonicalRpId = assertRpId(rpId);
   if (!Number.isSafeInteger(signCount) || signCount < 0 || signCount > 0xffffffff) throw authError('signCount is invalid', 'INVALID_COUNTER');
   const tail = Buffer.isBuffer(attestedCredentialData) ? attestedCredentialData : Buffer.from(attestedCredentialData);

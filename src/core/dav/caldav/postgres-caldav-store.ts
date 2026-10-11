@@ -11,6 +11,7 @@ import type {
   PostgresStore,
   PostgresStoreEnabled,
   SecretResolver,
+  PostgresStoreOptions,
 } from '../../../integrations/types.ts';
 import {
   CalDavError,
@@ -27,8 +28,28 @@ import {
   validateICalendar,
 } from './caldav-contract.ts';
 
-type DavValue = any;
-type DavRecord = Record<string, DavValue>;
+type DavValue = unknown;
+type DavRecord = Record<string, unknown>;
+type CalendarActor = { tenantId: string; userId: string; role: 'user'; domain: string | undefined };
+interface CollectionRow extends Record<string, unknown> {
+  tenant_id: string; owner_user_id: string; collection_id: string; href: string;
+  display_name: string; description: string; timezone: string; color: string | null;
+  acl_delegate_user_id: string | null; acl_permissions: string[] | null; revision: number | string;
+  created_at: Date | string; updated_at: Date | string;
+}
+interface ObjectRow extends Record<string, unknown> {
+  tenant_id: string; owner_user_id: string; collection_id: string; object_id: string;
+  uid: string; etag: string; ical_data: string; created_at: Date | string; updated_at: Date | string;
+}
+interface ChangeRow extends Record<string, unknown> { object_id: string; deleted: boolean }
+type CalendarMetadata = ReturnType<typeof validateICalendar>;
+type CollectionView = ReturnType<typeof publicCollectionRow>;
+type ObjectView = ReturnType<typeof publicObjectRow>;
+interface ObjectList { calendarId: string; objects: readonly ObjectView[]; deletedObjectIds: readonly string[]; syncToken: string }
+interface DeletionResult { deleted: boolean; calendarId: string; objectId?: string; previousEtag?: string; syncToken?: string }
+interface EtagResult { calendarId: string; etag: string; actor: string }
+function inputRecord(value: unknown): DavRecord { return value !== null && typeof value === 'object' ? Object.fromEntries(Object.entries(value)) : {}; }
+function requiredRow<T>(row: T | undefined): T { if (row === undefined) throw new CalDavError('database did not return a row', 'DATABASE_ROW_MISSING', 500); return row; }
 
 interface PostgresCalDavStoreOptions {
   readonly config?: unknown;
@@ -37,7 +58,7 @@ interface PostgresCalDavStoreOptions {
   /** Injectable for tests: overrides the `pg` Pool constructor used by the underlying PostgreSQL store. */
   readonly PoolClass?: PostgresPoolConstructor;
   /** Injectable for tests: overrides how the underlying PostgreSQL store is built. */
-  readonly createStore?: (options: DavRecord) => PostgresStore;
+  readonly createStore?: (options: PostgresStoreOptions) => PostgresStore;
 }
 
 interface DisabledPostgresCalDavStore {
@@ -50,41 +71,41 @@ interface EnabledPostgresCalDavStore {
   readonly enabled: true;
   readonly healthCheck: () => Promise<{ status: 'ok' }>;
   readonly close: () => Promise<void>;
-  readonly createCalendarCollection: (actor: DavValue, options?: DavRecord) => Promise<Readonly<DavRecord>>;
-  readonly listCalendarCollections: (actor: DavValue) => Promise<readonly Readonly<DavRecord>[]>;
-  readonly getCalendarCollection: (actor: DavValue, calendarId: DavValue) => Promise<Readonly<DavRecord>>;
-  readonly setCalendarAcl: (actor: DavValue, options?: DavRecord) => Promise<Readonly<DavRecord>>;
-  readonly revokeCalendarAcl: (actor: DavValue, options?: DavRecord) => Promise<Readonly<DavRecord>>;
-  readonly getCalendarEtag: (actor: DavValue, calendarId: DavValue) => Promise<Readonly<DavRecord>>;
-  readonly createCalendarObject: (actor: DavValue, options?: DavRecord) => Promise<Readonly<DavRecord>>;
-  readonly getCalendarObject: (actor: DavValue, options?: DavRecord) => Promise<Readonly<DavRecord>>;
-  readonly updateCalendarObject: (actor: DavValue, options?: DavRecord) => Promise<Readonly<DavRecord>>;
-  readonly deleteCalendarObject: (actor: DavValue, options?: DavRecord) => Promise<Readonly<DavRecord>>;
-  readonly listCalendarObjects: (actor: DavValue, options?: DavRecord) => Promise<Readonly<DavRecord>>;
-  readonly deleteCalendarCollection: (actor: DavValue, options?: DavRecord) => Promise<Readonly<DavRecord>>;
+  readonly createCalendarCollection: (actor: DavValue, options?: DavRecord) => Promise<Readonly<CollectionView>>;
+  readonly listCalendarCollections: (actor: DavValue) => Promise<readonly Readonly<CollectionView>[]>;
+  readonly getCalendarCollection: (actor: DavValue, calendarId: DavValue) => Promise<Readonly<CollectionView>>;
+  readonly setCalendarAcl: (actor: DavValue, options?: DavRecord) => Promise<Readonly<CollectionView>>;
+  readonly revokeCalendarAcl: (actor: DavValue, options?: DavRecord) => Promise<Readonly<CollectionView>>;
+  readonly getCalendarEtag: (actor: DavValue, calendarId: DavValue) => Promise<Readonly<EtagResult>>;
+  readonly createCalendarObject: (actor: DavValue, options?: DavRecord) => Promise<Readonly<ObjectView>>;
+  readonly getCalendarObject: (actor: DavValue, options?: DavRecord) => Promise<Readonly<ObjectView>>;
+  readonly updateCalendarObject: (actor: DavValue, options?: DavRecord) => Promise<Readonly<ObjectView>>;
+  readonly deleteCalendarObject: (actor: DavValue, options?: DavRecord) => Promise<Readonly<DeletionResult>>;
+  readonly listCalendarObjects: (actor: DavValue, options?: DavRecord) => Promise<Readonly<ObjectList>>;
+  readonly deleteCalendarCollection: (actor: DavValue, options?: DavRecord) => Promise<Readonly<DeletionResult>>;
 }
 
 export type PostgresCalDavStore = DisabledPostgresCalDavStore | EnabledPostgresCalDavStore;
 
-function toIso(value: DavValue): string {
+function toIso(value: Date | string): string {
   return value instanceof Date ? value.toISOString() : new Date(value).toISOString();
 }
 
-function permissionsForRow(row: DavRecord, actorUserId: string): string[] {
+function permissionsForRow(row: CollectionRow, actorUserId: string): string[] {
   if (actorUserId === row.owner_user_id) return ['read', 'write'];
   if (row.acl_delegate_user_id === actorUserId) return [...(row.acl_permissions ?? [])];
   return [];
 }
 
-function aclForRow(row: DavRecord, actorUserId: string): DavRecord[] {
+function aclForRow(row: CollectionRow, actorUserId: string): DavRecord[] {
   if (actorUserId === row.owner_user_id) {
-    return row.acl_delegate_user_id ? [{ delegateUserId: row.acl_delegate_user_id, permissions: [...row.acl_permissions] }] : [];
+    return row.acl_delegate_user_id ? [{ delegateUserId: row.acl_delegate_user_id, permissions: [...(row.acl_permissions ?? [])] }] : [];
   }
-  if (row.acl_delegate_user_id === actorUserId) return [{ delegateUserId: row.owner_user_id, permissions: [...row.acl_permissions] }];
+  if (row.acl_delegate_user_id === actorUserId) return [{ delegateUserId: row.owner_user_id, permissions: [...(row.acl_permissions ?? [])] }];
   return [];
 }
 
-function publicCollectionRow(row: DavRecord, actor: DavRecord): Readonly<DavRecord> {
+function publicCollectionRow(row: CollectionRow, actor: CalendarActor) {
   return Object.freeze({
     calendarId: canonicalCalendarKey(row.owner_user_id, row.collection_id),
     collectionId: row.collection_id,
@@ -103,7 +124,7 @@ function publicCollectionRow(row: DavRecord, actor: DavRecord): Readonly<DavReco
   });
 }
 
-function publicObjectRow(collectionHref: string, objectRow: DavRecord, metadata: DavRecord): Readonly<DavRecord> {
+function publicObjectRow(collectionHref: string, objectRow: ObjectRow, metadata: CalendarMetadata) {
   return Object.freeze({
     href: `${collectionHref}${encodeURIComponent(objectRow.object_id)}`,
     calendarId: canonicalCalendarKey(objectRow.owner_user_id, objectRow.collection_id),
@@ -163,7 +184,7 @@ export function createPostgresCalDavStore({
 }: PostgresCalDavStoreOptions = {}): PostgresCalDavStore {
   const store = createStore({
     config,
-    resolveSecret,
+    ...(resolveSecret === undefined ? {} : { resolveSecret }),
     logger,
     ...(PoolClass === undefined ? {} : { PoolClass }),
   });
@@ -177,14 +198,15 @@ export function createPostgresCalDavStore({
   }
   const enabledStore: PostgresStoreEnabled = store;
 
-  function normalizeCalDavActor(actorInput: DavValue): DavRecord {
-    const tenantId = actorInput !== null && typeof actorInput === 'object' ? actorInput.tenantId : undefined;
+  function normalizeCalDavActor(actorInput: DavValue): CalendarActor {
+    const record = inputRecord(actorInput);
+    const tenantId = typeof record.tenantId === 'string' ? record.tenantId : '';
     const normalized = normalizeActor(actorInput, tenantId);
-    const domain = typeof actorInput?.domain === 'string' ? actorInput.domain : undefined;
+    const domain = typeof record.domain === 'string' ? record.domain : undefined;
     return { ...normalized, domain };
   }
 
-  function buildTenantContext(actor: DavRecord): DavValue {
+  function buildTenantContext(actor: CalendarActor) {
     try {
       return assertTenantContext({ tenantId: actor.tenantId, domain: actor.domain, actorId: actor.userId, role: actor.role });
     } catch {
@@ -192,24 +214,24 @@ export function createPostgresCalDavStore({
     }
   }
 
-  async function resolveCollectionRow(client: PostgresClientLike, actor: DavRecord, requestedCalendarId: DavValue, { forUpdate = false, requirePermission = 'read' }: DavRecord = {}): Promise<DavRecord> {
+  async function resolveCollectionRow(client: PostgresClientLike, actor: CalendarActor, requestedCalendarId: DavValue, { forUpdate = false, requirePermission = 'read' }: { forUpdate?: boolean; requirePermission?: string } = {}): Promise<CollectionRow> {
     const { ownerUserId, collectionId } = splitCalendarId(requestedCalendarId);
-    let row: DavRecord | undefined;
+    let row: CollectionRow | undefined;
     if (ownerUserId !== null) {
-      const result = await client.query<DavRecord>(
+      const result = await client.query<CollectionRow>(
         `SELECT * FROM dav_calendar_collections WHERE tenant_id = $1 AND owner_user_id = $2 AND collection_id = $3${forUpdate ? ' FOR UPDATE' : ''}`,
         [actor.tenantId, ownerUserId, collectionId],
       );
       row = result.rows[0];
     } else {
-      const result = await client.query<DavRecord>(
+      const result = await client.query<CollectionRow>(
         'SELECT * FROM dav_calendar_collections WHERE tenant_id = $1 AND collection_id = $2 AND (owner_user_id = $3 OR acl_delegate_user_id = $3)',
         [actor.tenantId, collectionId, actor.userId],
       );
       if (result.rows.length > 1) throw new CalDavError('calendarId is ambiguous; use ownerUserId/calendarId', 'AMBIGUOUS_CALENDAR_ID', 409);
       row = result.rows[0];
       if (row && forUpdate) {
-        const locked = await client.query<DavRecord>(
+        const locked = await client.query<CollectionRow>(
           'SELECT * FROM dav_calendar_collections WHERE tenant_id = $1 AND owner_user_id = $2 AND collection_id = $3 FOR UPDATE',
           [actor.tenantId, row.owner_user_id, row.collection_id],
         );
@@ -223,11 +245,11 @@ export function createPostgresCalDavStore({
   }
 
   async function bumpRevision(client: PostgresClientLike, tenantId: string, ownerUserId: string, collectionId: string, { objectId, uid = null, etag = null, deleted }: DavRecord): Promise<number> {
-    const updated = await client.query<DavRecord>(
+    const updated = await client.query<{ revision: number | string }>(
       'UPDATE dav_calendar_collections SET revision = revision + 1, updated_at = now() WHERE tenant_id = $1 AND owner_user_id = $2 AND collection_id = $3 RETURNING revision',
       [tenantId, ownerUserId, collectionId],
     );
-    const revision = Number(updated.rows[0].revision);
+    const revision = Number(requiredRow(updated.rows[0]).revision);
     await client.query(
       'INSERT INTO dav_calendar_changes (tenant_id, owner_user_id, collection_id, revision, object_id, uid, etag, deleted) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)',
       [tenantId, ownerUserId, collectionId, revision, objectId, uid, etag, deleted],
@@ -237,12 +259,12 @@ export function createPostgresCalDavStore({
 
   async function createCalendarCollection(actorInput: DavValue, {
     collectionId = 'default',
-    ownerUserId = actorInput?.userId ?? actorInput?.actorId,
+    ownerUserId = inputRecord(actorInput).userId ?? inputRecord(actorInput).actorId,
     displayName = collectionId,
     description = '',
     timezone = 'UTC',
     color = null,
-  }: DavRecord = {}): Promise<Readonly<DavRecord>> {
+  }: DavRecord = {}): Promise<Readonly<CollectionView>> {
     const actor = normalizeCalDavActor(actorInput);
     const owner = canonicalUserId(ownerUserId, 'ownerUserId');
     if (owner !== actor.userId) throw new CalDavError('an actor can create only its own calendar collection', 'ACL_DENIED', 403);
@@ -256,21 +278,21 @@ export function createPostgresCalDavStore({
     return enabledStore.withTenantTransaction(context, async (client) => {
       const existing = await client.query('SELECT 1 FROM dav_calendar_collections WHERE tenant_id = $1 AND owner_user_id = $2 AND collection_id = $3', [actor.tenantId, owner, slug]);
       if ((existing.rowCount ?? 0) > 0) throw new CalDavError('calendar collection already exists', 'CALENDAR_EXISTS', 409);
-      const inserted = await client.query<DavRecord>(
+      const inserted = await client.query<CollectionRow>(
         `INSERT INTO dav_calendar_collections (tenant_id, owner_user_id, collection_id, display_name, description, timezone, color, href)
          VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
          RETURNING *`,
         [actor.tenantId, owner, slug, displayName.trim(), description, timezone, color === null ? null : String(color).toUpperCase(), href],
       );
-      return publicCollectionRow(inserted.rows[0], actor);
+      return publicCollectionRow(requiredRow(inserted.rows[0]), actor);
     });
   }
 
-  async function listCalendarCollections(actorInput: DavValue): Promise<readonly Readonly<DavRecord>[]> {
+  async function listCalendarCollections(actorInput: DavValue): Promise<readonly Readonly<CollectionView>[]> {
     const actor = normalizeCalDavActor(actorInput);
     const context = buildTenantContext(actor);
     return enabledStore.withTenantTransaction(context, async (client) => {
-      const result = await client.query<DavRecord>(
+      const result = await client.query<CollectionRow>(
         'SELECT * FROM dav_calendar_collections WHERE tenant_id = $1 AND (owner_user_id = $2 OR acl_delegate_user_id = $2) ORDER BY owner_user_id, collection_id',
         [actor.tenantId, actor.userId],
       );
@@ -278,7 +300,7 @@ export function createPostgresCalDavStore({
     });
   }
 
-  async function getCalendarCollection(actorInput: DavValue, requestedCalendarId: DavValue): Promise<Readonly<DavRecord>> {
+  async function getCalendarCollection(actorInput: DavValue, requestedCalendarId: DavValue): Promise<Readonly<CollectionView>> {
     const actor = normalizeCalDavActor(actorInput);
     const context = buildTenantContext(actor);
     return enabledStore.withTenantTransaction(context, async (client) => {
@@ -287,7 +309,7 @@ export function createPostgresCalDavStore({
     });
   }
 
-  async function setCalendarAcl(actorInput: DavValue, { calendarId, delegateUserId, permissions = ['read'] }: DavRecord = {}): Promise<Readonly<DavRecord>> {
+  async function setCalendarAcl(actorInput: DavValue, { calendarId, delegateUserId, permissions = ['read'] }: DavRecord = {}): Promise<Readonly<CollectionView>> {
     const actor = normalizeCalDavActor(actorInput);
     const context = buildTenantContext(actor);
     return enabledStore.withTenantTransaction(context, async (client) => {
@@ -295,34 +317,37 @@ export function createPostgresCalDavStore({
       if (actor.userId !== row.owner_user_id) throw new CalDavError('only the calendar owner may change its ACL', 'ACL_OWNER_REQUIRED', 403);
       const delegate = canonicalUserId(delegateUserId, 'delegateUserId');
       if (delegate === row.owner_user_id) throw new CalDavError('a calendar cannot delegate to itself', 'INVALID_ACL', 422);
-      if (!Array.isArray(permissions) || permissions.length === 0 || permissions.some((permission: DavValue) => !calDavContract.aclPermissions.includes(permission))) {
+      if (!Array.isArray(permissions) || permissions.length === 0 || permissions.some((permission: DavValue) => typeof permission !== 'string' || !calDavContract.aclPermissions.includes(permission))) {
         throw new CalDavError('permissions must contain read and/or write', 'INVALID_ACL', 422);
       }
-      const unique = [...new Set(permissions)] as string[];
+      const unique = [...new Set(permissions.map((permission: unknown) => {
+        if (typeof permission !== 'string') throw new CalDavError('invalid permission', 'INVALID_ACL', 422);
+        return permission;
+      }))];
       if (unique.includes('write') && !unique.includes('read')) unique.unshift('read');
-      const updated = await client.query<DavRecord>(
+      const updated = await client.query<CollectionRow>(
         'UPDATE dav_calendar_collections SET acl_delegate_user_id = $1, acl_permissions = $2, updated_at = now() WHERE tenant_id = $3 AND owner_user_id = $4 AND collection_id = $5 RETURNING *',
         [delegate, unique, actor.tenantId, row.owner_user_id, row.collection_id],
       );
-      return publicCollectionRow(updated.rows[0], actor);
+      return publicCollectionRow(requiredRow(updated.rows[0]), actor);
     });
   }
 
-  async function revokeCalendarAcl(actorInput: DavValue, { calendarId }: DavRecord = {}): Promise<Readonly<DavRecord>> {
+  async function revokeCalendarAcl(actorInput: DavValue, { calendarId }: DavRecord = {}): Promise<Readonly<CollectionView>> {
     const actor = normalizeCalDavActor(actorInput);
     const context = buildTenantContext(actor);
     return enabledStore.withTenantTransaction(context, async (client) => {
       const row = await resolveCollectionRow(client, actor, calendarId, { forUpdate: true });
       if (actor.userId !== row.owner_user_id) throw new CalDavError('only the calendar owner may change its ACL', 'ACL_OWNER_REQUIRED', 403);
-      const updated = await client.query<DavRecord>(
+      const updated = await client.query<CollectionRow>(
         'UPDATE dav_calendar_collections SET acl_delegate_user_id = NULL, acl_permissions = NULL, updated_at = now() WHERE tenant_id = $1 AND owner_user_id = $2 AND collection_id = $3 RETURNING *',
         [actor.tenantId, row.owner_user_id, row.collection_id],
       );
-      return publicCollectionRow(updated.rows[0], actor);
+      return publicCollectionRow(requiredRow(updated.rows[0]), actor);
     });
   }
 
-  async function getCalendarEtag(actorInput: DavValue, requestedCalendarId: DavValue): Promise<Readonly<DavRecord>> {
+  async function getCalendarEtag(actorInput: DavValue, requestedCalendarId: DavValue): Promise<Readonly<EtagResult>> {
     const actor = normalizeCalDavActor(actorInput);
     const context = buildTenantContext(actor);
     return enabledStore.withTenantTransaction(context, async (client) => {
@@ -335,7 +360,7 @@ export function createPostgresCalDavStore({
     });
   }
 
-  async function createCalendarObject(actorInput: DavValue, { calendarId, objectId, ical, ifNoneMatch }: DavRecord = {}): Promise<Readonly<DavRecord>> {
+  async function createCalendarObject(actorInput: DavValue, { calendarId, objectId, ical, ifNoneMatch }: DavRecord = {}): Promise<Readonly<ObjectView>> {
     const actor = normalizeCalDavActor(actorInput);
     const context = buildTenantContext(actor);
     return enabledStore.withTenantTransaction(context, async (client) => {
@@ -353,22 +378,22 @@ export function createPostgresCalDavStore({
       const metadata = validateICalendar(ical);
       const calendarKey = canonicalCalendarKey(row.owner_user_id, row.collection_id);
       const etag = calculateEtag({ tenantId: actor.tenantId, calendarKey, objectId: id, canonicalText: metadata.canonicalText });
-      const inserted = await client.query<DavRecord>(
+      const inserted = await client.query<ObjectRow>(
         'INSERT INTO dav_calendar_objects (tenant_id, owner_user_id, collection_id, object_id, uid, etag, ical_data) VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *',
         [actor.tenantId, row.owner_user_id, row.collection_id, id, metadata.uid, etag, metadata.canonicalText],
       );
       await bumpRevision(client, actor.tenantId, row.owner_user_id, row.collection_id, { objectId: id, uid: metadata.uid, etag, deleted: false });
-      return publicObjectRow(row.href, inserted.rows[0], metadata);
+      return publicObjectRow(row.href, requiredRow(inserted.rows[0]), metadata);
     });
   }
 
-  async function getCalendarObject(actorInput: DavValue, { calendarId, objectId }: DavRecord = {}): Promise<Readonly<DavRecord>> {
+  async function getCalendarObject(actorInput: DavValue, { calendarId, objectId }: DavRecord = {}): Promise<Readonly<ObjectView>> {
     const actor = normalizeCalDavActor(actorInput);
     const context = buildTenantContext(actor);
     return enabledStore.withTenantTransaction(context, async (client) => {
       const row = await resolveCollectionRow(client, actor, calendarId);
       const id = canonicalCalendarSlug(objectId, 'objectId');
-      const result = await client.query<DavRecord>(
+      const result = await client.query<ObjectRow>(
         'SELECT * FROM dav_calendar_objects WHERE tenant_id = $1 AND owner_user_id = $2 AND collection_id = $3 AND object_id = $4',
         [actor.tenantId, row.owner_user_id, row.collection_id, id],
       );
@@ -378,13 +403,13 @@ export function createPostgresCalDavStore({
     });
   }
 
-  async function updateCalendarObject(actorInput: DavValue, { calendarId, objectId, ical, ifMatch }: DavRecord = {}): Promise<Readonly<DavRecord>> {
+  async function updateCalendarObject(actorInput: DavValue, { calendarId, objectId, ical, ifMatch }: DavRecord = {}): Promise<Readonly<ObjectView>> {
     const actor = normalizeCalDavActor(actorInput);
     const context = buildTenantContext(actor);
     return enabledStore.withTenantTransaction(context, async (client) => {
       const row = await resolveCollectionRow(client, actor, calendarId, { forUpdate: true, requirePermission: 'write' });
       const id = canonicalCalendarSlug(objectId, 'objectId');
-      const existingResult = await client.query<DavRecord>(
+      const existingResult = await client.query<ObjectRow>(
         'SELECT * FROM dav_calendar_objects WHERE tenant_id = $1 AND owner_user_id = $2 AND collection_id = $3 AND object_id = $4 FOR UPDATE',
         [actor.tenantId, row.owner_user_id, row.collection_id, id],
       );
@@ -396,22 +421,22 @@ export function createPostgresCalDavStore({
       if (metadata.uid !== existing.uid) throw new CalDavError('UID cannot change during an update', 'UID_IMMUTABLE', 409);
       const calendarKey = canonicalCalendarKey(row.owner_user_id, row.collection_id);
       const etag = calculateEtag({ tenantId: actor.tenantId, calendarKey, objectId: id, canonicalText: metadata.canonicalText });
-      const updated = await client.query<DavRecord>(
+      const updated = await client.query<ObjectRow>(
         'UPDATE dav_calendar_objects SET etag = $1, ical_data = $2, updated_at = now() WHERE tenant_id = $3 AND owner_user_id = $4 AND collection_id = $5 AND object_id = $6 RETURNING *',
         [etag, metadata.canonicalText, actor.tenantId, row.owner_user_id, row.collection_id, id],
       );
       await bumpRevision(client, actor.tenantId, row.owner_user_id, row.collection_id, { objectId: id, uid: metadata.uid, etag, deleted: false });
-      return publicObjectRow(row.href, updated.rows[0], metadata);
+      return publicObjectRow(row.href, requiredRow(updated.rows[0]), metadata);
     });
   }
 
-  async function deleteCalendarObject(actorInput: DavValue, { calendarId, objectId, ifMatch }: DavRecord = {}): Promise<Readonly<DavRecord>> {
+  async function deleteCalendarObject(actorInput: DavValue, { calendarId, objectId, ifMatch }: DavRecord = {}): Promise<Readonly<DeletionResult>> {
     const actor = normalizeCalDavActor(actorInput);
     const context = buildTenantContext(actor);
     return enabledStore.withTenantTransaction(context, async (client) => {
       const row = await resolveCollectionRow(client, actor, calendarId, { forUpdate: true, requirePermission: 'write' });
       const id = canonicalCalendarSlug(objectId, 'objectId');
-      const existingResult = await client.query<DavRecord>(
+      const existingResult = await client.query<ObjectRow>(
         'SELECT * FROM dav_calendar_objects WHERE tenant_id = $1 AND owner_user_id = $2 AND collection_id = $3 AND object_id = $4 FOR UPDATE',
         [actor.tenantId, row.owner_user_id, row.collection_id, id],
       );
@@ -434,7 +459,7 @@ export function createPostgresCalDavStore({
     });
   }
 
-  async function listCalendarObjects(actorInput: DavValue, { calendarId, syncToken }: DavRecord = {}): Promise<Readonly<DavRecord>> {
+  async function listCalendarObjects(actorInput: DavValue, { calendarId, syncToken }: DavRecord = {}): Promise<Readonly<ObjectList>> {
     const actor = normalizeCalDavActor(actorInput);
     const context = buildTenantContext(actor);
     return enabledStore.withTenantTransaction(context, async (client) => {
@@ -442,27 +467,27 @@ export function createPostgresCalDavStore({
       const currentRevision = Number(row.revision);
       const since = decodeToken(syncToken, { tenantId: actor.tenantId, ownerUserId: row.owner_user_id, collectionId: row.collection_id });
       if (since > currentRevision) throw new CalDavError('syncToken is from the future', 'INVALID_SYNC_TOKEN', 400);
-      const objects: DavRecord[] = [];
+      const objects: ObjectView[] = [];
       const deletedObjectIds: string[] = [];
       if (syncToken === undefined || syncToken === null) {
-        const result = await client.query<DavRecord>(
+        const result = await client.query<ObjectRow>(
           'SELECT * FROM dav_calendar_objects WHERE tenant_id = $1 AND owner_user_id = $2 AND collection_id = $3 ORDER BY object_id',
           [actor.tenantId, row.owner_user_id, row.collection_id],
         );
         for (const objectRow of result.rows) objects.push(publicObjectRow(row.href, objectRow, validateICalendar(objectRow.ical_data)));
       } else {
-        const changes = await client.query<DavRecord>(
+        const changes = await client.query<ChangeRow>(
           'SELECT * FROM dav_calendar_changes WHERE tenant_id = $1 AND owner_user_id = $2 AND collection_id = $3 AND revision > $4 ORDER BY revision',
           [actor.tenantId, row.owner_user_id, row.collection_id, since],
         );
-        const latestByObject = new Map<string, DavRecord>();
+        const latestByObject = new Map<string, ChangeRow>();
         for (const change of changes.rows) latestByObject.set(change.object_id, change);
         for (const [objectId, change] of latestByObject) {
           if (change.deleted) {
             deletedObjectIds.push(objectId);
             continue;
           }
-          const current = await client.query<DavRecord>(
+          const current = await client.query<ObjectRow>(
             'SELECT * FROM dav_calendar_objects WHERE tenant_id = $1 AND owner_user_id = $2 AND collection_id = $3 AND object_id = $4',
             [actor.tenantId, row.owner_user_id, row.collection_id, objectId],
           );
@@ -480,13 +505,13 @@ export function createPostgresCalDavStore({
     });
   }
 
-  async function deleteCalendarCollection(actorInput: DavValue, { calendarId, ifMatch }: DavRecord = {}): Promise<Readonly<DavRecord>> {
+  async function deleteCalendarCollection(actorInput: DavValue, { calendarId, ifMatch }: DavRecord = {}): Promise<Readonly<DeletionResult>> {
     const actor = normalizeCalDavActor(actorInput);
     const context = buildTenantContext(actor);
     return enabledStore.withTenantTransaction(context, async (client) => {
       const row = await resolveCollectionRow(client, actor, calendarId, { forUpdate: true });
       if (actor.userId !== row.owner_user_id) throw new CalDavError('only the calendar owner may delete a collection', 'ACL_OWNER_REQUIRED', 403);
-      const countResult = await client.query<DavRecord>(
+      const countResult = await client.query<{ count: number }>(
         'SELECT COUNT(*)::int AS count FROM dav_calendar_objects WHERE tenant_id = $1 AND owner_user_id = $2 AND collection_id = $3',
         [actor.tenantId, row.owner_user_id, row.collection_id],
       );

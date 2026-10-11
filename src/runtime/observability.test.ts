@@ -2,10 +2,8 @@
 // SPDX-FileCopyrightText: 2026 Sythos (https://www.sythos.net)
 // Author: Sythos (https://www.sythos.net)
 
-// @ts-nocheck
-
 import assert from 'node:assert/strict';
-import { request } from 'node:http';
+import { request, type IncomingHttpHeaders } from 'node:http';
 import { PassThrough } from 'node:stream';
 import test from 'node:test';
 
@@ -15,6 +13,14 @@ import {
   createMetrics,
 } from './metrics.js';
 import { createRuntimeServer, startServer, stopServer } from './server.js';
+import type { RuntimeServer, RuntimeServerOptions } from './server.js';
+
+interface HealthResponse {
+  status: string; version: string; build_digest: string;
+  request_id: string; correlation_id: string; dependency_status: string;
+  checks: {process: string; dependencies: Record<string, {status: string; latency_ms?: number}>};
+  patching: {state: string; reason: string};
+}
 
 function createStreamLogger() {
   const output = new PassThrough();
@@ -34,7 +40,7 @@ function createStreamLogger() {
   };
 }
 
-function readStream(stream) {
+function readStream(stream: PassThrough) {
   let result = '';
   let chunk;
   while ((chunk = stream.read()) !== null) {
@@ -43,7 +49,7 @@ function readStream(stream) {
   return result;
 }
 
-function makeRuntime(options = {}) {
+function makeRuntime(options: RuntimeServerOptions = {}) {
   const streams = createStreamLogger();
   const runtime = createRuntimeServer({
     config: {
@@ -60,9 +66,10 @@ function makeRuntime(options = {}) {
   return { runtime, ...streams };
 }
 
-function getResponse(runtime, path, method = 'GET', headers = {}) {
+function getResponse(runtime: RuntimeServer, path: string, method = 'GET', headers: Record<string, string> = {}) {
   const address = runtime.server.address();
-  return new Promise((resolve, reject) => {
+  assert.ok(address !== null && typeof address !== 'string');
+  return new Promise<{statusCode: number | undefined; headers: IncomingHttpHeaders; body: string; json: HealthResponse}>((resolve, reject) => {
     const handle = request(
       {
         host: address.address,
@@ -83,8 +90,8 @@ function getResponse(runtime, path, method = 'GET', headers = {}) {
             headers: response.headers,
             body,
             json: response.headers['content-type']?.startsWith('application/json')
-              ? JSON.parse(body)
-              : undefined,
+              ? JSON.parse(body) as HealthResponse
+              : {} as HealthResponse,
           });
         });
       },
@@ -96,7 +103,7 @@ function getResponse(runtime, path, method = 'GET', headers = {}) {
 
 test('structured logs use a stable schema and redact sensitive nested values', () => {
   const { logger, output } = createStreamLogger();
-  const circular = { safe: 'value' };
+  const circular: {safe: string; self?: unknown} = { safe: 'value' };
   circular.self = circular;
 
   logger.info('redaction_test', {
@@ -173,10 +180,12 @@ test('health responses preserve aliases and request correlation identifiers', as
 });
 
 test('readiness fails closed for enabled dependencies and ignores disabled ones', async () => {
+  const ldap = { status: 'starting' as const, endpoint: 'ldap.example.test' };
+  const postgres = { status: 'disabled' as const, password: 'fixture-password' };
   const { runtime } = makeRuntime({
     dependencies: {
-      ldap: { status: 'starting', endpoint: 'ldap.example.test' },
-      postgres: { status: 'disabled', password: 'fixture-password' },
+      ldap,
+      postgres,
     },
   });
   await startServer(runtime);
@@ -244,7 +253,7 @@ test('runtime publishes metrics without request content or credentials', async (
     await getResponse(runtime, '/health/live');
     const response = await getResponse(runtime, '/metrics');
     assert.equal(response.statusCode, 200);
-    assert.equal(response.headers['content-type'].startsWith('text/plain'), true);
+    assert.equal(response.headers['content-type']?.startsWith('text/plain'), true);
     assert.equal(response.body.includes('gulogulo_http_requests_total'), true);
     assert.equal(response.body.includes('password'), false);
     assert.equal(response.body.includes('token'), false);

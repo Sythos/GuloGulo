@@ -11,6 +11,7 @@ import { join } from 'node:path';
 import { createStandaloneAdapter } from './standalone-adapter.ts';
 import type { PlatformAdapter } from '../contract/platform-adapter.ts';
 import { createArchiveManifest, createUserBackupScope, sha256Hex } from '../../core/backup/backup-contract.ts';
+import { createSessionManager } from '../../web/security/session-manager.ts';
 
 /** An environment with no GULOGULO_CONFIG_FILE set: config.ts falls back to
  * its optional default mount, which does not exist on a test machine, so
@@ -26,7 +27,9 @@ test('createStandaloneAdapter satisfies the PlatformAdapter contract and identif
 
 test('loadConfig() delegates to src/runtime/config.ts and resolves disabled integrations by default', async () => {
   const adapter = createStandaloneAdapter({ environment: emptyEnvironment() });
-  const config = await adapter.loadConfig() as Record<string, any>;
+  const config = await adapter.loadConfig();
+  assert.ok(config.contract?.ldap);
+  assert.ok(config.contract.postgres);
   assert.equal(config.contract.ldap.enabled, false);
   assert.equal(config.contract.postgres.enabled, false);
 });
@@ -109,7 +112,8 @@ test('createIdentityClient() switches to the DB-backed client when identity.sour
 
 test('loadConfig() defaults identity.source to "ldap"', async () => {
   const adapter = createStandaloneAdapter({ environment: emptyEnvironment() });
-  const config = await adapter.loadConfig() as Record<string, any>;
+  const config = await adapter.loadConfig();
+  assert.ok(config.contract?.identity);
   assert.equal(config.contract.identity.source, 'ldap');
 });
 
@@ -130,7 +134,9 @@ test('createBackupStorage() honors an overridden contract.backup.path and really
   const adapter = createStandaloneAdapter({ environment: emptyEnvironment() });
   const tmp = await mkdtemp(join(tmpdir(), 'gulogulo-standalone-backup-'));
   t.after(() => rm(tmp, { recursive: true, force: true }));
-  const storage = await adapter.createBackupStorage!({ contract: { backup: { path: tmp } } } as any);
+  const loadedConfig = await adapter.loadConfig();
+  const config = { ...loadedConfig, contract: { ...loadedConfig.contract, backup: { path: tmp } } };
+  const storage = await adapter.createBackupStorage!(config);
   assert.equal(storage.basePath, tmp);
 
   const scope = createUserBackupScope({ session: { tenantId: 'acme', userId: 'alice', role: 'user' as const } });
@@ -147,9 +153,9 @@ test('createSessionStore() returns a working in-memory SessionStore', async () =
   const store = await adapter.createSessionStore();
   assert.equal(store.size, 0);
   assert.equal(store.get('missing-session'), undefined);
-  const session = { sessionId: 'fake' } as any;
-  store.set('fake', session);
-  assert.equal(store.get('fake'), session);
-  assert.equal(store.delete('fake'), true);
+  const session = createSessionManager().createSession({ tenantId: 'acme', domain: 'acme.example', userId: 'alice', role: 'user' });
+  store.set(session.sessionId, session);
+  assert.equal(store.get(session.sessionId), session);
+  assert.equal(store.delete(session.sessionId), true);
   assert.equal([...store.entries()].length, 0);
 });

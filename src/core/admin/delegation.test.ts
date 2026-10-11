@@ -2,7 +2,6 @@
 // SPDX-FileCopyrightText: 2026 Sythos (https://www.sythos.net)
 // Author: Sythos (https://www.sythos.net)
 
-// @ts-nocheck
 
 import assert from 'node:assert/strict';
 import test from 'node:test';
@@ -40,7 +39,7 @@ test('only one active delegate is allowed and expired delegation can be replaced
   store.create(owner, { ownerUserId: 'alice', delegateUserId: 'bob', expiresAt: '2026-08-23T10:00:00.000Z' });
   assert.throws(
     () => store.create(owner, { ownerUserId: 'alice', delegateUserId: 'carol' }),
-    (error) => error.code === 'ACTIVE_DELEGATE_EXISTS' && error.status === 409,
+    (error: unknown) => error instanceof Error && 'code' in error && error.code === 'ACTIVE_DELEGATE_EXISTS' && 'status' in error && error.status === 409,
   );
   current = new Date('2026-08-24T10:00:00.000Z');
   assert.equal(store.canAccess(bob, 'alice', 'read'), false);
@@ -53,7 +52,7 @@ test('master-forced delegation is explicit, visible, audited, and not user-revoc
   const store = createDelegationStore({ clock: () => new Date('2026-08-22T10:00:00.000Z') });
   assert.throws(
     () => store.create(master, { ownerUserId: 'alice', delegateUserId: 'bob' }),
-    (error) => error.code === 'FORCED_FLAG_REQUIRED',
+    (error: unknown) => error instanceof Error && 'code' in error && error.code === 'FORCED_FLAG_REQUIRED',
   );
   const record = store.create(master, {
     ownerUserId: 'alice',
@@ -64,9 +63,9 @@ test('master-forced delegation is explicit, visible, audited, and not user-revoc
   });
   assert.equal(record.forced, true);
   assert.equal(record.policySource, 'master_forced');
-  assert.throws(() => store.revoke(owner, 'alice', { reason: 'owner_attempt' }), (error) => error.code === 'FORCED_DELEGATION_LOCKED');
-  assert.throws(() => store.update(owner, 'alice', { delegateUserId: 'carol' }), (error) => error.code === 'FORCED_DELEGATION_LOCKED');
-  assert.throws(() => store.events(master), (error) => error.code === 'MASTER_LOG_ACCESS_DISABLED');
+  assert.throws(() => store.revoke(owner, 'alice', { reason: 'owner_attempt' }), (error: unknown) => error instanceof Error && 'code' in error && error.code === 'FORCED_DELEGATION_LOCKED');
+  assert.throws(() => store.update(owner, 'alice', { delegateUserId: 'carol' }), (error: unknown) => error instanceof Error && 'code' in error && error.code === 'FORCED_DELEGATION_LOCKED');
+  assert.throws(() => store.events(master), (error: unknown) => error instanceof Error && 'code' in error && error.code === 'MASTER_LOG_ACCESS_DISABLED');
   assert.equal(store.events(master, { masterLogAccess: true }).length, 1);
   assert.equal(store.events(master, { masterLogAccess: true })[0].eventType, 'delegation.created');
   assert.equal(store.get(master, 'alice').forced, true);
@@ -82,14 +81,14 @@ test('owner may update and revoke a normal delegation, while another tenant cann
   const revoked = store.revoke(owner, 'alice', { reason: 'no longer needed' });
   assert.equal(revoked.status, 'expired');
   assert.equal(store.canAccess(carol, 'alice', 'read'), false);
-  assert.throws(() => store.get(otherTenantMaster, 'alice'), (error) => error.code === 'NOT_FOUND');
+  assert.throws(() => store.get(otherTenantMaster, 'alice'), (error: unknown) => error instanceof Error && 'code' in error && error.code === 'NOT_FOUND');
 });
 
 test('invalid, self, cross-role, and cross-tenant delegation attempts fail closed', () => {
   const store = createDelegationStore({ clock: () => new Date('2026-08-22T10:00:00.000Z') });
-  assert.throws(() => store.create(owner, { ownerUserId: 'alice', delegateUserId: 'alice' }), (error) => error.code === 'SELF_DELEGATION');
-  assert.throws(() => store.create(bob, { ownerUserId: 'alice', delegateUserId: 'carol' }), (error) => error.code === 'OWNER_SCOPE_DENIED');
+  assert.throws(() => store.create(owner, { ownerUserId: 'alice', delegateUserId: 'alice' }), (error: unknown) => error instanceof Error && 'code' in error && error.code === 'SELF_DELEGATION');
+  assert.throws(() => store.create(bob, { ownerUserId: 'alice', delegateUserId: 'carol' }), (error: unknown) => error instanceof Error && 'code' in error && error.code === 'OWNER_SCOPE_DENIED');
   store.create(master, { ownerUserId: 'alice', delegateUserId: 'carol', forced: true, reason: 'tenant policy' });
-  assert.throws(() => store.get(otherTenantMaster, 'alice'), (error) => error.code === 'NOT_FOUND');
-  assert.throws(() => store.create(master, { ownerUserId: 'alice', delegateUserId: 'bob', forced: true }), (error) => error.code === 'REASON_REQUIRED');
+  assert.throws(() => store.get(otherTenantMaster, 'alice'), (error: unknown) => error instanceof Error && 'code' in error && error.code === 'NOT_FOUND');
+  assert.throws(() => store.create(master, { ownerUserId: 'alice', delegateUserId: 'bob', forced: true }), (error: unknown) => error instanceof Error && 'code' in error && error.code === 'REASON_REQUIRED');
 });

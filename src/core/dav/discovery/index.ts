@@ -7,8 +7,35 @@ import { isIP } from 'node:net';
 
 export const DISCOVERY_SCHEMA_VERSION = 1;
 
-type DiscoveryValue = any;
+type DiscoveryValue = unknown;
 type DiscoveryRecord = Record<string, DiscoveryValue>;
+
+export interface DiscoveryEndpoint {
+  enabled: boolean;
+  service: string;
+  protocol: string;
+  host?: string;
+  port?: number;
+  tls?: boolean;
+  tlsMode?: string;
+  username?: string;
+  path?: string;
+}
+export interface DiscoveryContract {
+  schemaVersion: number;
+  tenantId: string;
+  domain: string;
+  origin: string;
+  services: Readonly<Record<DiscoveryService, Readonly<DiscoveryEndpoint>>>;
+  manualOverrides: Readonly<Record<DiscoveryService, Readonly<DiscoveryEndpoint>>>;
+  manualOverrideServices: readonly string[];
+}
+export interface WellKnownResponse {
+  statusCode: number;
+  headers: Readonly<Record<string, string | null>>;
+  contentType: string;
+  body: string;
+}
 
 export const WELL_KNOWN_PATHS = Object.freeze({
   caldav: '/.well-known/caldav',
@@ -24,9 +51,10 @@ const SERVICE_DEFINITIONS = Object.freeze({
   caldav: Object.freeze({ protocol: 'caldav', defaultPort: 443, defaultTlsMode: 'implicit', defaultPath: '/dav/' }),
   carddav: Object.freeze({ protocol: 'carddav', defaultPort: 443, defaultTlsMode: 'implicit', defaultPath: '/dav/' }),
 });
+export type DiscoveryService = keyof typeof SERVICE_DEFINITIONS;
 
-const SERVICE_NAMES = Object.freeze(Object.keys(SERVICE_DEFINITIONS));
-const SERVICE_KEY_SET = new Set(SERVICE_NAMES);
+const SERVICE_NAMES = Object.freeze(Object.keys(SERVICE_DEFINITIONS) as DiscoveryService[]);
+const SERVICE_KEY_SET = new Set<string>(SERVICE_NAMES);
 const TENANT_ID_PATTERN = /^[a-z0-9][a-z0-9._-]{0,63}$/u;
 const DOMAIN_PATTERN = /^(?=.{1,253}$)(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)(?:\.(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?))*$/iu;
 const HOSTNAME_PATTERN = /^(?=.{1,253}$)(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)(?:\.(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?))*$/iu;
@@ -48,7 +76,6 @@ function assertPlainObject(value: DiscoveryValue, field: string): asserts value 
   if (value === null || typeof value !== 'object' || Array.isArray(value)) {
     throw discoveryError(`${field} must be an object`, 'INVALID_INPUT');
   }
-  return value;
 }
 
 function normalizeTenantId(value: DiscoveryValue): string {
@@ -65,10 +92,10 @@ function normalizeDomain(value: DiscoveryValue, field = 'domain'): string {
   return value.toLowerCase();
 }
 
-function parseIpv4(value: string): number[] | null {
+function parseIpv4(value: string): [number, number, number, number] | null {
   if (!/^\d{1,3}(?:\.\d{1,3}){3}$/u.test(value)) return null;
   const octets = value.split('.').map(Number);
-  return octets.every((octet) => octet >= 0 && octet <= 255) ? octets : null;
+  return octets.every((octet) => octet >= 0 && octet <= 255) ? octets as [number, number, number, number] : null;
 }
 
 function isReservedIpv4(value: string): boolean {
@@ -92,7 +119,7 @@ function isReservedIpv6(value: string): boolean {
   return false;
 }
 
-function isPrivateOrReservedAddress(value: DiscoveryValue): boolean {
+function isPrivateOrReservedAddress(value: string): boolean {
   if (isIP(value) === 4) return isReservedIpv4(value);
   if (isIP(value) === 6) return isReservedIpv6(value);
   return true;
@@ -126,7 +153,7 @@ function normalizeHost(value: DiscoveryValue, field = 'host'): string {
 }
 
 function normalizePort(value: DiscoveryValue, field = 'port'): number {
-  if (!Number.isSafeInteger(value) || value < 1 || value > 65_535) {
+  if (typeof value !== 'number' || !Number.isSafeInteger(value) || value < 1 || value > 65_535) {
     throw discoveryError(`${field} is invalid`, 'INVALID_PORT');
   }
   return value;
@@ -147,7 +174,7 @@ function normalizeUsername(value: DiscoveryValue, field = 'username'): string {
   return value;
 }
 
-function normalizeTls(input: DiscoveryValue, defaultMode: string, field = 'tls'): Readonly<DiscoveryRecord> {
+function normalizeTls(input: DiscoveryValue, defaultMode: string, field = 'tls'): Readonly<{ tls: boolean; tlsMode: string }> {
   if (input === false || input === 'none') {
     throw discoveryError(`${field} must require TLS`, 'PLAINTEXT_DISCOVERY_FORBIDDEN');
   }
@@ -172,18 +199,19 @@ function normalizeOrigin(origin: DiscoveryValue, domain: string): string {
   return `https://${host}${parsed.port ? `:${normalizePort(Number(parsed.port), 'origin port')}` : ''}`;
 }
 
-function endpointUrl(endpoint: DiscoveryRecord, service: string): string | null {
+function endpointUrl(endpoint: DiscoveryEndpoint, service: string): string | null {
   if (service === 'caldav' || service === 'carddav') {
-    const host = endpoint.host.startsWith('[') ? endpoint.host : endpoint.host;
+    const host = endpoint.host;
     const defaultPort = endpoint.port === 443;
     return `https://${host}${defaultPort ? '' : `:${endpoint.port}`}${endpoint.path}`;
   }
   return null;
 }
 
-function normalizeEndpoint(service: string, input: DiscoveryRecord = {}, baseHost: string, { partial = false, fieldPrefix = service }: DiscoveryRecord = {}): Readonly<DiscoveryRecord> {
+function normalizeEndpoint(service: string, input: unknown = {}, baseHost: string, { partial = false, fieldPrefix = service }: { partial?: boolean; fieldPrefix?: string } = {}): Readonly<DiscoveryEndpoint> {
   assertPlainObject(input, fieldPrefix);
-  const definition = (SERVICE_DEFINITIONS as DiscoveryRecord)[service];
+  const definition = SERVICE_DEFINITIONS[service as keyof typeof SERVICE_DEFINITIONS];
+  if (!definition) throw discoveryError('service is unsupported', 'INVALID_SERVICE');
   const allowedKeys = new Set(['enabled', 'host', 'port', 'tls', 'tlsMode', 'username', 'path']);
   for (const key of Object.keys(input)) {
     if (!allowedKeys.has(key)) throw discoveryError(`${fieldPrefix}.${key} is not supported`, 'INVALID_INPUT');
@@ -191,7 +219,7 @@ function normalizeEndpoint(service: string, input: DiscoveryRecord = {}, baseHos
   if (!partial && input.enabled !== undefined && typeof input.enabled !== 'boolean') {
     throw discoveryError(`${fieldPrefix}.enabled is invalid`, 'INVALID_ENABLED');
   }
-  const enabled = input.enabled === undefined ? service !== 'pop3s' : input.enabled;
+  const enabled = input.enabled === undefined ? service !== 'pop3s' : Boolean(input.enabled);
   if (!enabled) return Object.freeze({ enabled: false, service, protocol: definition.protocol });
   const host = input.host === undefined && partial ? undefined : normalizeHost(input.host ?? baseHost, `${fieldPrefix}.host`);
   const port = input.port === undefined && partial ? undefined : normalizePort(input.port ?? definition.defaultPort, `${fieldPrefix}.port`);
@@ -204,7 +232,7 @@ function normalizeEndpoint(service: string, input: DiscoveryRecord = {}, baseHos
     : normalizeTls(tlsInput, definition.defaultTlsMode, `${fieldPrefix}.tls`);
   const username = input.username === undefined && partial ? undefined : normalizeUsername(input.username ?? '{email}', `${fieldPrefix}.username`);
   const path = service === 'caldav' || service === 'carddav'
-    ? (input.path === undefined && partial ? undefined : normalizePath(input.path ?? definition.defaultPath, `${fieldPrefix}.path`))
+    ? (input.path === undefined && partial ? undefined : normalizePath(input.path ?? ('defaultPath' in definition ? definition.defaultPath : undefined), `${fieldPrefix}.path`))
     : (input.path === undefined ? undefined : (() => { throw discoveryError(`${fieldPrefix}.path is not supported`, 'INVALID_PATH'); })());
   return Object.freeze({
     enabled: true,
@@ -218,7 +246,7 @@ function normalizeEndpoint(service: string, input: DiscoveryRecord = {}, baseHos
   });
 }
 
-function mergeEndpoint(base: DiscoveryRecord, override: DiscoveryValue, service: string, baseHost: string): Readonly<DiscoveryRecord> {
+function mergeEndpoint(base: DiscoveryEndpoint, override: DiscoveryValue, service: string, baseHost: string): Readonly<DiscoveryEndpoint> {
   if (override === undefined || override === null) return base;
   const normalized = normalizeEndpoint(service, override, baseHost, { partial: true, fieldPrefix: `manualOverrides.${service}` });
   if (normalized.enabled === false) return normalized;
@@ -234,7 +262,7 @@ function mergeEndpoint(base: DiscoveryRecord, override: DiscoveryValue, service:
   }, baseHost, { fieldPrefix: `manualOverrides.${service}` });
 }
 
-function publicEndpoint(endpoint: DiscoveryRecord): DiscoveryRecord {
+function publicEndpoint(endpoint: DiscoveryEndpoint): DiscoveryRecord {
   const output: DiscoveryRecord = {
     service: endpoint.service,
     protocol: endpoint.protocol,
@@ -251,7 +279,7 @@ function publicEndpoint(endpoint: DiscoveryRecord): DiscoveryRecord {
   return Object.freeze(output);
 }
 
-function assertDiscoveryContract(contract: DiscoveryValue): asserts contract is DiscoveryRecord {
+function assertDiscoveryContract(contract: DiscoveryValue): asserts contract is DiscoveryContract {
   assertPlainObject(contract, 'contract');
   if (contract.schemaVersion !== DISCOVERY_SCHEMA_VERSION) throw discoveryError('contract schema is unsupported', 'INVALID_CONTRACT');
   const tenantId = normalizeTenantId(contract.tenantId);
@@ -261,9 +289,10 @@ function assertDiscoveryContract(contract: DiscoveryValue): asserts contract is 
   assertPlainObject(contract.manualOverrides, 'contract.manualOverrides');
   for (const service of SERVICE_NAMES) {
     if (!(service in contract.services) || !(service in contract.manualOverrides)) throw discoveryError('contract service map is incomplete', 'INVALID_CONTRACT');
-    for (const [mapName, endpoint] of [['services', contract.services[service]], ['manualOverrides', contract.manualOverrides[service]]]) {
+    const endpoints: [string, unknown][] = [['services', contract.services[service]], ['manualOverrides', contract.manualOverrides[service]]];
+    for (const [mapName, endpoint] of endpoints) {
       assertPlainObject(endpoint, `contract.${mapName}.${service}`);
-      if (endpoint.service !== service || endpoint.protocol !== (SERVICE_DEFINITIONS as DiscoveryRecord)[service].protocol) {
+      if (endpoint.service !== service || endpoint.protocol !== SERVICE_DEFINITIONS[service].protocol) {
         throw discoveryError(`contract.${mapName}.${service} identifies the wrong service`, 'INVALID_CONTRACT');
       }
       const rawEndpoint = { ...endpoint };
@@ -272,13 +301,13 @@ function assertDiscoveryContract(contract: DiscoveryValue): asserts contract is 
       normalizeEndpoint(service, rawEndpoint, domain, { fieldPrefix: `contract.${mapName}.${service}` });
     }
   }
-  if (!Array.isArray(contract.manualOverrideServices) || contract.manualOverrideServices.some((service) => !SERVICE_KEY_SET.has(service))) {
+  if (!Array.isArray(contract.manualOverrideServices) || contract.manualOverrideServices.some((service: unknown) => typeof service !== 'string' || !SERVICE_KEY_SET.has(service))) {
     throw discoveryError('contract manual override map is invalid', 'INVALID_CONTRACT');
   }
   if (tenantId !== contract.tenantId || domain !== contract.domain) throw discoveryError('contract values are not canonical', 'INVALID_CONTRACT');
 }
 
-function assertTenantMatch(contract: DiscoveryRecord, tenantId: DiscoveryValue): void {
+function assertTenantMatch(contract: DiscoveryContract, tenantId: DiscoveryValue): void {
   if (tenantId !== contract.tenantId) throw discoveryError('tenant context does not match discovery contract', 'TENANT_MISMATCH');
 }
 
@@ -293,7 +322,7 @@ export function createDiscoveryContract({
   origin,
   services = {},
   manualOverrides = {},
-}: DiscoveryRecord = {}): Readonly<DiscoveryRecord> {
+}: DiscoveryRecord = {}): Readonly<DiscoveryContract> {
   const canonicalTenantId = normalizeTenantId(tenantId);
   const canonicalDomain = normalizeDomain(domain);
   const canonicalOrigin = normalizeOrigin(origin, canonicalDomain);
@@ -302,8 +331,8 @@ export function createDiscoveryContract({
   for (const key of Object.keys(services)) if (!SERVICE_KEY_SET.has(key)) throw discoveryError(`services.${key} is unsupported`, 'INVALID_SERVICE');
   for (const key of Object.keys(manualOverrides)) if (!SERVICE_KEY_SET.has(key)) throw discoveryError(`manualOverrides.${key} is unsupported`, 'INVALID_SERVICE');
 
-  const serviceMap: DiscoveryRecord = {};
-  const overrideMap: DiscoveryRecord = {};
+  const serviceMap: Record<string, Readonly<DiscoveryEndpoint>> = {};
+  const overrideMap: Record<string, Readonly<DiscoveryEndpoint>> = {};
   const explicitOverrideServices: string[] = [];
   for (const service of SERVICE_NAMES) {
     const configured = normalizeEndpoint(service, services[service] ?? {}, canonicalDomain, { fieldPrefix: `services.${service}` });
@@ -331,10 +360,11 @@ export function createDiscoveryContract({
 export function resolveDiscoveryService(contract: DiscoveryValue, service: string, { manualOverride = null }: DiscoveryRecord = {}): Readonly<DiscoveryRecord> {
   assertDiscoveryContract(contract);
   if (!SERVICE_KEY_SET.has(service)) throw discoveryError('service is unsupported', 'INVALID_SERVICE');
-  const base = contract.services?.[service];
+  const serviceName = service as DiscoveryService;
+  const base = contract.services?.[serviceName];
   if (!base || base.enabled !== true) throw discoveryError(`${service} is disabled`, 'SERVICE_DISABLED');
   const endpoint = manualOverride === null || manualOverride === undefined
-    ? contract.manualOverrides?.[service] ?? base
+    ? contract.manualOverrides?.[serviceName] ?? base
     : mergeEndpoint(base, manualOverride, service, contract.domain);
   if (!endpoint || endpoint.enabled !== true) throw discoveryError(`${service} is disabled`, 'SERVICE_DISABLED');
   const isContractOverride = Array.isArray(contract.manualOverrideServices)
@@ -342,7 +372,7 @@ export function resolveDiscoveryService(contract: DiscoveryValue, service: strin
   return Object.freeze({ source: manualOverride ? 'manual' : (isContractOverride ? 'manual' : 'discovered'), ...publicEndpoint(endpoint) });
 }
 
-function publicDiscoveryDocument(contract: DiscoveryRecord, tenantId: DiscoveryValue): Readonly<DiscoveryRecord> {
+function publicDiscoveryDocument(contract: DiscoveryContract, tenantId: DiscoveryValue): Readonly<DiscoveryRecord> {
   assertTenantMatch(contract, tenantId);
   const services: DiscoveryRecord = {};
   for (const service of SERVICE_NAMES) {
@@ -363,11 +393,11 @@ function xmlEscape(value: DiscoveryValue): string {
     .replace(/"/gu, '&quot;').replace(/'/gu, '&apos;');
 }
 
-function socketType(endpoint: DiscoveryRecord): string {
+function socketType(endpoint: DiscoveryEndpoint): string {
   return endpoint.tlsMode === 'implicit' ? 'SSL' : 'STARTTLS';
 }
 
-function autoconfigXml(contract: DiscoveryRecord, tenantId: DiscoveryValue): string {
+function autoconfigXml(contract: DiscoveryContract, tenantId: DiscoveryValue): string {
   assertTenantMatch(contract, tenantId);
   const imap = contract.manualOverrides?.imap ?? contract.services.imap;
   const smtp = contract.manualOverrides?.smtp ?? contract.services.smtp;
@@ -403,7 +433,7 @@ function autoconfigXml(contract: DiscoveryRecord, tenantId: DiscoveryValue): str
  * must pass the authenticated/requested tenant; path traversal and cross-
  * tenant access are rejected instead of being guessed or redirected.
  */
-export function getWellKnownResource(contract: DiscoveryValue, path: string, { tenantId }: DiscoveryRecord = {}): Readonly<DiscoveryRecord> {
+export function getWellKnownResource(contract: DiscoveryValue, path: string, { tenantId }: DiscoveryRecord = {}): Readonly<WellKnownResponse> {
   assertDiscoveryContract(contract);
   assertTenantMatch(contract, tenantId);
   if (typeof path !== 'string' || path.length === 0 || path !== path.trim() || path.includes('?')

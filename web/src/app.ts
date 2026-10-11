@@ -4,12 +4,74 @@ SPDX-FileCopyrightText: 2026 Sythos (https://www.sythos.net)
 Author: Sythos (https://www.sythos.net)
 */
 
-// The shell deliberately stays JavaScript-compatible while the API contracts
-// settle. The compiler still emits and syntax-checks this module; stricter
-// shared types will be introduced with the stable API contract.
-// @ts-nocheck
 
 /* @gulogulo-browser-source */
+
+type JsonRecord = Record<string, unknown>;
+type Metadata = Record<string, string | number | boolean>;
+type WebConfig = { [K in keyof typeof DEFAULT_WEB_CONFIG]: string };
+type ApiOptions = Omit<RequestInit, 'body'> & { body?: unknown };
+type BrowserEnvironment = Pick<Window, 'fetch' | 'localStorage' | 'setInterval' | 'clearInterval'> & {
+  Intl?: typeof Intl;
+  EventSource?: typeof EventSource;
+};
+type StreamState = 'connected' | 'error' | 'unsupported';
+type StreamOptions = {
+  windowRef?: BrowserEnvironment;
+  path?: string;
+  onMail?: (metadata: Metadata) => void;
+  onCalendar?: (metadata: Metadata) => void;
+  onContacts?: (metadata: Metadata) => void;
+  onState?: (state: StreamState) => void;
+};
+type MailMessage = JsonRecord & { id: string };
+type ApiClient = { request(path: string, options?: ApiOptions): Promise<JsonRecord>; setCsrfToken(value: unknown): boolean };
+type ApplicationState = {
+  authentication: 'checking' | AuthenticationView;
+  activeView: string;
+  activeFolder: string;
+  messages: MailMessage[];
+  calendarEvents: JsonRecord[];
+  contacts: JsonRecord[];
+  selectedMessage: MailMessage | undefined;
+  timeZone: string;
+  account: AuthenticatedSession['user'] | undefined;
+  eventStream: { close(): void } | undefined;
+  imapIdleAvailable: boolean | undefined;
+  mailAutoRefreshTimer: number | undefined;
+  mfa?: { token: string; pending: JsonRecord | undefined } | undefined;
+};
+
+function isRecord(value: unknown): value is JsonRecord {
+  return value !== null && typeof value === 'object' && !Array.isArray(value);
+}
+
+function record(value: unknown): JsonRecord {
+  return isRecord(value) ? value : {};
+}
+
+function records(value: unknown): JsonRecord[] {
+  return Array.isArray(value) ? value.filter(isRecord) : [];
+}
+
+function mailMessages(value: unknown): MailMessage[] {
+  return records(value).filter((message): message is MailMessage => typeof message.id === 'string');
+}
+
+class ApiError extends Error {
+  constructor(message: string, readonly status: number, readonly code: string) { super(message); }
+}
+
+function errorDetails(value: unknown): { message?: string; code?: string; status?: number } {
+  if (value instanceof ApiError) return value;
+  if (value instanceof Error) return { message: value.message };
+  const candidate = record(value);
+  return {
+    ...(typeof candidate.message === 'string' ? { message: candidate.message } : {}),
+    ...(typeof candidate.code === 'string' ? { code: candidate.code } : {}),
+    ...(typeof candidate.status === 'number' ? { status: candidate.status } : {}),
+  };
+}
 
 const DEFAULT_WEB_CONFIG = Object.freeze({
   apiBase: '/api',
@@ -85,22 +147,22 @@ type AuthenticatedSession = Readonly<{
 
 type AuthenticationView = 'signed-in' | 'signed-out';
 
-function asString(value, fallback = '') {
+function asString(value: unknown, fallback = '') {
   return typeof value === 'string' ? value : fallback;
 }
 
 function readAuthenticatedSession(payload: unknown): AuthenticatedSession | undefined {
-  if (!payload || typeof payload !== 'object' || Array.isArray(payload)) return undefined;
-  const candidate = payload as Record<string, unknown>;
+  if (!isRecord(payload)) return undefined;
+  const candidate = payload;
   const user = candidate.user;
-  if (!user || typeof user !== 'object' || Array.isArray(user)) return undefined;
-  const email = asString((user as Record<string, unknown>).email).trim();
+  if (!isRecord(user)) return undefined;
+  const email = asString(user.email).trim();
   const csrfToken = asString(candidate.csrfToken);
   if (!email || !CSRF_TOKEN_PATTERN.test(csrfToken) || candidate.authenticated === false) return undefined;
   return Object.freeze({
     authenticated: true,
     csrfToken,
-    user: Object.freeze({ ...(user as Record<string, unknown>), email }),
+    user: Object.freeze({ ...user, email }),
   });
 }
 
@@ -118,8 +180,8 @@ function renderAuthenticationView(documentRef: Document, authenticated: boolean)
   return authenticated ? 'signed-in' : 'signed-out';
 }
 
-function parseRealtimeMetadata(value) {
-  let payload;
+function parseRealtimeMetadata(value: unknown): Metadata | undefined {
+  let payload: unknown;
   try {
     payload = typeof value === 'string' ? JSON.parse(value) : value;
   } catch {
@@ -130,7 +192,8 @@ function parseRealtimeMetadata(value) {
     return undefined;
   }
 
-  const metadata = {};
+  if (!isRecord(payload)) return undefined;
+  const metadata: Metadata = {};
   for (const key of REALTIME_METADATA_KEYS) {
     const candidate = payload[key];
     if (typeof candidate === 'string' || typeof candidate === 'number' || typeof candidate === 'boolean') {
@@ -140,7 +203,7 @@ function parseRealtimeMetadata(value) {
   return Object.keys(metadata).length > 0 ? metadata : undefined;
 }
 
-function normaliseTimeZone(value) {
+function normaliseTimeZone(value: unknown) {
   if (typeof value !== 'string' || value.length < 1 || value.length > 128) {
     return undefined;
   }
@@ -153,7 +216,7 @@ function normaliseTimeZone(value) {
   }
 }
 
-function detectBrowserTimeZone(windowRef = globalThis) {
+function detectBrowserTimeZone(windowRef: BrowserEnvironment = globalThis) {
   try {
     return normaliseTimeZone(windowRef.Intl?.DateTimeFormat?.().resolvedOptions?.().timeZone) ?? 'UTC';
   } catch {
@@ -161,7 +224,7 @@ function detectBrowserTimeZone(windowRef = globalThis) {
   }
 }
 
-function readManualTimeZone(windowRef = globalThis) {
+function readManualTimeZone(windowRef: BrowserEnvironment = globalThis) {
   try {
     return normaliseTimeZone(windowRef.localStorage?.getItem('gulogulo.timezone'));
   } catch {
@@ -169,7 +232,7 @@ function readManualTimeZone(windowRef = globalThis) {
   }
 }
 
-function writeManualTimeZone(windowRef, timeZone) {
+function writeManualTimeZone(windowRef: BrowserEnvironment, timeZone: string) {
   try {
     if (timeZone === 'auto' || !timeZone) {
       windowRef.localStorage?.removeItem('gulogulo.timezone');
@@ -183,16 +246,16 @@ function writeManualTimeZone(windowRef, timeZone) {
 
 const DEFAULT_MAIL_REFRESH_INTERVAL_MINUTES = 5;
 
-function readManualMailRefreshIntervalMinutes(windowRef = globalThis) {
+function readManualMailRefreshIntervalMinutes(windowRef: BrowserEnvironment = globalThis) {
   try {
-    const stored = Number.parseInt(windowRef.localStorage?.getItem('gulogulo.mailRefreshIntervalMinutes'), 10);
+    const stored = Number.parseInt(windowRef.localStorage?.getItem('gulogulo.mailRefreshIntervalMinutes') ?? '', 10);
     return Number.isInteger(stored) && stored >= 1 && stored <= 60 ? stored : DEFAULT_MAIL_REFRESH_INTERVAL_MINUTES;
   } catch {
     return DEFAULT_MAIL_REFRESH_INTERVAL_MINUTES;
   }
 }
 
-function writeManualMailRefreshIntervalMinutes(windowRef, minutes) {
+function writeManualMailRefreshIntervalMinutes(windowRef: BrowserEnvironment, minutes: number) {
   try {
     windowRef.localStorage?.setItem('gulogulo.mailRefreshIntervalMinutes', String(minutes));
   } catch {
@@ -200,8 +263,8 @@ function writeManualMailRefreshIntervalMinutes(windowRef, minutes) {
   }
 }
 
-function formatDateTime(value, timeZone, locale = 'en') {
-  const date = new Date(value);
+function formatDateTime(value: unknown, timeZone: string, locale = 'en') {
+  const date = typeof value === 'number' || typeof value === 'string' ? new Date(value) : new Date(Number.NaN);
   if (Number.isNaN(date.valueOf())) {
     return 'Unknown date';
   }
@@ -217,17 +280,18 @@ function formatDateTime(value, timeZone, locale = 'en') {
   }
 }
 
-function formatMessageTime(message, userTimeZone, locale = 'en') {
-  const local = formatDateTime(message?.date, userTimeZone, locale);
-  const senderTimeZone = normaliseTimeZone(message?.senderTimeZone);
+function formatMessageTime(message: unknown, userTimeZone: string, locale = 'en') {
+  const fields = record(message);
+  const local = formatDateTime(fields.date, userTimeZone, locale);
+  const senderTimeZone = normaliseTimeZone(fields.senderTimeZone);
   if (!senderTimeZone || senderTimeZone === userTimeZone) {
     return local;
   }
 
-  return `${local} (${formatDateTime(message?.date, senderTimeZone, locale)})`;
+  return `${local} (${formatDateTime(fields.date, senderTimeZone, locale)})`;
 }
 
-function sanitiseUrl(value) {
+function sanitiseUrl(value: unknown) {
   const candidate = asString(value).trim();
   try {
     const url = new URL(candidate, 'https://gulogulo.invalid');
@@ -243,7 +307,7 @@ function sanitiseUrl(value) {
   }
 }
 
-function sanitiseMessageHtml(html, documentRef = globalThis.document) {
+function sanitiseMessageHtml(html: unknown, documentRef = globalThis.document) {
   if (!documentRef?.createElement) {
     return undefined;
   }
@@ -260,6 +324,9 @@ function sanitiseMessageHtml(html, documentRef = globalThis.document) {
   }
 
   for (const node of nodes) {
+    if (node.nodeType !== 1) continue;
+    const element = documentRef.defaultView?.Element;
+    if (!element || !(node instanceof element)) continue;
     const name = asString(node.nodeName).toLowerCase();
     if (DANGEROUS_ELEMENTS.has(name)) {
       node.remove();
@@ -307,8 +374,10 @@ function buildWebConfig(documentRef = globalThis.document) {
   });
 }
 
-function createApiClient({ fetchFn = globalThis.fetch, documentRef = globalThis.document, config = DEFAULT_WEB_CONFIG } = {}) {
-  const csrfElement = () => documentRef?.querySelector?.('meta[name="csrf-token"]');
+function createApiClient({ fetchFn = globalThis.fetch, documentRef = globalThis.document, config = DEFAULT_WEB_CONFIG }: {
+  fetchFn?: typeof fetch; documentRef?: Document; config?: WebConfig;
+} = {}): ApiClient {
+  const csrfElement = () => documentRef?.querySelector<HTMLMetaElement>('meta[name="csrf-token"]');
   const csrfToken = () => asString(csrfElement()?.content);
   const base = config.apiBase.replace(/\/$/, '');
 
@@ -320,7 +389,7 @@ function createApiClient({ fetchFn = globalThis.fetch, documentRef = globalThis.
     return element.content.length > 0;
   }
 
-  async function request(path, options = {}) {
+  async function request(path: string, options: ApiOptions = {}): Promise<JsonRecord> {
     const method = asString(options.method, 'GET').toUpperCase();
     const headers = new Headers(options.headers ?? {});
     headers.set('accept', 'application/json');
@@ -337,14 +406,13 @@ function createApiClient({ fetchFn = globalThis.fetch, documentRef = globalThis.
       method,
       headers,
       credentials: 'include',
-      body: options.body && typeof options.body !== 'string' ? JSON.stringify(options.body) : options.body,
+      body: options.body === undefined ? undefined : typeof options.body === 'string' ? options.body : JSON.stringify(options.body),
     });
     const contentType = response.headers?.get?.('content-type') ?? '';
-    const payload = contentType.includes('json') ? await response.json() : undefined;
+    const payload = record(contentType.includes('json') ? await response.json() : undefined);
     if (!response.ok) {
-      const error = new Error(asString(payload?.error?.message, asString(payload?.message, `Request failed with HTTP ${response.status}`)));
-      error.status = response.status;
-      error.code = asString(payload?.error?.code);
+      const details = record(payload.error);
+      const error = new ApiError(asString(details.message, asString(payload.message, `Request failed with HTTP ${response.status}`)), response.status, asString(details.code));
       throw error;
     }
     const responseToken = payload?.csrfToken ?? response.headers?.get?.('x-csrf-token');
@@ -362,7 +430,7 @@ function createEventStream({
   onCalendar,
   onContacts,
   onState,
-} = {}) {
+}: StreamOptions = {}) {
   const EventSourceRef = windowRef.EventSource;
   if (typeof EventSourceRef !== 'function') {
     onState?.('unsupported');
@@ -372,8 +440,8 @@ function createEventStream({
   const source = new EventSourceRef(path, { withCredentials: true });
   source.addEventListener('open', () => onState?.('connected'));
   source.addEventListener('error', () => onState?.('error'));
-  const metadataEvent = (callback) => (event) => {
-    const metadata = parseRealtimeMetadata(event.data);
+  const metadataEvent = (callback: ((metadata: Metadata) => void) | undefined) => (event: Event) => {
+    const metadata = parseRealtimeMetadata('data' in event ? event.data : undefined);
     if (!metadata) {
       onState?.('error');
       return;
@@ -386,10 +454,10 @@ function createEventStream({
   return Object.freeze({ close: () => source.close() });
 }
 
-function createWebApplication(documentRef = globalThis.document, windowRef = globalThis, injected = {}) {
+function createWebApplication(documentRef = globalThis.document, windowRef: BrowserEnvironment = globalThis, injected: Partial<WebConfig> & { api?: ApiClient } = {}) {
   const config = { ...buildWebConfig(documentRef), ...injected };
   const api = injected.api ?? createApiClient({ fetchFn: windowRef.fetch?.bind(windowRef), documentRef, config });
-  const state = {
+  const state: ApplicationState = {
     authentication: 'checking',
     activeView: 'mail',
     activeFolder: 'inbox',
@@ -404,12 +472,22 @@ function createWebApplication(documentRef = globalThis.document, windowRef = glo
     mailAutoRefreshTimer: undefined,
   };
 
-  const get = (selector) => documentRef.querySelector(selector);
+  function get(selector: '#login-submit' | '#calendar-discovery-button' | '#contacts-discovery-button'): HTMLButtonElement | null;
+  function get(selector: '#login-password' | '#mfa-code' | '#mfa-use-recovery' | '#compose-to' | '#compose-subject'): HTMLInputElement | null;
+  function get(selector: '#compose-dialog' | '#preferences-dialog' | '#about-dialog'): HTMLDialogElement | null;
+  function get(selector: '#message-date'): HTMLTimeElement | null;
+  function get(selector: '#mfa-otpauth'): HTMLAnchorElement | null;
+  function get(selector: string): HTMLElement | null;
+  function get(selector: string): HTMLElement | null { return documentRef.querySelector<HTMLElement>(selector); }
+  function setText(selector: string, text: string) {
+    const element = get(selector);
+    if (element) element.textContent = text;
+  }
   const status = get('#app-status');
   const listState = get('#list-state');
   const connectionState = get('#connection-state');
 
-  function setLoginBusy(busy) {
+  function setLoginBusy(busy: boolean) {
     const form = get('#login-form');
     const submit = get('#login-submit');
     if (form) form.setAttribute('aria-busy', String(busy));
@@ -431,7 +509,7 @@ function createWebApplication(documentRef = globalThis.document, windowRef = glo
   }
 
   /** Shows exactly one of the sign-in steps: the password form, the second-factor form, or the one-time recovery codes. */
-  function showLoginStep(step) {
+  function showLoginStep(step: 'password' | 'mfa' | 'recovery') {
     const sections = { password: '#login-form', mfa: '#mfa-form', recovery: '#mfa-recovery' };
     for (const [name, selector] of Object.entries(sections)) {
       const section = get(selector);
@@ -439,9 +517,9 @@ function createWebApplication(documentRef = globalThis.document, windowRef = glo
     }
   }
 
-  function showMfa(challenge) {
+  function showMfa(challenge: JsonRecord) {
     state.mfa = { token: asString(challenge.mfaToken), pending: undefined };
-    const factors = Array.isArray(challenge.factors) ? challenge.factors : [];
+    const factors = records(challenge.factors);
     const totp = factors.find((factor) => factor.type === 'totp' && !factor.satisfied);
     const passkey = factors.find((factor) => factor.type === 'webauthn' && !factor.satisfied);
     const password = get('#login-password');
@@ -468,19 +546,21 @@ function createWebApplication(documentRef = globalThis.document, windowRef = glo
   async function beginTotpEnrollment() {
     try {
       const payload = await api.request('/session/mfa/totp/enroll', { method: 'POST', body: { mfaToken: state.mfa?.token } });
-      const totp = payload?.totp ?? {};
-      get('#mfa-secret').textContent = asString(totp.secret);
+      const totp = record(payload.totp);
+      setText('#mfa-secret', asString(totp.secret));
       const link = get('#mfa-otpauth');
       if (link) link.href = asString(totp.otpauthUri, '#');
-      get('#mfa-enroll').hidden = false;
+      const enrollment = get('#mfa-enroll');
+      if (enrollment) enrollment.hidden = false;
     } catch {
       setMfaError('Two-step verification could not be set up. Try again.');
     }
   }
 
-  async function submitMfa(event) {
+  async function submitMfa(event: Event) {
     event.preventDefault();
     const form = event.currentTarget;
+    if (!(form instanceof HTMLFormElement)) return;
     if (!form.checkValidity()) {
       form.reportValidity();
       return;
@@ -500,7 +580,7 @@ function createWebApplication(documentRef = globalThis.document, windowRef = glo
         showMfa(payload);
         return;
       }
-      const codes = Array.isArray(payload?.recoveryCodes) ? payload.recoveryCodes.map((code) => asString(code)) : [];
+      const codes = Array.isArray(payload.recoveryCodes) ? payload.recoveryCodes.map((code: unknown) => asString(code)) : [];
       state.mfa = undefined;
       if (codes.length === 0) {
         await enterWorkspace(payload);
@@ -520,12 +600,12 @@ function createWebApplication(documentRef = globalThis.document, windowRef = glo
       state.mfa = { token: '', pending: payload };
       get('#mfa-recovery-continue')?.focus?.();
     } catch (error) {
-      if (error?.code === 'MFA_CHALLENGE_INVALID') {
+      if (errorDetails(error).code === 'MFA_CHALLENGE_INVALID') {
         state.mfa = undefined;
         showLogin({ message: 'Your sign-in expired. Sign in again.' });
         return;
       }
-      setMfaError(error?.status === 429 ? 'Too many attempts. Wait a moment and try again.' : 'Verification failed. Check the code and try again.');
+      setMfaError(errorDetails(error).status === 429 ? 'Too many attempts. Wait a moment and try again.' : 'Verification failed. Check the code and try again.');
       get('#mfa-error')?.focus?.();
     }
   }
@@ -577,14 +657,14 @@ function createWebApplication(documentRef = globalThis.document, windowRef = glo
     });
   }
 
-  async function enterWorkspace(payload, { focus = true } = {}) {
+  async function enterWorkspace(payload: unknown, { focus = true } = {}) {
     const session = readAuthenticatedSession(payload);
     if (!session) throw new Error('The authentication response was incomplete.');
     api.setCsrfToken?.(session.csrfToken);
     state.authentication = 'signed-in';
     state.account = session.user;
-    get('#account-label').textContent = session.user.email;
-    get('#account-name').textContent = session.user.email;
+    setText('#account-label', session.user.email);
+    setText('#account-name', session.user.email);
     setLoginError('');
     setLoginBusy(false);
     renderAuthenticationView(documentRef, true);
@@ -594,14 +674,14 @@ function createWebApplication(documentRef = globalThis.document, windowRef = glo
     if (focus) get('#main-content')?.focus?.();
   }
 
-  function announce(message, tone = 'info') {
+  function announce(message: string, tone = 'info') {
     if (!status) return;
     status.textContent = message;
     status.dataset.tone = tone;
     status.hidden = !message;
   }
 
-  function setConnectionState(value) {
+  function setConnectionState(value: StreamState) {
     if (!connectionState) return;
     const labels = { connected: 'Live updates connected', error: 'Live updates unavailable', unsupported: 'Live updates unavailable' };
     connectionState.textContent = labels[value] ?? 'Connecting…';
@@ -648,7 +728,7 @@ function createWebApplication(documentRef = globalThis.document, windowRef = glo
     if (help) help.textContent = `Times are shown in ${state.timeZone}. The sender's local equivalent is shown in parentheses when it differs.`;
   }
 
-  function renderDiscoveryStatus(view, discovery, { checked = true, error = false } = {}) {
+  function renderDiscoveryStatus(view: 'calendar' | 'contacts', discovery: unknown, { checked = true, error = false } = {}) {
     const service = view === 'calendar' ? 'CalDAV' : 'CardDAV';
     const status = get(`#${view}-discovery-status`);
     const manual = get(`#${view}-manual-status`);
@@ -662,8 +742,9 @@ function createWebApplication(documentRef = globalThis.document, windowRef = glo
       return;
     }
 
-    const ready = discovery?.available === true || discovery?.status === 'ready' || discovery?.status === 'available';
-    const unavailable = discovery?.available === false || discovery?.status === 'unavailable' || discovery?.status === 'error';
+    const details = record(discovery);
+    const ready = details.available === true || details.status === 'ready' || details.status === 'available';
+    const unavailable = details.available === false || details.status === 'unavailable' || details.status === 'error';
     if (ready) {
       status.dataset.state = 'ready';
       status.textContent = `Automatic ${service} discovery is available.`;
@@ -677,13 +758,13 @@ function createWebApplication(documentRef = globalThis.document, windowRef = glo
     manual.textContent = 'Manual configuration remains available through the authenticated server API; credentials stay server-side.';
   }
 
-  function renderCalendarEvents(events = []) {
+  function renderCalendarEvents(events: unknown = []) {
     const list = get('#calendar-list');
     const listState = get('#calendar-list-state');
     if (!list || !listState) return;
     list.replaceChildren();
     listState.dataset.tone = '';
-    const safeEvents = Array.isArray(events) ? events.filter((event) => event && typeof event === 'object') : [];
+    const safeEvents = records(events);
     if (!safeEvents.length) {
       listState.textContent = 'No calendar events were returned by the server.';
       return;
@@ -712,13 +793,13 @@ function createWebApplication(documentRef = globalThis.document, windowRef = glo
     }
   }
 
-  function renderContacts(contacts = []) {
+  function renderContacts(contacts: unknown = []) {
     const list = get('#contacts-list');
     const listState = get('#contacts-list-state');
     if (!list || !listState) return;
     list.replaceChildren();
     listState.dataset.tone = '';
-    const safeContacts = Array.isArray(contacts) ? contacts.filter((contact) => contact && typeof contact === 'object') : [];
+    const safeContacts = records(contacts);
     if (!safeContacts.length) {
       listState.textContent = 'No contacts were returned by the server.';
       return;
@@ -784,7 +865,7 @@ function createWebApplication(documentRef = globalThis.document, windowRef = glo
     }
   }
 
-  function renderMessage(message) {
+  function renderMessage(message: MailMessage | undefined) {
     const empty = get('#message-empty');
     const content = get('#message-content');
     if (!message) {
@@ -794,14 +875,17 @@ function createWebApplication(documentRef = globalThis.document, windowRef = glo
     }
     if (empty) empty.hidden = true;
     if (content) content.hidden = false;
-    get('#message-folder-label').textContent = FOLDER_LABELS[state.activeFolder] ?? 'Mail';
-    get('#message-subject').textContent = asString(message.subject, '(No subject)');
-    get('#message-from').textContent = asString(message.from, 'Unknown sender');
-    get('#message-to').textContent = asString(message.to, 'Unknown recipient');
+    setText('#message-folder-label', asString(record(FOLDER_LABELS)[state.activeFolder], 'Mail') ?? 'Mail');
+    setText('#message-subject', asString(message.subject, '(No subject)'));
+    setText('#message-from', asString(message.from, 'Unknown sender'));
+    setText('#message-to', asString(message.to, 'Unknown recipient'));
     const date = get('#message-date');
-    date.dateTime = asString(message.date);
-    date.textContent = formatMessageTime(message, state.timeZone, config.locale);
+    if (date) {
+      date.dateTime = asString(message.date);
+      date.textContent = formatMessageTime(message, state.timeZone, config.locale);
+    }
     const body = get('#message-body');
+    if (!body) return;
     body.replaceChildren();
     const safeFragment = asString(message.html) ? sanitiseMessageHtml(message.html, documentRef) : undefined;
     if (safeFragment) {
@@ -814,12 +898,12 @@ function createWebApplication(documentRef = globalThis.document, windowRef = glo
     renderAttachments(message.attachments);
   }
 
-  function renderAttachments(attachments = []) {
+  function renderAttachments(attachments: unknown = []) {
     const section = get('#attachment-section');
     const list = get('#attachment-list');
     if (!section || !list) return;
     list.replaceChildren();
-    const safeAttachments = Array.isArray(attachments) ? attachments.filter((item) => item && typeof item === 'object') : [];
+    const safeAttachments = records(attachments);
     section.hidden = safeAttachments.length === 0;
     for (const attachment of safeAttachments) {
       const item = documentRef.createElement('li');
@@ -836,18 +920,18 @@ function createWebApplication(documentRef = globalThis.document, windowRef = glo
 
   async function loadFolder(folder = state.activeFolder, query = '') {
     state.activeFolder = folder;
-    for (const button of documentRef.querySelectorAll('[data-folder]')) {
+    for (const button of documentRef.querySelectorAll<HTMLElement>('[data-folder]')) {
       const active = button.dataset.folder === folder;
       button.classList.toggle('is-active', active);
       if (active) button.setAttribute('aria-current', 'page');
       else button.removeAttribute('aria-current');
     }
-    get('#active-folder-label').textContent = FOLDER_LABELS[folder] ?? 'Mail';
+    setText('#active-folder-label', asString(record(FOLDER_LABELS)[folder], 'Mail') ?? 'Mail');
     if (listState) listState.textContent = 'Loading messages…';
     try {
       const path = query ? `/mail/search?q=${encodeURIComponent(query)}` : `/mail/folders/${encodeURIComponent(folder)}`;
       const payload = await api.request(path);
-      state.messages = Array.isArray(payload?.messages) ? payload.messages : [];
+      state.messages = mailMessages(payload.messages);
       renderMessages();
       announce('Messages updated.');
     } catch (error) {
@@ -857,7 +941,7 @@ function createWebApplication(documentRef = globalThis.document, windowRef = glo
         listState.textContent = 'Messages could not be loaded.';
         listState.dataset.tone = 'error';
       }
-      announce(asString(error?.message, 'Messages could not be loaded.'), 'error');
+      announce(asString(errorDetails(error).message, 'Messages could not be loaded.'), 'error');
     }
   }
 
@@ -869,7 +953,7 @@ function createWebApplication(documentRef = globalThis.document, windowRef = glo
     }
     try {
       const payload = await api.request(config.calendarPath);
-      state.calendarEvents = Array.isArray(payload?.events) ? payload.events : [];
+      state.calendarEvents = records(payload.events);
       renderCalendarEvents(state.calendarEvents);
       if (payload?.discovery !== undefined) renderDiscoveryStatus('calendar', payload.discovery);
       announce('Calendar updated.');
@@ -880,7 +964,7 @@ function createWebApplication(documentRef = globalThis.document, windowRef = glo
         listState.textContent = 'Calendar events could not be loaded.';
         listState.dataset.tone = 'error';
       }
-      announce(asString(error?.message, 'Calendar events could not be loaded.'), 'error');
+      announce(asString(errorDetails(error).message, 'Calendar events could not be loaded.'), 'error');
     }
   }
 
@@ -892,7 +976,7 @@ function createWebApplication(documentRef = globalThis.document, windowRef = glo
     }
     try {
       const payload = await api.request(config.contactsPath);
-      state.contacts = Array.isArray(payload?.contacts) ? payload.contacts : [];
+      state.contacts = records(payload.contacts);
       renderContacts(state.contacts);
       if (payload?.discovery !== undefined) renderDiscoveryStatus('contacts', payload.discovery);
       announce('Contacts updated.');
@@ -903,11 +987,11 @@ function createWebApplication(documentRef = globalThis.document, windowRef = glo
         listState.textContent = 'Contacts could not be loaded.';
         listState.dataset.tone = 'error';
       }
-      announce(asString(error?.message, 'Contacts could not be loaded.'), 'error');
+      announce(asString(errorDetails(error).message, 'Contacts could not be loaded.'), 'error');
     }
   }
 
-  async function checkDiscovery(view) {
+  async function checkDiscovery(view: 'calendar' | 'contacts') {
     const pathKey = DISCOVERY_PATHS[view];
     if (!pathKey) return;
     const status = get(`#${view}-discovery-status`);
@@ -916,27 +1000,27 @@ function createWebApplication(documentRef = globalThis.document, windowRef = glo
       status.dataset.state = 'pending';
       status.textContent = `Checking automatic ${view === 'calendar' ? 'CalDAV' : 'CardDAV'} discovery…`;
     }
-    if (button) button.disabled = true;
+    if (button instanceof HTMLButtonElement) button.disabled = true;
     try {
       const payload = await api.request(config[pathKey]);
       renderDiscoveryStatus(view, payload, { checked: true });
     } catch {
       renderDiscoveryStatus(view, undefined, { checked: true, error: true });
     } finally {
-      if (button) button.disabled = false;
+      if (button instanceof HTMLButtonElement) button.disabled = false;
     }
   }
 
   async function setView(view = 'mail') {
-    const nextView = VIEW_LABELS[view] ? view : 'mail';
+    const nextView = Object.hasOwn(VIEW_LABELS, view) ? view : 'mail';
     state.activeView = nextView;
-    for (const button of documentRef.querySelectorAll('[data-view]')) {
+    for (const button of documentRef.querySelectorAll<HTMLElement>('[data-view]')) {
       const active = button.dataset.view === nextView;
       button.classList.toggle('is-active', active);
       if (active) button.setAttribute('aria-current', 'page');
       else button.removeAttribute('aria-current');
     }
-    for (const panel of documentRef.querySelectorAll('[data-view-panel]')) {
+    for (const panel of documentRef.querySelectorAll<HTMLElement>('[data-view-panel]')) {
       const active = panel.dataset.viewPanel === nextView;
       panel.hidden = !active;
       panel.setAttribute('aria-hidden', String(!active));
@@ -946,22 +1030,23 @@ function createWebApplication(documentRef = globalThis.document, windowRef = glo
     if (nextView === 'contacts') await loadContacts();
   }
 
-  async function selectMessage(message) {
+  async function selectMessage(message: MailMessage) {
     state.selectedMessage = message;
     renderMessages();
     renderMessage(message);
     try {
       const payload = await api.request(`/mail/messages/${encodeURIComponent(message.id)}`);
-      state.selectedMessage = payload?.message ?? message;
+      state.selectedMessage = mailMessages([payload.message])[0] ?? message;
       renderMessage(state.selectedMessage);
     } catch {
       // The list preview remains available when the detail request is unavailable.
     }
   }
 
-  async function submitCompose(event) {
+  async function submitCompose(event: Event) {
     event.preventDefault();
     const form = event.currentTarget;
+    if (!(form instanceof HTMLFormElement)) return;
     const data = new FormData(form);
     try {
       await api.request('/mail/send', {
@@ -972,13 +1057,14 @@ function createWebApplication(documentRef = globalThis.document, windowRef = glo
       get('#compose-dialog')?.close();
       announce('Message accepted for delivery.', 'success');
     } catch (error) {
-      announce(asString(error?.message, 'Message could not be sent.'), 'error');
+      announce(asString(errorDetails(error).message, 'Message could not be sent.'), 'error');
     }
   }
 
-  async function submitPreferences(event) {
+  async function submitPreferences(event: Event) {
     event.preventDefault();
     const form = event.currentTarget;
+    if (!(form instanceof HTMLFormElement)) return;
     const data = new FormData(form);
     const selectedTimeZone = asString(data.get('timezone'), 'auto');
     const nextTimeZone = selectedTimeZone === 'auto' ? detectBrowserTimeZone(windowRef) : normaliseTimeZone(selectedTimeZone);
@@ -991,7 +1077,7 @@ function createWebApplication(documentRef = globalThis.document, windowRef = glo
     renderTimeZone();
     renderMessages();
     if (state.selectedMessage) renderMessage(state.selectedMessage);
-    const requestedMinutes = Number.parseInt(data.get('mailRefreshIntervalMinutes'), 10);
+    const requestedMinutes = Number.parseInt(asString(data.get('mailRefreshIntervalMinutes')), 10);
     const mailRefreshIntervalMinutes = Number.isInteger(requestedMinutes) && requestedMinutes >= 1 && requestedMinutes <= 60
       ? requestedMinutes
       : DEFAULT_MAIL_REFRESH_INTERVAL_MINUTES;
@@ -1011,13 +1097,14 @@ function createWebApplication(documentRef = globalThis.document, windowRef = glo
       get('#preferences-dialog')?.close();
       announce('Preferences saved.', 'success');
     } catch (error) {
-      announce(asString(error?.message, 'Preferences could not be saved.'), 'error');
+      announce(asString(errorDetails(error).message, 'Preferences could not be saved.'), 'error');
     }
   }
 
-  async function submitLogin(event) {
+  async function submitLogin(event: Event) {
     event.preventDefault();
     const form = event.currentTarget;
+    if (!(form instanceof HTMLFormElement)) return;
     if (!form.checkValidity()) {
       form.reportValidity();
       return;
@@ -1042,7 +1129,7 @@ function createWebApplication(documentRef = globalThis.document, windowRef = glo
       await enterWorkspace(payload);
       form.reset();
     } catch (error) {
-      const message = error?.status === 429
+      const message = errorDetails(error).status === 429
         ? 'Sign-in is temporarily unavailable. Wait a moment and try again.'
         : 'Sign-in failed. Check your details and try again.';
       showLogin({ message });
@@ -1057,9 +1144,10 @@ function createWebApplication(documentRef = globalThis.document, windowRef = glo
     // not need).
     try {
       const response = await windowRef.fetch('/healthz', { headers: { accept: 'application/json' } });
-      const payload = await response.json();
+      const payload = record(await response.json());
       const runtimeLabel = payload.runtime === 'bun' ? 'Bun' : 'Node.js';
-      const runtimeText = payload.runtime_version ? `${runtimeLabel} ${payload.runtime_version}` : runtimeLabel;
+      const runtimeVersion = asString(payload.runtime_version);
+      const runtimeText = runtimeVersion ? `${runtimeLabel} ${runtimeVersion}` : runtimeLabel;
       const badge = get('#runtime-badge-label');
       if (badge) badge.textContent = runtimeLabel;
       const version = get('#about-version');
@@ -1075,27 +1163,27 @@ function createWebApplication(documentRef = globalThis.document, windowRef = glo
   }
 
   function bindEvents() {
-    get('#login-form')?.addEventListener('submit', submitLogin);
-    get('#mfa-form')?.addEventListener('submit', submitMfa);
+    get('#login-form')?.addEventListener('submit', (event) => void submitLogin(event));
+    get('#mfa-form')?.addEventListener('submit', (event) => void submitMfa(event));
     get('#mfa-cancel')?.addEventListener('click', () => showLogin());
     get('#mfa-recovery-continue')?.addEventListener('click', () => void finishRecoveryStep());
     get('#compose-button')?.addEventListener('click', () => get('#compose-dialog')?.showModal());
     get('#preferences-button')?.addEventListener('click', () => get('#preferences-dialog')?.showModal());
     get('#about-button')?.addEventListener('click', () => get('#about-dialog')?.showModal());
-    get('#compose-form')?.addEventListener('submit', submitCompose);
-    get('#preferences-form')?.addEventListener('submit', submitPreferences);
-    get('#logout-button')?.addEventListener('click', async () => {
+    get('#compose-form')?.addEventListener('submit', (event) => void submitCompose(event));
+    get('#preferences-form')?.addEventListener('submit', (event) => void submitPreferences(event));
+    get('#logout-button')?.addEventListener('click', () => void (async () => {
       try { await api.request('/session/logout', { method: 'POST', body: {} }); } catch { /* logout remains local below */ }
       showLogin();
-    });
+    })());
     get('#search-form')?.addEventListener('submit', (event) => {
       event.preventDefault();
-      void loadFolder(state.activeFolder, asString(new FormData(event.currentTarget).get('query')).trim());
+      if (event.currentTarget instanceof HTMLFormElement) void loadFolder(state.activeFolder, asString(new FormData(event.currentTarget).get('query')).trim());
     });
-    for (const button of documentRef.querySelectorAll('[data-folder]')) {
+    for (const button of documentRef.querySelectorAll<HTMLElement>('[data-folder]')) {
       button.addEventListener('click', () => void loadFolder(button.dataset.folder));
     }
-    for (const button of documentRef.querySelectorAll('[data-view]')) {
+    for (const button of documentRef.querySelectorAll<HTMLElement>('[data-view]')) {
       button.addEventListener('click', () => void setView(button.dataset.view));
     }
     get('#calendar-refresh-button')?.addEventListener('click', () => void loadCalendar());
@@ -1104,21 +1192,24 @@ function createWebApplication(documentRef = globalThis.document, windowRef = glo
     get('#contacts-discovery-button')?.addEventListener('click', () => void checkDiscovery('contacts'));
     get('#navigation-toggle')?.addEventListener('click', (event) => {
       const navigation = get('#navigation');
+      if (!navigation) return;
       const open = navigation.classList.toggle('is-open');
-      event.currentTarget.setAttribute('aria-expanded', String(open));
+      if (event.currentTarget instanceof HTMLElement) event.currentTarget.setAttribute('aria-expanded', String(open));
     });
-    for (const button of documentRef.querySelectorAll('[data-close-dialog]')) {
-      button.addEventListener('click', () => get(`#${button.dataset.closeDialog}`)?.close());
+    for (const button of documentRef.querySelectorAll<HTMLElement>('[data-close-dialog]')) {
+      button.addEventListener('click', () => documentRef.querySelector<HTMLDialogElement>(`#${button.dataset.closeDialog}`)?.close());
     }
     get('#reply-button')?.addEventListener('click', () => {
       const dialog = get('#compose-dialog');
       const message = state.selectedMessage;
       if (!dialog || !message) return;
-      get('#compose-to').value = asString(message.from);
-      get('#compose-subject').value = `Re: ${asString(message.subject, '')}`.trim();
+      const recipient = get('#compose-to');
+      if (recipient) recipient.value = asString(message.from);
+      const subject = get('#compose-subject');
+      if (subject) subject.value = `Re: ${asString(message.subject, '')}`.trim();
       dialog.showModal();
     });
-    get('#archive-button')?.addEventListener('click', async () => {
+    get('#archive-button')?.addEventListener('click', () => void (async () => {
       if (!state.selectedMessage) return;
       try {
         await api.request(`/mail/messages/${encodeURIComponent(state.selectedMessage.id)}/archive`, { method: 'POST', body: {} });
@@ -1126,9 +1217,9 @@ function createWebApplication(documentRef = globalThis.document, windowRef = glo
         renderMessage(undefined);
         announce('Message archived.', 'success');
       } catch (error) {
-        announce(asString(error?.message, 'Message could not be archived.'), 'error');
+        announce(asString(errorDetails(error).message, 'Message could not be archived.'), 'error');
       }
-    });
+    })());
   }
 
   async function start() {

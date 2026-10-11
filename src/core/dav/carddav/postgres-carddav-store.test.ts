@@ -200,7 +200,7 @@ test('createAddressBook persists a row scoped to tenant/user', async () => {
   assert.equal((await store.listAddressBooks(bob)).length, 0);
   await assert.rejects(
     () => store.getAddressBook(bob, { addressBookId: 'personal' }),
-    (error: any) => error.code === 'ADDRESS_BOOK_NOT_FOUND' && error.status === 404,
+    { code: 'ADDRESS_BOOK_NOT_FOUND', status: 404 },
   );
 });
 
@@ -223,15 +223,15 @@ test('contact create/update/delete enforce conditional ETags', async () => {
   const created = await store.createContact(alice, { addressBookId: 'personal', href: 'alice-1.vcf', ifNoneMatch: '*', vCard: aliceCard() });
   await assert.rejects(
     () => store.createContact(alice, { addressBookId: 'personal', href: 'missing.vcf', vCard: aliceCard() }),
-    (error: any) => error.code === 'PRECONDITION_REQUIRED' && error.status === 428,
+    { code: 'PRECONDITION_REQUIRED', status: 428 },
   );
   await assert.rejects(
     () => store.createContact(alice, { addressBookId: 'personal', href: 'alice-1.vcf', ifNoneMatch: '*', vCard: aliceCard() }),
-    (error: any) => error.code === 'CONTACT_EXISTS' && error.status === 412,
+    { code: 'CONTACT_EXISTS', status: 412 },
   );
   await assert.rejects(
     () => store.putContact(alice, { addressBookId: 'personal', href: 'alice-1.vcf', ifMatch: '"stale"', vCard: aliceCard({ fullName: 'Changed' }) }),
-    (error: any) => error.code === 'ETAG_MISMATCH' && error.status === 412,
+    { code: 'ETAG_MISMATCH', status: 412 },
   );
   const updated = await store.putContact(alice, { addressBookId: 'personal', href: 'alice-1.vcf', ifMatch: created.etag, vCard: aliceCard({ fullName: 'Changed' }) });
   assert.notEqual(updated.etag, created.etag);
@@ -260,12 +260,12 @@ test('UID uniqueness is enforced within an address book; UID is immutable across
   await store.createContact(alice, { addressBookId: 'personal', href: 'alice-1.vcf', ifNoneMatch: '*', vCard: aliceCard() });
   await assert.rejects(
     () => store.createContact(alice, { addressBookId: 'personal', href: 'dup.vcf', ifNoneMatch: '*', vCard: aliceCard() }),
-    (error: any) => error.code === 'VCARD_UID_EXISTS' && error.status === 409,
+    { code: 'VCARD_UID_EXISTS', status: 409 },
   );
   const created = await store.putContact(alice, { addressBookId: 'personal', href: 'new.vcf', ifNoneMatch: '*', vCard: aliceCard({ uid: 'second' }) });
   await assert.rejects(
     () => store.putContact(alice, { addressBookId: 'personal', href: 'new.vcf', ifMatch: created.etag, vCard: aliceCard({ uid: 'alice-1' }) }),
-    (error: any) => error.code === 'VCARD_UID_IMMUTABLE',
+    { code: 'VCARD_UID_IMMUTABLE' },
   );
 });
 
@@ -286,7 +286,7 @@ test('sync tokens are opaque, tenant/user/address-book scoped, and expose deleti
   assert.notEqual(afterDelete.syncToken, afterCreate.syncToken);
   await assert.rejects(
     () => store.syncCollection(bob, { addressBookId: 'personal', syncToken: afterCreate.syncToken }),
-    (error: any) => error.code === 'ADDRESS_BOOK_NOT_FOUND',
+    { code: 'ADDRESS_BOOK_NOT_FOUND' },
   );
 });
 
@@ -299,7 +299,7 @@ test('deleteAddressBook cascades away its contacts without a not-empty guard, ma
   assert.deepEqual(deleted, { addressBookId: 'personal', status: 'deleted' });
   await assert.rejects(
     () => store.getAddressBook(alice, { addressBookId: 'personal' }),
-    (error: any) => error.code === 'ADDRESS_BOOK_NOT_FOUND',
+    { code: 'ADDRESS_BOOK_NOT_FOUND' },
   );
 });
 

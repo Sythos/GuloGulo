@@ -2,8 +2,6 @@
 // SPDX-FileCopyrightText: 2026 Sythos (https://www.sythos.net)
 // Author: Sythos (https://www.sythos.net)
 
-// @ts-nocheck
-
 export {
   AUDIT_SINKS,
   LOG_ROTATION_MODES,

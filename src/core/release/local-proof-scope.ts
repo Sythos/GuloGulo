@@ -2,7 +2,11 @@
 // SPDX-FileCopyrightText: 2026 Sythos (https://www.sythos.net)
 // Author: Sythos (https://www.sythos.net)
 
-// @ts-nocheck
+export interface LocalProofScope extends Record<string, unknown> {
+  readonly targetPlatforms: readonly string[];
+  readonly localNames: readonly string[];
+  readonly requiredServices: readonly string[];
+}
 
 /**
  * LP0 local-proof scope contract.
@@ -31,38 +35,37 @@ const LOCAL_PROOF_REQUIRED_SERVICES = Object.freeze([
 
 const LOCAL_PROOF_RELEASE_LABEL = 'v0.1.0-local-proof.1';
 
-function scopeError(code, message) {
-  const error = new Error(message);
-  error.code = code;
+function scopeError(code: string, message: string) {
+  const error = Object.assign(new Error(message), { code });
   return error;
 }
 
-function assertPlainObject(value, code, label) {
+function assertPlainObject(value: unknown, code: string, label: string): asserts value is Record<string, unknown> {
   if (!value || typeof value !== 'object' || Array.isArray(value)) {
     throw scopeError(code, `${label} must be a plain object.`);
   }
 }
 
-function assertExactString(value, expected, code, label) {
+function assertExactString(value: unknown, expected: string, code: string, label: string) {
   if (value !== expected) {
     throw scopeError(code, `${label} must be ${expected}.`);
   }
 }
 
-function assertSafeString(value, code, label) {
+function assertSafeString(value: unknown, code: string, label: string) {
   if (typeof value !== 'string' || value.length === 0 || /[\\/\0]|\.\.|https?:\/\//i.test(value)) {
     throw scopeError(code, `${label} contains an unsafe value.`);
   }
 }
 
-function assertPlatformList(platforms) {
+function assertPlatformList(platforms: unknown): asserts platforms is string[] {
   if (!Array.isArray(platforms) || platforms.length !== PLATFORM_SET.length ||
       platforms.some((platform, index) => platform !== PLATFORM_SET[index])) {
     throw scopeError('LP0_PLATFORMS_INVALID', 'LP0 must declare linux/amd64 and linux/arm64 in order.');
   }
 }
 
-function assertLocalNames(localNames) {
+function assertLocalNames(localNames: unknown): asserts localNames is string[] {
   if (!Array.isArray(localNames) || localNames.length === 0) {
     throw scopeError('LP0_LOCAL_NAMES_EMPTY', 'LP0 must declare at least one local-only name.');
   }
@@ -73,7 +76,7 @@ function assertLocalNames(localNames) {
   }
 }
 
-function assertRequiredServices(requiredServices) {
+function assertRequiredServices(requiredServices: unknown): asserts requiredServices is string[] {
   if (!Array.isArray(requiredServices) || requiredServices.length !== LOCAL_PROOF_REQUIRED_SERVICES.length ||
       requiredServices.some((service, index) => service !== LOCAL_PROOF_REQUIRED_SERVICES[index])) {
     throw scopeError('LP0_SERVICES_INVALID', 'LP0 required services must match the frozen local service inventory.');
@@ -86,7 +89,7 @@ function assertRequiredServices(requiredServices) {
  * The validator deliberately rejects public DNS, public ACME, real secrets,
  * and absolute paths so the local proof cannot quietly become a deployment.
  */
-export function createLocalProofScope(input) {
+export function createLocalProofScope(input: unknown): Readonly<LocalProofScope> {
   assertPlainObject(input, 'LP0_SCOPE_INVALID', 'LP0 scope');
   assertExactString(input.proofType, 'local', 'LP0_PROOF_TYPE_INVALID', 'proofType');
   if (input.schemaVersion !== 1) {

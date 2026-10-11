@@ -16,7 +16,18 @@ import { createLogger } from './logger.js';
 import { createRuntimeServer, startServer, stopServer } from './server.js';
 
 type TestRuntime = ReturnType<typeof createRuntimeServer>;
-interface JsonResponse { statusCode: number | undefined; headers: IncomingHttpHeaders; body: any }
+interface JsonResponse { statusCode: number | undefined; headers: IncomingHttpHeaders; body: Record<string, unknown> }
+
+function jsonObject(value: unknown): Record<string, unknown> {
+  assert.ok(value !== null && typeof value === 'object' && !Array.isArray(value), 'Expected a JSON object');
+  return value as Record<string, unknown>;
+}
+
+function jsonString(value: unknown): string {
+  assert.equal(typeof value, 'string', 'Expected a JSON string');
+  if (typeof value !== 'string') throw new Error('Expected a JSON string');
+  return value;
+}
 
 const PASSWORD = 'test-only-password';
 const RAW_MESSAGE = [
@@ -100,7 +111,7 @@ function makeRuntime() {
   errorOutput.on('data', (chunk) => { logged += String(chunk); });
   const runtime = createRuntimeServer({
     config: { host: '127.0.0.1', port: 0, serviceName: 'gulogulo-test', environment: 'test', shutdownTimeoutMs: 1_000 },
-    logger: createLogger({ output: output as unknown as typeof process.stdout, errorOutput: errorOutput as unknown as typeof process.stderr }),
+    logger: createLogger({ output, errorOutput }),
     authenticateLogin: async ({ email, password }) => {
       if (password !== PASSWORD) return null;
       const [userId, domain] = email.split('@');
@@ -122,7 +133,7 @@ function send(runtime: TestRuntime, path: string, { method = 'GET', headers = {}
       let text = '';
       response.setEncoding('utf8');
       response.on('data', (chunk) => { text += chunk; });
-      response.on('end', () => resolve({ statusCode: response.statusCode, headers: response.headers, body: text.length > 0 ? JSON.parse(text) : null }));
+      response.on('end', () => resolve({ statusCode: response.statusCode, headers: response.headers, body: jsonObject(JSON.parse(text || '{}')) }));
     });
     handle.on('error', reject);
     handle.end(payload);
@@ -134,7 +145,7 @@ async function signIn(runtime: TestRuntime, email: string) {
   assert.equal(login.statusCode, 200);
   const setCookie = login.headers['set-cookie'];
   assert.ok(Array.isArray(setCookie));
-  return { cookie: setCookie[0].split(';', 1)[0], csrf: login.body.csrfToken as string };
+  return { cookie: setCookie[0].split(';', 1)[0], csrf: jsonString(login.body.csrfToken) };
 }
 
 test('message detail opens a real message as the session mailbox and keeps content out of logs', async () => {
@@ -147,10 +158,10 @@ test('message detail opens a real message as the session mailbox and keeps conte
     const { cookie } = await signIn(runtime, 'alice@acme.example');
     const detail = await send(runtime, '/api/mail/messages/inbox:7', { headers: { cookie } });
     assert.equal(detail.statusCode, 200);
-    assert.equal(detail.body.message.subject, 'Café');
-    assert.equal(detail.body.message.text, 'secret body text');
-    assert.equal(detail.body.message.id, 'inbox:7');
-    assert.equal(detail.body.message.unread, true);
+    assert.equal(jsonObject(detail.body.message).subject, 'Café');
+    assert.equal(jsonObject(detail.body.message).text, 'secret body text');
+    assert.equal(jsonObject(detail.body.message).id, 'inbox:7');
+    assert.equal(jsonObject(detail.body.message).unread, true);
     assert.deepEqual(FakeImap.instances[0].calls, ['connect', 'login:alice@acme.example', 'select:INBOX', 'fetch:7', 'logout']);
 
     assert.equal((await send(runtime, '/api/mail/messages/7', { headers: { cookie } })).statusCode, 200);
@@ -165,7 +176,7 @@ test('message detail opens a real message as the session mailbox and keeps conte
     FakeImap.failConnect = true;
     const backend = await send(runtime, '/api/mail/messages/inbox:7', { headers: { cookie } });
     assert.equal(backend.statusCode, 502);
-    assert.equal(backend.body.error.code, 'MAIL_BACKEND_UNAVAILABLE');
+    assert.equal(jsonObject(backend.body.error).code, 'MAIL_BACKEND_UNAVAILABLE');
     assert.ok(!JSON.stringify(backend.body).includes('secret-host'));
     assert.ok(!logs().includes(PASSWORD));
     assert.ok(!logs().includes('secret body text'));
@@ -217,7 +228,7 @@ test('send submits as the session mailbox, requires CSRF and validates input', a
     const sent = await send(runtime, '/api/mail/send', { method: 'POST', headers: { cookie, 'x-csrf-token': csrf }, body: { ...body, from: 'ceo@acme.example' } });
     assert.equal(sent.statusCode, 202);
     assert.equal(sent.body.recipients, 2);
-    assert.match(sent.body.csrfToken, /^[A-Za-z0-9_-]{43}$/u);
+    assert.match(jsonString(sent.body.csrfToken), /^[A-Za-z0-9_-]{43}$/u);
     const smtp = FakeSmtp.instances[0];
     assert.deepEqual(smtp.calls, ['connect', 'ehlo', 'starttls', 'ehlo', 'auth:alice@acme.example', 'from:alice@acme.example', 'rcpt:bob@other.example', 'rcpt:carol@acme.example', 'data', 'quit']);
     assert.match(smtp.payload, /^From: <alice@acme\.example>/u);
@@ -226,7 +237,7 @@ test('send submits as the session mailbox, requires CSRF and validates input', a
     // The used token is spent; the one from the answer is the next valid one, and failed changes leave it usable.
     const replay = await send(runtime, '/api/mail/send', { method: 'POST', headers: { cookie, 'x-csrf-token': csrf }, body });
     assert.equal(replay.statusCode, 403);
-    const token = sent.body.csrfToken as string;
+    const token = jsonString(sent.body.csrfToken);
 
     for (const [invalid, status, code] of [
       [{ ...body, to: 'not-an-address' }, 400, 'INVALID_INPUT'],
@@ -238,7 +249,7 @@ test('send submits as the session mailbox, requires CSRF and validates input', a
     ] as const) {
       const response = await send(runtime, '/api/mail/send', { method: 'POST', headers: { cookie, 'x-csrf-token': token }, body: invalid });
       assert.equal(response.statusCode, status);
-      assert.equal(response.body.error.code, code);
+      assert.equal(jsonObject(response.body.error).code, code);
       assert.equal(response.body.csrfToken, undefined);
     }
     assert.equal(FakeSmtp.instances.length, 1);
@@ -246,12 +257,12 @@ test('send submits as the session mailbox, requires CSRF and validates input', a
     FakeSmtp.rejectRecipient = 'bob@other.example';
     const rejected = await send(runtime, '/api/mail/send', { method: 'POST', headers: { cookie, 'x-csrf-token': token }, body });
     assert.equal(rejected.statusCode, 422);
-    assert.equal(rejected.body.error.code, 'MESSAGE_REJECTED');
+    assert.equal(jsonObject(rejected.body.error).code, 'MESSAGE_REJECTED');
 
     FakeSmtp.failConnect = true;
     const backend = await send(runtime, '/api/mail/send', { method: 'POST', headers: { cookie, 'x-csrf-token': token }, body });
     assert.equal(backend.statusCode, 502);
-    assert.equal(backend.body.error.code, 'MAIL_BACKEND_UNAVAILABLE');
+    assert.equal(jsonObject(backend.body.error).code, 'MAIL_BACKEND_UNAVAILABLE');
     assert.ok(!logs().includes(PASSWORD));
     assert.ok(!logs().includes('private text'));
   } finally {
@@ -276,7 +287,7 @@ test('archive moves the message, requires CSRF and reports backend failure safel
     assert.equal(archived.statusCode, 200);
     assert.equal(archived.body.archived, true);
     assert.deepEqual(FakeImap.instances[0].calls, ['connect', 'login:alice@acme.example', 'select:INBOX', 'move:7:Archive', 'logout']);
-    const token = archived.body.csrfToken as string;
+    const token = jsonString(archived.body.csrfToken);
 
     const invalid = await send(runtime, '/api/mail/messages/nope/archive', { method: 'POST', headers: { cookie, 'x-csrf-token': token }, body: {} });
     assert.equal(invalid.statusCode, 400);
@@ -287,7 +298,7 @@ test('archive moves the message, requires CSRF and reports backend failure safel
     FakeImap.failConnect = true;
     const backend = await send(runtime, '/api/mail/messages/inbox:7/archive', { method: 'POST', headers: { cookie, 'x-csrf-token': token }, body: {} });
     assert.equal(backend.statusCode, 502);
-    assert.equal(backend.body.error.code, 'MAIL_BACKEND_UNAVAILABLE');
+    assert.equal(jsonObject(backend.body.error).code, 'MAIL_BACKEND_UNAVAILABLE');
     assert.ok(!logs().includes(PASSWORD));
   } finally {
     await stopServer(runtime);

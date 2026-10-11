@@ -2,7 +2,15 @@
 // SPDX-FileCopyrightText: 2026 Sythos (https://www.sythos.net)
 // Author: Sythos (https://www.sythos.net)
 
-// @ts-nocheck
+import type { TenantRole } from '../../integrations/types.ts';
+export type AdminActor = Readonly<{ tenantId: string; domain: string; actorId: string; userId: string | null; role: TenantRole }>;
+export type DelegationAccess = { canAccess(actor: AdminActor, ownerUserId: string | null | undefined, permission: string): boolean };
+export type AdminPolicy = { masterLogAccess?: boolean; grossQuotaBytes?: number };
+export type AuthorizationRequest = {
+  permission?: unknown; targetTenantId?: unknown; targetUserId?: unknown;
+  resource?: string | null; content?: boolean; delegationStore?: DelegationAccess | null;
+  policy?: AdminPolicy; policyField?: string | null;
+};
 
 import { assertTenantContext } from '../../integrations/tenant-context.ts';
 
@@ -131,30 +139,31 @@ export const PERMISSION_MATRIX = Object.freeze({
   monitor: Object.freeze([...MONITOR_PERMISSIONS]),
 });
 
-function authorizationError(message, code = 'FORBIDDEN', status = 403) {
-  const error = new Error(`Authorization error: ${message}`);
+function authorizationError(message: string, code = 'FORBIDDEN', status = 403) {
+  const error = Object.assign(new Error(`Authorization error: ${message}`), { code, status });
   error.name = 'AdminAuthorizationError';
   error.code = code;
   error.status = status;
   return error;
 }
 
-function assertSafeActorId(value, field = 'actorId') {
+function assertSafeActorId(value: unknown, field = 'actorId') {
   if (typeof value !== 'string' || !ACTOR_ID_PATTERN.test(value)) {
     throw authorizationError(`${field} is invalid`, 'INVALID_ACTOR', 400);
   }
   return value;
 }
 
-function assertSafeUserId(value, field = 'userId') {
+function assertSafeUserId(value: unknown, field = 'userId') {
   if (typeof value !== 'string' || !USER_ID_PATTERN.test(value)) {
     throw authorizationError(`${field} is invalid`, 'INVALID_USER', 400);
   }
   return value;
 }
 
-function normalizeActor(actor) {
-  if (actor !== null && typeof actor === 'object' && actor.role !== undefined && !ADMIN_ROLES.includes(actor.role)) {
+function normalizeActor(actor: unknown): AdminActor {
+  const input: { role?: unknown; userId?: unknown } = actor !== null && typeof actor === 'object' ? actor : {};
+  if (input.role !== undefined && (typeof input.role !== 'string' || !ADMIN_ROLES.includes(input.role))) {
     throw authorizationError('role is not supported', 'ROLE_DENIED');
   }
   let context;
@@ -168,9 +177,8 @@ function normalizeActor(actor) {
     throw authorizationError('role is not supported', 'ROLE_DENIED');
   }
 
-  const actorId = context.actorId ?? actor?.userId;
-  assertSafeActorId(actorId);
-  const userId = context.role === 'user' ? (actor?.userId ?? actorId) : null;
+  const actorId = assertSafeActorId(context.actorId ?? input.userId);
+  const userId = context.role === 'user' ? assertSafeUserId(input.userId ?? actorId) : null;
   if (context.role === 'user') {
     assertSafeUserId(userId);
     if (userId !== actorId) throw authorizationError('actor and user scope do not match', 'ACTOR_SCOPE_MISMATCH');
@@ -185,24 +193,24 @@ function normalizeActor(actor) {
   });
 }
 
-function assertPermission(permission) {
+function assertPermission(permission: unknown) {
   if (typeof permission !== 'string' || !PERMISSION_PATTERN.test(permission)) {
     throw authorizationError('permission is invalid', 'INVALID_PERMISSION', 400);
   }
   return permission;
 }
 
-function targetMatchesActor(actor, targetUserId) {
+function targetMatchesActor(actor: AdminActor, targetUserId: string | null | undefined) {
   return targetUserId === null || targetUserId === undefined || targetUserId === actor.userId;
 }
 
-function isContentRequest(permission, resource, content = false) {
+function isContentRequest(permission: string, resource: string | null, content = false) {
   return Boolean(content)
     || CONTENT_PERMISSIONS.has(permission)
     || (typeof resource === 'string' && CONTENT_RESOURCES.has(resource));
 }
 
-function canDelegateContent(actor, targetUserId, permission, delegationStore) {
+function canDelegateContent(actor: AdminActor, targetUserId: string | null, permission: string, delegationStore: DelegationAccess | null) {
   if (actor.role !== 'user' || !delegationStore || !CONTENT_PERMISSIONS.has(permission)) return false;
   const delegatePermission = permission === 'content.write' ? 'write' : 'read';
   try {
@@ -217,7 +225,7 @@ function canDelegateContent(actor, targetUserId, permission, delegationStore) {
  * operation. The browser, API, or MCP caller must not be allowed to invent a
  * role or a tenant context.
  */
-export function assertAdminActor(actor) {
+export function assertAdminActor(actor: unknown) {
   return normalizeActor(actor);
 }
 
@@ -226,23 +234,24 @@ export function assertAdminActor(actor) {
  * A successful result is an immutable decision envelope suitable for passing
  * to an adapter. A failure never returns a partial decision.
  */
-export function authorize(actor, {
+export function authorize(actor: unknown, {
   permission,
-  targetTenantId = actor?.tenantId,
+  targetTenantId,
   targetUserId = null,
   resource = null,
   content = false,
   delegationStore = null,
   policy = {},
   policyField = null,
-} = {}) {
+}: AuthorizationRequest = {}) {
   const canonical = normalizeActor(actor);
   const requestedPermission = assertPermission(permission);
   const requestedUserId = targetUserId === null || targetUserId === undefined
     ? null
     : assertSafeUserId(targetUserId, 'targetUserId');
 
-  if (typeof targetTenantId !== 'string' || targetTenantId !== canonical.tenantId) {
+  const requestedTenantId = targetTenantId === undefined ? canonical.tenantId : targetTenantId;
+  if (typeof requestedTenantId !== 'string' || requestedTenantId !== canonical.tenantId) {
     throw authorizationError('cross-tenant access denied', 'CROSS_TENANT_DENIED');
   }
 
@@ -293,7 +302,7 @@ export function authorize(actor, {
   });
 }
 
-export function canAuthorize(actor, request = {}) {
+export function canAuthorize(actor: unknown, request: AuthorizationRequest = {}) {
   try {
     authorize(actor, request);
     return true;
@@ -302,7 +311,7 @@ export function canAuthorize(actor, request = {}) {
   }
 }
 
-export function isContentResource(resource) {
+export function isContentResource(resource: unknown) {
   return typeof resource === 'string' && CONTENT_RESOURCES.has(resource);
 }
 

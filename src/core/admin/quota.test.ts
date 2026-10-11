@@ -2,7 +2,6 @@
 // SPDX-FileCopyrightText: 2026 Sythos (https://www.sythos.net)
 // Author: Sythos (https://www.sythos.net)
 
-// @ts-nocheck
 
 import assert from 'node:assert/strict';
 import test from 'node:test';
@@ -42,7 +41,7 @@ test('master quota allocation is atomic and cannot oversubscribe the immutable g
   });
   assert.throws(
     () => ledger.allocate(master, { userId: 'alice', allocatedQuotaBytes: 700 }),
-    (error) => error.code === 'QUOTA_EXCEEDED' && error.status === 409,
+    (error: unknown) => error instanceof Error && 'code' in error && error.code === 'QUOTA_EXCEEDED' && 'status' in error && error.status === 409,
   );
   assert.equal(ledger.read(alice).allocatedQuotaBytes, 600);
   assert.equal(ledger.snapshot(master).allocatedQuotaBytes, 1_000);
@@ -54,9 +53,9 @@ test('registering and allocating users require administrative permission', () =>
   const ledger = createQuotaLedger({ tenantId: 'acme', grossQuotaBytes: 1_000 });
   assert.equal(ledger.registerUser(master, { userId: 'alice', allocatedQuotaBytes: 400 }).allocatedQuotaBytes, 400);
   assert.equal(ledger.registerUser(provider, { userId: 'bob', allocatedQuotaBytes: 500 }).allocatedQuotaBytes, 500);
-  assert.throws(() => ledger.registerUser(alice, { userId: 'carol', allocatedQuotaBytes: 1 }), (error) => error.code === 'PERMISSION_DENIED');
-  assert.throws(() => ledger.allocate(alice, { userId: 'bob', allocatedQuotaBytes: 300 }), (error) => error.code === 'PERMISSION_DENIED');
-  assert.throws(() => ledger.registerUser(master, { userId: 'alice', allocatedQuotaBytes: 1 }), (error) => error.code === 'CONFLICT');
+  assert.throws(() => ledger.registerUser(alice, { userId: 'carol', allocatedQuotaBytes: 1 }), (error: unknown) => error instanceof Error && 'code' in error && error.code === 'PERMISSION_DENIED');
+  assert.throws(() => ledger.allocate(alice, { userId: 'bob', allocatedQuotaBytes: 300 }), (error: unknown) => error instanceof Error && 'code' in error && error.code === 'PERMISSION_DENIED');
+  assert.throws(() => ledger.registerUser(master, { userId: 'alice', allocatedQuotaBytes: 1 }), (error: unknown) => error instanceof Error && 'code' in error && error.code === 'CONFLICT');
 });
 
 test('mail/DAV reservations reject usage beyond allocation and release idempotently', () => {
@@ -74,8 +73,8 @@ test('mail/DAV reservations reject usage beyond allocation and release idempoten
 
 test('all quota operations fail closed on cross-tenant or unknown user access', () => {
   const ledger = createQuotaLedger({ tenantId: 'acme', grossQuotaBytes: 1_000, initialUsers: [{ userId: 'alice', allocatedQuotaBytes: 500 }] });
-  assert.throws(() => ledger.snapshot(otherTenant), (error) => error.code === 'CROSS_TENANT_DENIED');
-  assert.throws(() => ledger.read(master, { userId: 'unknown' }), (error) => error.code === 'NOT_FOUND');
-  assert.throws(() => ledger.reserve(otherTenant, { userId: 'alice', sizeBytes: 1 }), (error) => error.code === 'CROSS_TENANT_DENIED');
-  assert.throws(() => ledger.allocate(master, { userId: 'unknown', allocatedQuotaBytes: 1 }), (error) => error.code === 'NOT_FOUND');
+  assert.throws(() => ledger.snapshot(otherTenant), (error: unknown) => error instanceof Error && 'code' in error && error.code === 'CROSS_TENANT_DENIED');
+  assert.throws(() => ledger.read(master, { userId: 'unknown' }), (error: unknown) => error instanceof Error && 'code' in error && error.code === 'NOT_FOUND');
+  assert.throws(() => ledger.reserve(otherTenant, { userId: 'alice', sizeBytes: 1 }), (error: unknown) => error instanceof Error && 'code' in error && error.code === 'CROSS_TENANT_DENIED');
+  assert.throws(() => ledger.allocate(master, { userId: 'unknown', allocatedQuotaBytes: 1 }), (error: unknown) => error instanceof Error && 'code' in error && error.code === 'NOT_FOUND');
 });

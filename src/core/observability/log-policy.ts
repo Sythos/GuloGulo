@@ -2,8 +2,20 @@
 // SPDX-FileCopyrightText: 2026 Sythos (https://www.sythos.net)
 // Author: Sythos (https://www.sythos.net)
 
-// @ts-nocheck
-
+interface JournaldOptions { maxUse?: number | string; maxFile?: number | string; retentionDays?: number }
+interface SidecarOptions { name?: string; maxSize?: number | string; maxFiles?: number; compress?: boolean }
+export interface LogRotationOptions {
+  mode?: string; maxSize?: number | string; maxFiles?: number; retentionDays?: number;
+  maxRecordBytes?: number | string; compress?: boolean; auditRetentionDays?: number;
+  auditSink?: string; journald?: JournaldOptions; sidecar?: SidecarOptions;
+}
+export interface LogRotationPolicy {
+  application_stream: string; mode: string; bounded: boolean; max_size_bytes: number;
+  max_files: number; retention_days: number; max_record_bytes: number; compress: boolean;
+  audit: { preserve: boolean; retention_days: number; sink: string; content_excluded: boolean };
+  docker: { driver: string; options: Record<string, string> } | null;
+  journald: ReturnType<typeof normalizeJournald> | null; sidecar: ReturnType<typeof normalizeSidecar> | null;
+}
 const MAX_POLICY_BYTES = 1_099_511_627_776;
 const SIZE_PATTERN = /^([1-9]\d*)(b|k|kb|kib|m|mb|mib|g|gb|gib)$/i;
 const MODE_VALUES = Object.freeze(['docker-json-file', 'journald', 'sidecar']);
@@ -22,7 +34,7 @@ const SIZE_MULTIPLIERS = Object.freeze({
   gib: 1_073_741_824,
 });
 
-function deepFreeze(value) {
+function deepFreeze<T>(value: T): T {
   if (value === null || typeof value !== 'object' || Object.isFrozen(value)) {
     return value;
   }
@@ -34,8 +46,8 @@ function deepFreeze(value) {
   return Object.freeze(value);
 }
 
-function integer(value, name, { minimum = 1, maximum = Number.MAX_SAFE_INTEGER } = {}) {
-  if (!Number.isSafeInteger(value) || value < minimum || value > maximum) {
+function integer(value: unknown, name: string, { minimum = 1, maximum = Number.MAX_SAFE_INTEGER } = {}): number {
+  if (typeof value !== 'number' || !Number.isSafeInteger(value) || value < minimum || value > maximum) {
     throw new RangeError(`${name} must be an integer between ${minimum} and ${maximum}`);
   }
 
@@ -47,7 +59,7 @@ function integer(value, name, { minimum = 1, maximum = Number.MAX_SAFE_INTEGER }
  * binary suffixes (`mib`, `gib`) are accepted, but zero and unbounded values
  * are intentionally rejected.
  */
-export function parseByteSize(value, name = 'Byte size') {
+export function parseByteSize(value: unknown, name = 'Byte size') {
   if (Number.isSafeInteger(value)) {
     return integer(value, name, { maximum: MAX_POLICY_BYTES });
   }
@@ -61,7 +73,9 @@ export function parseByteSize(value, name = 'Byte size') {
     throw new TypeError(`${name} must use a positive B, K, KiB, M, MiB, G, or GiB suffix`);
   }
 
-  const bytes = Number(match[1]) * SIZE_MULTIPLIERS[match[2].toLowerCase()];
+  const unit = match[2].toLowerCase();
+  if (!(unit in SIZE_MULTIPLIERS)) throw new TypeError('Unsupported byte size suffix');
+  const bytes = Number(match[1]) * SIZE_MULTIPLIERS[unit as keyof typeof SIZE_MULTIPLIERS];
   if (!Number.isSafeInteger(bytes) || bytes > MAX_POLICY_BYTES) {
     throw new RangeError(`${name} is outside the supported bounded range`);
   }
@@ -69,8 +83,8 @@ export function parseByteSize(value, name = 'Byte size') {
   return bytes;
 }
 
-function dockerSize(bytes) {
-  const units = [
+function dockerSize(bytes: number) {
+  const units: [number, string][] = [
     [1_000_000_000, 'g'],
     [1_000_000, 'm'],
     [1_000, 'k'],
@@ -85,7 +99,7 @@ function dockerSize(bytes) {
   return `${bytes}b`;
 }
 
-function normalizeMode(mode) {
+function normalizeMode(mode: string) {
   if (!MODE_VALUES.includes(mode)) {
     throw new TypeError(`Log rotation mode must be one of: ${MODE_VALUES.join(', ')}`);
   }
@@ -93,7 +107,7 @@ function normalizeMode(mode) {
   return mode;
 }
 
-function normalizeAuditSink(sink) {
+function normalizeAuditSink(sink: string) {
   if (!AUDIT_SINK_VALUES.includes(sink)) {
     throw new TypeError(`Audit sink must be one of: ${AUDIT_SINK_VALUES.join(', ')}`);
   }
@@ -101,7 +115,7 @@ function normalizeAuditSink(sink) {
   return sink;
 }
 
-function normalizeJournald(options) {
+function normalizeJournald(options: JournaldOptions) {
   const maxUseBytes = parseByteSize(options.maxUse ?? '1g', 'Journald maxUse');
   const maxFileBytes = parseByteSize(options.maxFile ?? '100m', 'Journald maxFile');
   if (maxFileBytes > maxUseBytes) {
@@ -116,7 +130,7 @@ function normalizeJournald(options) {
   };
 }
 
-function normalizeSidecar(options) {
+function normalizeSidecar(options: SidecarOptions) {
   const name = options.name ?? 'gulogulo-log-collector';
   if (typeof name !== 'string' || !/^[a-z][a-z0-9_.-]{0,62}$/u.test(name)) {
     throw new TypeError('Sidecar name must be a short container-safe identifier');
@@ -149,7 +163,7 @@ export function createLogRotationPolicy({
   auditSink = 'external',
   journald = {},
   sidecar = {},
-} = {}) {
+}: LogRotationOptions = {}) {
   const normalizedMode = normalizeMode(mode);
   const maxSizeBytes = parseByteSize(maxSize, 'Log maxSize');
   const normalizedMaxFiles = integer(maxFiles, 'Log maxFiles', { maximum: 100 });
@@ -172,7 +186,7 @@ export function createLogRotationPolicy({
   }
 
   const normalizedAuditSink = normalizeAuditSink(auditSink);
-  const policy = {
+  const policy: LogRotationPolicy = {
     application_stream: 'stdout/stderr',
     mode: normalizedMode,
     bounded: true,
@@ -222,21 +236,23 @@ export function createLogRotationPolicy({
   return deepFreeze(policy);
 }
 
-export function assertLogRotationPolicy(policy) {
-  if (policy === null || typeof policy !== 'object' || policy.bounded !== true) {
+export function assertLogRotationPolicy(policy: unknown) {
+  if (policy === null || typeof policy !== 'object' || !('bounded' in policy) || policy.bounded !== true) {
     throw new TypeError('A bounded log rotation policy is required');
   }
-  if (!MODE_VALUES.includes(policy.mode)) {
+  const record = policy as Record<string, unknown>;
+  if (typeof record.mode !== 'string' || !MODE_VALUES.includes(record.mode)) {
     throw new TypeError('Unsupported log rotation mode');
   }
-  parseByteSize(policy.max_size_bytes, 'Policy max_size_bytes');
-  integer(policy.max_files, 'Policy max_files', { maximum: 100 });
-  integer(policy.retention_days, 'Policy retention_days', { maximum: 3_650 });
-  if (policy.audit?.preserve !== true || policy.audit.content_excluded !== true) {
+  parseByteSize(record.max_size_bytes, 'Policy max_size_bytes');
+  integer(record.max_files, 'Policy max_files', { maximum: 100 });
+  const retentionDays = integer(record.retention_days, 'Policy retention_days', { maximum: 3_650 });
+  const audit = record.audit;
+  if (audit === null || typeof audit !== 'object' || !('preserve' in audit) || audit.preserve !== true || !('content_excluded' in audit) || audit.content_excluded !== true) {
     throw new TypeError('Audit preservation and content exclusion are mandatory');
   }
-  integer(policy.audit.retention_days, 'Policy audit retention_days', { maximum: 36_500 });
-  if (policy.audit.retention_days < policy.retention_days) {
+  const auditRetention = integer('retention_days' in audit ? audit.retention_days : undefined, 'Policy audit retention_days', { maximum: 36_500 });
+  if (auditRetention < retentionDays) {
     throw new RangeError('Audit retention cannot be shorter than local retention');
   }
 

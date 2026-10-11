@@ -2,7 +2,6 @@
 // SPDX-FileCopyrightText: 2026 Sythos (https://www.sythos.net)
 // Author: Sythos (https://www.sythos.net)
 
-// @ts-nocheck
 
 import assert from 'node:assert/strict';
 import test from 'node:test';
@@ -16,7 +15,7 @@ import {
 
 const COMMIT = 'a'.repeat(40);
 
-function section30(statusOverrides = {}) {
+function section30(statusOverrides: Record<string, string> = {}) {
   return REQUIRED_SECTION30_ITEMS.map((id) => ({
     id,
     status: statusOverrides[id] ?? 'verified',
@@ -30,7 +29,7 @@ function section30(statusOverrides = {}) {
   }));
 }
 
-function validEvidence(overrides = {}) {
+function validEvidence(overrides: { section30?: Record<string, string> } = {}) {
   return {
     evidenceVersion: '1.0',
     product: 'Gulo Gulo',
@@ -65,7 +64,7 @@ test('M10 evidence requires every applicable Section 30 item', () => {
   assert.equal(REQUIRED_SECTION30_ITEMS.length, 46);
   assert.throws(
     () => createReleaseEvidence({ ...validEvidence(), section30: section30().slice(1) }),
-    (error) => error.code === 'SECTION30_INCOMPLETE',
+    (error: unknown) => error instanceof Error && 'code' in error && error.code === 'SECTION30_INCOMPLETE',
   );
 });
 
@@ -73,7 +72,7 @@ test('M10 evidence requires every hardening review', () => {
   assert.equal(REQUIRED_REVIEWS.length, 10);
   assert.throws(
     () => createReleaseEvidence({ ...validEvidence(), reviews: validEvidence().reviews.slice(1) }),
-    (error) => error.code === 'M10_REVIEWS_INCOMPLETE',
+    (error: unknown) => error instanceof Error && 'code' in error && error.code === 'M10_REVIEWS_INCOMPLETE',
   );
 });
 
@@ -90,7 +89,7 @@ test('deferred evidence requires an approved owner and mitigation', () => {
       section30: section30({ 'operations.blue-green-rehearsal': 'deferred' }).map((entry) =>
         entry.id === 'operations.blue-green-rehearsal' ? { ...entry, approval: undefined } : entry),
     }),
-    (error) => error.code === 'INVALID_RELEASE_SHAPE',
+    (error: unknown) => error instanceof Error && 'code' in error && error.code === 'INVALID_RELEASE_SHAPE',
   );
 });
 
@@ -100,7 +99,7 @@ test('critical and high findings cannot remain open', () => {
       ...validEvidence(),
       securityFindings: [{ id: 'SEC-001', title: 'Open high finding', severity: 'high', status: 'open' }],
     }),
-    (error) => error.code === 'UNRESOLVED_SECURITY_FINDING',
+    (error: unknown) => error instanceof Error && 'code' in error && error.code === 'UNRESOLVED_SECURITY_FINDING',
   );
 
   const accepted = createReleaseEvidence({
@@ -121,13 +120,13 @@ test('critical and high findings cannot remain open', () => {
 test('release evidence rejects secrets and local paths', () => {
   assert.throws(
     () => createReleaseEvidence({ ...validEvidence(), residualRisks: ['token=secret-value'] }),
-    (error) => error.code === 'UNSAFE_RELEASE_EVIDENCE',
+    (error: unknown) => error instanceof Error && 'code' in error && error.code === 'UNSAFE_RELEASE_EVIDENCE',
   );
   assert.throws(
     () => createReleaseEvidence({
       ...validEvidence(),
       artifacts: [{ name: 'unsafe', path: 'C:\\Users\\Sythos\\Desktop\\evidence.json', purpose: 'not portable' }],
     }),
-    (error) => error.code === 'UNSAFE_RELEASE_EVIDENCE',
+    (error: unknown) => error instanceof Error && 'code' in error && error.code === 'UNSAFE_RELEASE_EVIDENCE',
   );
 });

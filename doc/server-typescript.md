@@ -71,7 +71,21 @@ server side of Gulo Gulo has a single canonical TypeScript build boundary, and
 `src/integrations/` and `src/runtime/` import directly from the moved
 `src/core/` modules.
 
-## Runtime and dependency notes
+## Type checks
+
+All project TypeScript files must pass the compiler checks without whole-file
+bypasses. ESLint rejects `@ts-nocheck` and `@ts-ignore`. The source audit test
+also requires a zero waiver count. Keep strict compiler options enabled.
+
+Configuration, authentication, runtime dependencies, browser data, and proof
+scripts use explicit interfaces. External values enter as `unknown` and are
+checked before use. DOM checks also handle missing elements.
+
+Run `npm run typecheck`, `npm run typecheck:lp9`, `npm test`, and `npm run lint`
+after a type change. Generated JavaScript is build output; edit the TypeScript
+source instead. Type checks do not replace tests on installed services.
+
+## Runtime versions
 
 Node.js 26 is the supported runtime for the current checkout (Bun 1.4.0+ is
 also supported as an interchangeable alternative runtime for the compiled

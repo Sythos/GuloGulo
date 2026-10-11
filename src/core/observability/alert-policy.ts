@@ -2,8 +2,23 @@
 // SPDX-FileCopyrightText: 2026 Sythos (https://www.sythos.net)
 // Author: Sythos (https://www.sythos.net)
 
-// @ts-nocheck
-
+export interface AlertThresholds {
+  dependency: { failedAfterSeconds: number };
+  queue: { warningDepth: number; criticalDepth: number; warningOldestAgeSeconds: number; criticalOldestAgeSeconds: number };
+  certificate: { warningDaysRemaining: number; criticalDaysRemaining: number };
+  storage: { warningPercent: number; criticalPercent: number };
+  quota: { warningPercent: number; criticalPercent: number };
+  authAbuse: { warningFailures: number; criticalFailures: number; windowSeconds: number };
+}
+export type AlertThresholdOverrides = { [K in keyof AlertThresholds]?: Partial<AlertThresholds[K]> };
+export interface OperationalAlert {
+  code: string; severity: 'warning' | 'critical'; source: string; subject: string;
+  observed: string | number; threshold: string | number; message: string;
+}
+interface AlertInput extends Omit<OperationalAlert, 'subject'> { subject?: unknown }
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === 'object' && !Array.isArray(value);
+}
 const SAFE_SUBJECT_PATTERN = /^[A-Za-z0-9_.@:+/%/-]{1,192}$/u;
 const SEVERITIES = Object.freeze(['warning', 'critical']);
 const DEPENDENCY_STATUSES = new Set(['ok', 'starting', 'degraded', 'failed', 'unknown', 'disabled']);
@@ -22,7 +37,7 @@ const DEFAULT_THRESHOLDS = Object.freeze({
   authAbuse: Object.freeze({ warningFailures: 5, criticalFailures: 20, windowSeconds: 300 }),
 });
 
-function deepFreeze(value) {
+function deepFreeze<T>(value: T): T {
   if (value === null || typeof value !== 'object' || Object.isFrozen(value)) {
     return value;
   }
@@ -32,37 +47,43 @@ function deepFreeze(value) {
   return Object.freeze(value);
 }
 
-function positiveNumber(value, name, { maximum = Number.MAX_SAFE_INTEGER } = {}) {
+function positiveNumber(value: unknown, name: string, { maximum = Number.MAX_SAFE_INTEGER } = {}) {
   if (typeof value !== 'number' || !Number.isFinite(value) || value < 0 || value > maximum) {
     throw new RangeError(`${name} must be a finite number between 0 and ${maximum}`);
   }
   return value;
 }
 
-function integer(value, name, { maximum = Number.MAX_SAFE_INTEGER } = {}) {
-  if (!Number.isSafeInteger(value) || value < 1 || value > maximum) {
+function integer(value: unknown, name: string, { maximum = Number.MAX_SAFE_INTEGER } = {}) {
+  if (typeof value !== 'number' || !Number.isSafeInteger(value) || value < 1 || value > maximum) {
     throw new RangeError(`${name} must be a positive integer no greater than ${maximum}`);
   }
   return value;
 }
 
-function percent(value, name) {
+function percent(value: unknown, name: string) {
   return positiveNumber(value, name, { maximum: 100 });
 }
 
-function mergeThresholds(overrides = {}) {
+function mergeThresholds(overrides: AlertThresholdOverrides = {}): AlertThresholds {
   if (overrides === null || typeof overrides !== 'object' || Array.isArray(overrides)) {
     throw new TypeError('Alert thresholds must be an object');
   }
 
-  const merged = {};
-  for (const [category, defaults] of Object.entries(DEFAULT_THRESHOLDS)) {
+  for (const category of Object.keys(DEFAULT_THRESHOLDS) as (keyof AlertThresholds)[]) {
     const override = overrides[category] ?? {};
     if (override === null || typeof override !== 'object' || Array.isArray(override)) {
       throw new TypeError(`Alert threshold ${category} must be an object`);
     }
-    merged[category] = { ...defaults, ...override };
   }
+  const merged: AlertThresholds = {
+    dependency: { ...DEFAULT_THRESHOLDS.dependency, ...overrides.dependency },
+    queue: { ...DEFAULT_THRESHOLDS.queue, ...overrides.queue },
+    certificate: { ...DEFAULT_THRESHOLDS.certificate, ...overrides.certificate },
+    storage: { ...DEFAULT_THRESHOLDS.storage, ...overrides.storage },
+    quota: { ...DEFAULT_THRESHOLDS.quota, ...overrides.quota },
+    authAbuse: { ...DEFAULT_THRESHOLDS.authAbuse, ...overrides.authAbuse },
+  };
 
   const dependency = merged.dependency;
   integer(dependency.failedAfterSeconds, 'dependency.failedAfterSeconds', { maximum: 86_400 });
@@ -83,7 +104,7 @@ function mergeThresholds(overrides = {}) {
     throw new RangeError('Critical certificate threshold cannot exceed warning threshold');
   }
 
-  for (const category of ['storage', 'quota']) {
+  for (const category of ['storage', 'quota'] as const) {
     percent(merged[category].warningPercent, `${category}.warningPercent`);
     percent(merged[category].criticalPercent, `${category}.criticalPercent`);
     if (merged[category].criticalPercent < merged[category].warningPercent) {
@@ -102,19 +123,21 @@ function mergeThresholds(overrides = {}) {
   return merged;
 }
 
-function subject(value, fallback = 'global') {
+function subject(value: unknown, fallback = 'global') {
   if (value === undefined || value === null || value === '') {
     return fallback;
   }
-  const normalized = String(value);
+  const normalized = typeof value === 'string' ? value
+    : typeof value === 'number' || typeof value === 'boolean' || typeof value === 'bigint' || typeof value === 'symbol'
+      ? String(value) : fallback;
   return SAFE_SUBJECT_PATTERN.test(normalized) ? normalized : fallback;
 }
 
-function numberValue(value, name) {
+function numberValue(value: unknown, name: string) {
   return positiveNumber(value, name);
 }
 
-function addAlert(alerts, { code, severity, source, subject: alertSubject, observed, threshold, message }) {
+function addAlert(alerts: OperationalAlert[], { code, severity, source, subject: alertSubject, observed, threshold, message }: AlertInput) {
   if (!SEVERITIES.includes(severity)) {
     throw new TypeError('Unsupported alert severity');
   }
@@ -130,13 +153,13 @@ function addAlert(alerts, { code, severity, source, subject: alertSubject, obser
   });
 }
 
-function evaluateDependencies(snapshot, thresholds, alerts) {
-  if (snapshot === null || typeof snapshot !== 'object' || Array.isArray(snapshot)) {
+function evaluateDependencies(snapshot: unknown, thresholds: AlertThresholds['dependency'], alerts: OperationalAlert[]) {
+  if (!isRecord(snapshot)) {
     return;
   }
 
   for (const [name, entry] of Object.entries(snapshot)) {
-    if (entry === null || typeof entry !== 'object' || !DEPENDENCY_STATUSES.has(entry.status)) {
+    if (!isRecord(entry) || typeof entry.status !== 'string' || !DEPENDENCY_STATUSES.has(entry.status)) {
       continue;
     }
     const dependencySubject = subject(name);
@@ -164,8 +187,8 @@ function evaluateDependencies(snapshot, thresholds, alerts) {
   }
 }
 
-function evaluateQueue(queue, thresholds, alerts) {
-  if (queue === null || typeof queue !== 'object' || Array.isArray(queue)) {
+function evaluateQueue(queue: unknown, thresholds: AlertThresholds['queue'], alerts: OperationalAlert[]) {
+  if (!isRecord(queue)) {
     return;
   }
   if (queue.depth !== undefined) {
@@ -202,12 +225,12 @@ function evaluateQueue(queue, thresholds, alerts) {
   }
 }
 
-function evaluateCertificates(certificates, thresholds, alerts) {
+function evaluateCertificates(certificates: unknown, thresholds: AlertThresholds['certificate'], alerts: OperationalAlert[]) {
   if (!Array.isArray(certificates)) {
     return;
   }
   for (const certificate of certificates) {
-    if (certificate === null || typeof certificate !== 'object' || certificate.daysRemaining === undefined) {
+    if (!isRecord(certificate) || certificate.daysRemaining === undefined) {
       continue;
     }
     const days = Number(certificate.daysRemaining);
@@ -231,8 +254,8 @@ function evaluateCertificates(certificates, thresholds, alerts) {
   }
 }
 
-function evaluateCapacity(entry, category, thresholds, alerts) {
-  if (entry === null || typeof entry !== 'object' || Array.isArray(entry)) {
+function evaluateCapacity(entry: unknown, category: 'storage' | 'quota', thresholds: AlertThresholds['storage'], alerts: OperationalAlert[]) {
+  if (!isRecord(entry)) {
     return;
   }
   let usedPercent = entry.usedPercent;
@@ -270,8 +293,8 @@ function evaluateCapacity(entry, category, thresholds, alerts) {
   }
 }
 
-function evaluateAuthAbuse(entry, thresholds, alerts) {
-  if (entry === null || typeof entry !== 'object' || entry.failedAttempts === undefined) {
+function evaluateAuthAbuse(entry: unknown, thresholds: AlertThresholds['authAbuse'], alerts: OperationalAlert[]) {
+  if (!isRecord(entry) || entry.failedAttempts === undefined) {
     return;
   }
   const failures = numberValue(entry.failedAttempts, 'Authentication failures');
@@ -296,15 +319,15 @@ function evaluateAuthAbuse(entry, thresholds, alerts) {
  * The evaluator never accepts message bodies, endpoints, addresses, or
  * credentials and emits only safe identifiers and numeric measurements.
  */
-export function createAlertPolicy({ thresholds = {}, clock = () => new Date() } = {}) {
+export function createAlertPolicy({ thresholds = {}, clock = () => new Date() }: { thresholds?: AlertThresholdOverrides; clock?: () => Date } = {}) {
   const normalizedThresholds = deepFreeze(mergeThresholds(thresholds));
 
-  function evaluate(snapshot = {}) {
-    if (snapshot === null || typeof snapshot !== 'object' || Array.isArray(snapshot)) {
+  function evaluate(snapshot: unknown = {}) {
+    if (!isRecord(snapshot)) {
       throw new TypeError('Alert snapshot must be an object');
     }
 
-    const alerts = [];
+    const alerts: OperationalAlert[] = [];
     evaluateDependencies(snapshot.dependencies, normalizedThresholds.dependency, alerts);
     evaluateQueue(snapshot.queue, normalizedThresholds.queue, alerts);
     evaluateCertificates(snapshot.certificates, normalizedThresholds.certificate, alerts);

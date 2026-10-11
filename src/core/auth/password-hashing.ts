@@ -2,7 +2,8 @@
 // SPDX-FileCopyrightText: 2026 Sythos (https://www.sythos.net)
 // Author: Sythos (https://www.sythos.net)
 
-// @ts-nocheck
+type HashCost = Readonly<{ N: number; r: number; p: number }>;
+type RandomBytes = (size: number) => Buffer;
 
 import {
   randomBytes as nodeRandomBytes,
@@ -20,13 +21,12 @@ export const DEFAULT_PASSWORD_HASH_COST = Object.freeze({ N: 16_384, r: 8, p: 1 
 
 const HASH_PATTERN = /^scrypt\$v(\d+)\$N=(\d+),r=(\d+),p=(\d+)\$([A-Za-z0-9_-]+)\$([A-Za-z0-9_-]+)$/u;
 
-function hashError(message, code = 'PASSWORD_HASH_ERROR') {
-  const error = new Error(`Password hash error: ${message}`);
-  error.code = code;
+function hashError(message: string, code = 'PASSWORD_HASH_ERROR') {
+  const error = Object.assign(new Error(`Password hash error: ${message}`), { code });
   return error;
 }
 
-function assertCost(cost) {
+function assertCost(cost: HashCost) {
   if (cost === null || typeof cost !== 'object' || !Number.isSafeInteger(cost.N) || !Number.isSafeInteger(cost.r) || !Number.isSafeInteger(cost.p)
     || cost.N < 16_384 || cost.N > 1_048_576 || (cost.N & (cost.N - 1)) !== 0 || cost.r < 1 || cost.r > 32 || cost.p < 1 || cost.p > 8) {
     throw hashError('scrypt cost parameters are invalid', 'INVALID_HASH_CONFIGURATION');
@@ -34,13 +34,13 @@ function assertCost(cost) {
   return Object.freeze({ N: cost.N, r: cost.r, p: cost.p });
 }
 
-function randomSalt(randomBytesFn) {
+function randomSalt(randomBytesFn: RandomBytes) {
   const salt = randomBytesFn(PASSWORD_HASH_SALT_BYTES);
   if (!Buffer.isBuffer(salt) || salt.length !== PASSWORD_HASH_SALT_BYTES) throw hashError('randomBytesFn must return 16 bytes', 'INVALID_RANDOM_SOURCE');
   return salt;
 }
 
-function derive(password, salt, cost) {
+function derive(password: string, salt: Buffer, cost: HashCost) {
   try {
     return scryptSync(password, salt, PASSWORD_HASH_KEY_BYTES, {
       N: cost.N,
@@ -53,7 +53,7 @@ function derive(password, salt, cost) {
   }
 }
 
-function parseHash(encoded) {
+function parseHash(encoded: unknown) {
   if (typeof encoded !== 'string' || encoded.length > 512) return null;
   const match = HASH_PATTERN.exec(encoded);
   if (match === null || Number(match[1]) !== PASSWORD_HASH_VERSION) return null;
@@ -81,14 +81,14 @@ export function createPasswordHasher({
   if (policy === null || typeof policy.assert !== 'function' || typeof policy.validate !== 'function') throw hashError('policy must be a password policy', 'INVALID_POLICY');
   const currentCost = assertCost(cost);
 
-  function hash(password) {
+  function hash(password: string) {
     policy.assert(password);
     const salt = randomSalt(randomBytesFn);
     const digest = derive(password, salt, currentCost);
     return `scrypt$v${PASSWORD_HASH_VERSION}$N=${currentCost.N},r=${currentCost.r},p=${currentCost.p}$${salt.toString('base64url')}$${digest.toString('base64url')}`;
   }
 
-  function verify(password, encoded) {
+  function verify(password: unknown, encoded: unknown) {
     if (typeof password !== 'string') return Object.freeze({ valid: false, needsRehash: false, code: 'PASSWORD_NOT_STRING' });
     const parsed = parseHash(encoded);
     if (parsed === null) return Object.freeze({ valid: false, needsRehash: false, code: 'HASH_INVALID' });

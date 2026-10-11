@@ -46,6 +46,15 @@ assert.deepEqual(
   { eventType: 'calendar.changed', resourceId: 'event-1' },
 );
 assert.equal(app.parseRealtimeMetadata('{"body":"not metadata"}'), undefined);
+for (const payload of [null, 42, true, [], '[]', '{broken']) {
+  assert.equal(app.parseRealtimeMetadata(payload), undefined);
+}
+assert.deepEqual(app.parseRealtimeMetadata({ sequence: 2, status: true, resource: { body: 'private' } }), {
+  sequence: 2,
+  status: true,
+});
+assert.equal(app.formatMessageTime(null, 'UTC'), 'Unknown date');
+assert.equal(app.readAuthenticatedSession({ user: [], csrfToken }), undefined);
 assert.equal(
   app.readAuthenticatedSession({ authenticated: false, user: { email: 'alice@gulogulo.test' }, csrfToken }),
   undefined,
@@ -142,6 +151,33 @@ await assert.rejects(
   (error: unknown) => (error as { status?: number }).status === 401,
 );
 assert.equal(csrfMeta.content, csrfToken, 'failed responses must not replace the active CSRF token');
+
+for (const malformedPayload of [null, [], 'not-an-object', 17]) {
+  const malformedApi = app.createApiClient({
+    fetchFn: (async () => ({
+      ok: true,
+      status: 200,
+      headers: { get: () => 'application/json' },
+      json: async () => malformedPayload,
+    })) satisfies FetchLike,
+    documentRef: fakeDocument,
+    config: { apiBase: '/api' },
+  });
+  assert.deepEqual(await malformedApi.request('/session'), {});
+}
+await assert.rejects(
+  () => app.createApiClient({
+    fetchFn: (async () => ({
+      ok: false,
+      status: 503,
+      headers: { get: () => 'application/json' },
+      json: async () => ({ error: { message: { unsafe: true }, code: ['bad'] } }),
+    })) satisfies FetchLike,
+    documentRef: fakeDocument,
+    config: { apiBase: '/api' },
+  }).request('/session'),
+  { message: 'Request failed with HTTP 503', status: 503, code: '' },
+);
 
 const config = app.buildWebConfig({
   body: { dataset: {

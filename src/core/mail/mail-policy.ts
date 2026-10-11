@@ -2,31 +2,45 @@
 // SPDX-FileCopyrightText: 2026 Sythos (https://www.sythos.net)
 // Author: Sythos (https://www.sythos.net)
 
-// Transitional typing waiver: the LP2-LP9 recovery plan closes this debt at
-// the final server-language audit after each protocol slice is operational.
-// @ts-nocheck
-
 import { assertTenantContext } from '../../integrations/tenant-context.ts';
+
+export interface MailUser { userId: string; address?: string; mailAddress?: string; status?: string }
+export interface MailAlias { address?: string; aliasAddress?: string; destinations?: string[]; targetUserId?: string }
+export type MailAliasInput = MailAlias | [address: string, destinations: string[]];
+export interface MailDirectoryOptions { users?: MailUser[]; aliases?: MailAliasInput[] | Map<string, string[]> }
+export interface MailEnvelopeOptions extends MailDirectoryOptions {
+  sender?: string; envelopeFrom?: string; recipients?: readonly string[]; sizeBytes?: number;
+  authenticatedUserId?: string; authenticated?: boolean; messageRef?: string | null;
+}
+interface MailPolicyOptions {
+  tenantId?: string; domain?: string; maxMessageBytes?: number; maxRecipients?: number;
+  maxMessagesPerUserPerMinute?: number; clock?: () => Date;
+}
+interface DirectoryEntry { userId: string; address: string }
+interface UserDirectory { byAddress: Map<string, Readonly<DirectoryEntry>>; byId: Map<string, Readonly<DirectoryEntry>> }
+export interface ResolvedRecipient { address: string; userId: string; via: 'mailbox' | 'alias'; alias?: string }
+export interface MailAuditOptions {
+  eventType?: string; context?: unknown; result?: string; reason?: string | null;
+  details?: Record<string, unknown>;
+}
 
 const LOCAL_PART_PATTERN = /^[A-Za-z0-9.!#$%&'*+/=?^_`{|}~-]{1,64}$/;
 const DOMAIN_PATTERN = /^(?=.{1,253}$)(?:[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?)(?:\.(?:[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?))*$/;
 const SIEVE_MAX_BYTES = 64 * 1024;
 const FORWARDING_PATTERN = /(?:^|\s|:)redirect(?:\s|;|$)|(?:^|\s)forward(?:ing)?(?:\s|:|$)/i;
 
-function policyError(message, code = 'MAIL_POLICY_ERROR') {
-  const error = new Error(`Mail policy error: ${message}`);
-  error.code = code;
-  return error;
+function policyError(message: string, code = 'MAIL_POLICY_ERROR') {
+  return Object.assign(new Error(`Mail policy error: ${message}`), { code });
 }
 
-function requiredString(value, name) {
+function requiredString(value: unknown, name: string): string {
   if (typeof value !== 'string' || value.length === 0) {
     throw policyError(`${name} is required`, 'INVALID_INPUT');
   }
   return value;
 }
 
-function normalizeAddress(address, name = 'address') {
+function normalizeAddress(address: unknown, name = 'address') {
   const value = requiredString(address, name).trim();
   const separator = value.lastIndexOf('@');
   if (separator <= 0 || separator === value.length - 1) {
@@ -42,7 +56,7 @@ function normalizeAddress(address, name = 'address') {
   return `${localPart.toLowerCase()}@${domain}`;
 }
 
-function normalizeAddressForTenant(address, domain, name) {
+function normalizeAddressForTenant(address: unknown, domain: string, name: string) {
   const normalized = normalizeAddress(address, name);
   if (normalized.slice(normalized.lastIndexOf('@') + 1) !== domain) {
     throw policyError(`${name} is outside the tenant domain`, 'CROSS_TENANT_ADDRESS');
@@ -50,9 +64,9 @@ function normalizeAddressForTenant(address, domain, name) {
   return normalized;
 }
 
-function normalizeUserDirectory(users, domain) {
-  const byAddress = new Map();
-  const byId = new Map();
+function normalizeUserDirectory(users: MailUser[] | undefined, domain: string): UserDirectory {
+  const byAddress = new Map<string, Readonly<DirectoryEntry>>();
+  const byId = new Map<string, Readonly<DirectoryEntry>>();
   for (const user of users ?? []) {
     if (user === null || typeof user !== 'object' || Array.isArray(user)) {
       throw policyError('user directory entries must be objects', 'INVALID_INPUT');
@@ -72,7 +86,7 @@ function normalizeUserDirectory(users, domain) {
   return { byAddress, byId };
 }
 
-function normalizeAliasDestinations(alias, directory, domain) {
+function normalizeAliasDestinations(alias: MailAlias, directory: UserDirectory, domain: string) {
   const destinations = alias.destinations ?? (alias.targetUserId === undefined ? [] : [alias.targetUserId]);
   if (!Array.isArray(destinations) || destinations.length === 0) {
     throw policyError('aliases require at least one explicit destination', 'INVALID_ALIAS');
@@ -96,9 +110,9 @@ function normalizeAliasDestinations(alias, directory, domain) {
   return unique;
 }
 
-function normalizeAliases(aliases, directory, domain) {
-  const byAddress = new Map();
-  const entries = aliases instanceof Map
+function normalizeAliases(aliases: MailDirectoryOptions['aliases'], directory: UserDirectory, domain: string) {
+  const byAddress = new Map<string, readonly string[]>();
+  const entries: MailAliasInput[] = aliases instanceof Map
     ? [...aliases.entries()].map(([address, destinations]) => ({ address, destinations }))
     : aliases ?? [];
 
@@ -107,7 +121,10 @@ function normalizeAliases(aliases, directory, domain) {
   }
 
   for (const alias of entries) {
-    const value = alias === null || typeof alias !== 'object' || Array.isArray(alias)
+    if (alias === null || typeof alias !== 'object') {
+      throw policyError('alias entries must be objects', 'INVALID_INPUT');
+    }
+    const value: MailAlias = Array.isArray(alias)
       ? { address: alias[0], destinations: alias[1] }
       : alias;
     const address = normalizeAddressForTenant(value.address ?? value.aliasAddress, domain, 'alias.address');
@@ -119,14 +136,14 @@ function normalizeAliases(aliases, directory, domain) {
   return byAddress;
 }
 
-function normalizeRecipients(recipients) {
+function normalizeRecipients(recipients: readonly string[] | undefined): string[] {
   if (!Array.isArray(recipients) || recipients.length === 0) {
     throw policyError('at least one recipient is required', 'NO_RECIPIENTS');
   }
   return [...new Set(recipients.map((address, index) => normalizeAddress(address, `recipients[${index}]`)))];
 }
 
-function authorizeActor(context, userId) {
+function authorizeActor(context: unknown, userId: string) {
   const canonical = assertTenantContext(context);
   if (canonical.role === 'user' && canonical.actorId !== userId) {
     throw policyError('the user actor cannot submit as another user', 'SENDER_FORBIDDEN');
@@ -146,7 +163,7 @@ export function createMailPolicy({
   maxRecipients = 100,
   maxMessagesPerUserPerMinute = 60,
   clock = () => new Date(),
-} = {}) {
+}: MailPolicyOptions = {}) {
   const canonicalDomain = requiredString(domain, 'domain').toLowerCase();
   if (!DOMAIN_PATTERN.test(canonicalDomain)) {
     throw policyError('domain is invalid', 'INVALID_DOMAIN');
@@ -162,9 +179,9 @@ export function createMailPolicy({
   }
 
   const tenant = requiredString(tenantId, 'tenantId');
-  const submissionWindows = new Map();
+  const submissionWindows = new Map<string, { startedAt: number; count: number }>();
 
-  function consumeSubmissionRate(userId) {
+  function consumeSubmissionRate(userId: string) {
     const key = requiredString(userId, 'userId');
     const now = clock().getTime();
     const current = submissionWindows.get(key);
@@ -179,21 +196,21 @@ export function createMailPolicy({
     return Object.freeze({ allowed: true, remaining: maxMessagesPerUserPerMinute - current.count, retryAfterMs: 0 });
   }
 
-  function directory(options = {}) {
+  function directory(options: MailDirectoryOptions = {}) {
     const users = normalizeUserDirectory(options.users, canonicalDomain);
     const aliases = normalizeAliases(options.aliases, users, canonicalDomain);
     return { users, aliases };
   }
 
-  function resolveRecipients({ recipients, users = [], aliases = [] } = {}) {
+  function resolveRecipients({ recipients, users = [], aliases = [] }: MailEnvelopeOptions = {}) {
     const resolvedDirectory = directory({ users, aliases });
     const requested = normalizeRecipients(recipients);
     if (requested.length > maxRecipients) {
       throw policyError('recipient limit exceeded', 'RECIPIENT_LIMIT');
     }
 
-    const resolved = [];
-    const rejected = [];
+    const resolved: ResolvedRecipient[] = [];
+    const rejected: { address: string; reason: string }[] = [];
     for (const address of requested) {
       if (address.slice(address.lastIndexOf('@') + 1) !== canonicalDomain) {
         rejected.push({ address, reason: 'external_recipient' });
@@ -213,6 +230,7 @@ export function createMailPolicy({
       }
       for (const destination of destinations) {
         const destinationUser = resolvedDirectory.users.byAddress.get(destination);
+        if (destinationUser === undefined) throw policyError('alias destination does not exist', 'INVALID_ALIAS');
         resolved.push({ address: destination, userId: destinationUser.userId, via: 'alias', alias: address });
       }
     }
@@ -225,7 +243,7 @@ export function createMailPolicy({
     });
   }
 
-  function assertMessageSize(sizeBytes) {
+  function assertMessageSize(sizeBytes: number) {
     if (!Number.isSafeInteger(sizeBytes) || sizeBytes < 0) {
       throw policyError('sizeBytes must be a non-negative safe integer', 'INVALID_SIZE');
     }
@@ -235,7 +253,7 @@ export function createMailPolicy({
     return sizeBytes;
   }
 
-  function authorizeInbound(context, options = {}) {
+  function authorizeInbound(context: unknown, options: MailEnvelopeOptions = {}) {
     const canonical = assertTenantContext(context);
     if (canonical.tenantId !== tenant) {
       throw policyError('mail policy tenant mismatch', 'CROSS_TENANT_ACCESS');
@@ -249,7 +267,7 @@ export function createMailPolicy({
     return Object.freeze({ sender, ...recipients, authenticated: false, path: 'inbound' });
   }
 
-  function authorizeSubmission(context, options = {}) {
+  function authorizeSubmission(context: unknown, options: MailEnvelopeOptions = {}) {
     const userId = requiredString(options.authenticatedUserId, 'authenticatedUserId');
     const canonical = authorizeActor(context, userId);
     if (canonical.tenantId !== tenant) {
@@ -298,7 +316,7 @@ export function createMailPolicy({
     });
   }
 
-  function validateSieve(script) {
+  function validateSieve(script: unknown) {
     if (typeof script !== 'string' || script.length === 0) {
       throw policyError('Sieve script must be a non-empty string', 'INVALID_SIEVE');
     }
@@ -312,7 +330,7 @@ export function createMailPolicy({
     return Object.freeze({ valid: true, actions: Object.freeze([...new Set(actions)]) });
   }
 
-  function audit({ eventType, context, result, reason = null, details = {} } = {}) {
+  function audit({ eventType, context, result, reason = null, details = {} }: MailAuditOptions = {}) {
     const canonical = assertTenantContext(context);
     return Object.freeze({
       eventType: requiredString(eventType, 'eventType'),
