@@ -2,7 +2,6 @@
 // SPDX-FileCopyrightText: 2026 Sythos (https://www.sythos.net)
 // Author: Sythos (https://www.sythos.net)
 
-// @ts-nocheck
 
 /**
  * The baseline Gulo Gulo password alphabet deliberately stops at printable
@@ -25,14 +24,13 @@ export const NO_PASSWORD_EXPIRY_DAYS = 0;
 const PASSWORD_PATTERN = /^[A-Za-z0-9!#$%&'()*+,\-./:;<=>?@[\\\]^_`{|}~]+$/u;
 const INTEGER_PATTERN = /^(0|[1-9][0-9]{0,3})$/u;
 
-function policyError(message, code = 'PASSWORD_POLICY_ERROR') {
-  const error = new Error(`Password policy error: ${message}`);
-  error.code = code;
+function policyError(message: string, code = 'PASSWORD_POLICY_ERROR') {
+  const error = Object.assign(new Error(`Password policy error: ${message}`), { code });
   return error;
 }
 
-function assertInteger(value, name) {
-  if (!Number.isSafeInteger(value)) {
+function assertInteger(value: unknown, name: string): number {
+  if (typeof value !== 'number' || !Number.isSafeInteger(value)) {
     throw policyError(`${name} must be an integer`, 'INVALID_POLICY');
   }
   return value;
@@ -42,8 +40,8 @@ function assertInteger(value, name) {
  * Validate the configurable expiry without ever accepting a value larger
  * than the normative 9999-day limit. Zero means that expiry is disabled.
  */
-export function validatePasswordExpiryDays(expiryDays) {
-  if (!Number.isSafeInteger(expiryDays) || expiryDays < NO_PASSWORD_EXPIRY_DAYS || expiryDays > MAX_PASSWORD_EXPIRY_DAYS) {
+export function validatePasswordExpiryDays(expiryDays: unknown) {
+  if (typeof expiryDays !== 'number' || !Number.isSafeInteger(expiryDays) || expiryDays < NO_PASSWORD_EXPIRY_DAYS || expiryDays > MAX_PASSWORD_EXPIRY_DAYS) {
     return Object.freeze({
       valid: false,
       code: 'PASSWORD_EXPIRY_OUT_OF_RANGE',
@@ -76,7 +74,7 @@ export function createPasswordPolicy({
     throw policyError(expiry.message, 'INVALID_POLICY');
   }
 
-  function validate(password) {
+  function validate(password: unknown) {
     if (typeof password !== 'string') {
       return Object.freeze({ valid: false, code: 'PASSWORD_NOT_STRING', message: 'Password must be a string' });
     }
@@ -89,7 +87,7 @@ export function createPasswordPolicy({
       return Object.freeze({ valid: false, code: 'PASSWORD_TOO_LONG', message: `Password must contain at most ${maxLength} characters` });
     }
     if (!PASSWORD_PATTERN.test(password)) {
-      const hasNonAscii = [...password].some((character) => character.codePointAt(0) > 0x7f);
+      const hasNonAscii = [...password].some((character) => (character.codePointAt(0) ?? 0) > 0x7f);
       return Object.freeze({
         valid: false,
         code: hasNonAscii ? 'PASSWORD_NON_ASCII' : 'PASSWORD_CHARACTER_NOT_ALLOWED',
@@ -99,7 +97,7 @@ export function createPasswordPolicy({
     return Object.freeze({ valid: true, expiryDays });
   }
 
-  function assert(password) {
+  function assert(password: unknown) {
     const result = validate(password);
     if (!result.valid) {
       throw policyError(result.message, result.code);
@@ -123,11 +121,11 @@ export function createPasswordPolicy({
  * creating a policy object. This is useful at API boundaries that only need
  * the immutable baseline.
  */
-export function validateBaselinePassword(password) {
+export function validateBaselinePassword(password: unknown) {
   return createPasswordPolicy().validate(password);
 }
 
-export function assertPasswordExpiryDays(expiryDays) {
+export function assertPasswordExpiryDays(expiryDays: unknown) {
   const result = validatePasswordExpiryDays(expiryDays);
   if (!result.valid) {
     throw policyError(result.message, result.code);

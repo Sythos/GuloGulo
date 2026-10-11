@@ -42,13 +42,16 @@ export interface ProductionApiResourceOptions {
 const DEFAULT_MAIL_PAGE_SIZE = 50;
 const MAIL_FOLDER = 'INBOX';
 
-type DavRecord = Record<string, any>;
+function record(value: unknown): Record<string, unknown> {
+  return value !== null && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : {};
+}
 
 function resourceError(message: string, code: string): Error {
   return Object.assign(new Error(message), { code });
 }
 
-function icalDate(value: DavRecord | null | undefined): { value: string | null; timeZone: string | null; allDay: boolean } {
+function icalDate(input: unknown): { value: string | null; timeZone: string | null; allDay: boolean } {
+  const value = record(input);
   const raw = typeof value?.value === 'string' ? value.value : null;
   if (raw === null) return { value: null, timeZone: null, allDay: false };
   const date = /^(\d{4})(\d{2})(\d{2})$/u.exec(raw);
@@ -126,9 +129,10 @@ export function createProductionApiResources({
       const events: Record<string, unknown>[] = [];
       for (const calendar of calendars) {
         const listing = await store.listCalendarObjects(actor, { calendarId: calendar.calendarId });
-        for (const object of listing.objects as readonly DavRecord[]) {
-          const start = icalDate(object.metadata?.dtStart);
-          const end = icalDate(object.metadata?.dtEnd);
+        for (const object of listing.objects) {
+          const metadata = record(object.metadata);
+          const start = icalDate(metadata.dtStart);
+          const end = icalDate(metadata.dtEnd);
           events.push({
             id: `${calendar.calendarId}/${object.objectId}`,
             calendarId: calendar.calendarId,
@@ -136,8 +140,8 @@ export function createProductionApiResources({
             href: object.href,
             uid: object.uid,
             etag: object.etag,
-            summary: object.metadata?.summary ?? '',
-            description: object.metadata?.description ?? '',
+            summary: metadata.summary ?? '',
+            description: metadata.description ?? '',
             start: start.value,
             end: end.value,
             timeZone: start.timeZone,
@@ -184,7 +188,7 @@ export function createProductionApiResources({
       const document = buildDiscoveryDocument(discoveryContract, { tenantId: scope.tenantId });
       return {
         domain: document.domain,
-        services: Object.entries(document.services as DavRecord).map(([name, endpoint]) => ({ name, ...endpoint })),
+        services: Object.entries(record(document.services)).map(([name, endpoint]) => ({ name, ...record(endpoint) })),
       };
     },
   };

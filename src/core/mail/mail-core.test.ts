@@ -2,10 +2,6 @@
 // SPDX-FileCopyrightText: 2026 Sythos (https://www.sythos.net)
 // Author: Sythos (https://www.sythos.net)
 
-// Transitional typing waiver: the LP2-LP9 recovery plan closes this debt at
-// the final server-language audit after each protocol slice is operational.
-// @ts-nocheck
-
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
@@ -13,6 +9,13 @@ import { createImapIdleBroker } from './imap-idle.ts';
 import { createMailCore } from './mail-core.ts';
 import { createMailPolicy } from './mail-policy.ts';
 import { createMailQueue } from './mail-queue.ts';
+import type { MailCoreOptions } from './mail-core.ts';
+import type { MailAuditOptions } from './mail-policy.ts';
+import type { ImapIdleEvent } from './imap-idle.ts';
+
+function hasCode(error: unknown, code: string): boolean {
+  return error instanceof Error && 'code' in error && error.code === code;
+}
 
 const tenantContext = Object.freeze({ tenantId: 'acme', domain: 'acme.example', actorId: 'alice', role: 'user' });
 const masterContext = Object.freeze({ tenantId: 'acme', domain: 'acme.example', actorId: 'master', role: 'tenant_master' });
@@ -24,12 +27,12 @@ const aliases = [
   { address: 'sales@acme.example', destinations: ['alice', 'bob'] },
 ];
 
-function createTestCore({ rspamd = { async scan() { return { action: 'accept', score: -1, symbols: [] }; } }, clamav = { async scan() { return { status: 'clean' }; } }, lmtp } = {}) {
-  const audits = [];
+function createTestCore({ rspamd = { async scan() { return { action: 'accept', score: -1, symbols: [] }; } }, clamav = { async scan() { return { status: 'clean' }; } }, lmtp }: Pick<MailCoreOptions, 'rspamd' | 'clamav' | 'lmtp'> = {}) {
+  const audits: ReturnType<ReturnType<typeof createMailPolicy>['audit']>[] = [];
   const policy = createMailPolicy({ tenantId: 'acme', domain: 'acme.example' });
   const auditedPolicy = Object.freeze({
     ...policy,
-    audit(details) {
+    audit(details: MailAuditOptions = {}) {
       const event = policy.audit(details);
       audits.push(event);
       return event;
@@ -51,7 +54,7 @@ function createTestCore({ rspamd = { async scan() { return { action: 'accept', s
 
 test('inbound delivery resolves explicit aliases and rejects unknown recipients without catch-all', async () => {
   const { core } = createTestCore();
-  const idleEvents = [];
+  const idleEvents: ImapIdleEvent[] = [];
   const subscription = core.subscribeIdle(tenantContext, { userId: 'alice', onEvent: (event) => idleEvents.push(event) });
 
   const delivered = await core.receiveInbound(tenantContext, {
@@ -64,6 +67,7 @@ test('inbound delivery resolves explicit aliases and rejects unknown recipients 
   });
 
   assert.equal(delivered.status, 'delivered');
+  assert.ok('delivered' in delivered);
   assert.deepEqual(delivered.delivered, ['alice@acme.example', 'bob@acme.example']);
   assert.equal(idleEvents.length, 1);
   assert.equal(idleEvents[0].mailbox, 'INBOX');
@@ -78,7 +82,7 @@ test('inbound delivery resolves explicit aliases and rejects unknown recipients 
       aliases,
       sizeBytes: 512,
     }),
-    (error) => error.code === 'RECIPIENT_REJECTED',
+    (error: unknown) => hasCode(error, 'RECIPIENT_REJECTED'),
   );
 });
 
@@ -94,9 +98,9 @@ test('unauthenticated submission is rejected and a user cannot configure forward
       aliases,
       sizeBytes: 128,
     }),
-    (error) => error.code === 'OPEN_RELAY_DISABLED',
+    (error: unknown) => hasCode(error, 'OPEN_RELAY_DISABLED'),
   );
-  assert.throws(() => core.validateSieve(tenantContext, 'redirect "other@example.net";'), (error) => error.code === 'FORWARDING_DISABLED');
+  assert.throws(() => core.validateSieve(tenantContext, 'redirect "other@example.net";'), (error: unknown) => hasCode(error, 'FORWARDING_DISABLED'));
 });
 
 test('submission rejects unknown internal recipients and enforces the per-user rate limit', async () => {
@@ -116,7 +120,7 @@ test('submission rejects unknown internal recipients and enforces the per-user r
       aliases,
       sizeBytes: 10,
     }),
-    (error) => error.code === 'RECIPIENT_REJECTED',
+    (error: unknown) => hasCode(error, 'RECIPIENT_REJECTED'),
   );
   const first = await core.submit(tenantContext, {
     authenticated: true,
@@ -138,7 +142,7 @@ test('submission rejects unknown internal recipients and enforces the per-user r
       aliases,
       sizeBytes: 10,
     }),
-    (error) => error.code === 'RATE_LIMITED',
+    (error: unknown) => hasCode(error, 'RATE_LIMITED'),
   );
 });
 
@@ -155,6 +159,7 @@ test('authenticated submission is queued and queue views never expose message co
     messageRef: 'private-message-body-handle',
   });
   assert.equal(result.status, 'queued');
+  assert.ok('queue' in result && result.queue);
   assert.equal(result.queue.state, 'queued');
   assert.equal(Object.hasOwn(result.queue, 'messageRef'), false);
 
@@ -186,6 +191,7 @@ test('Rspamd and ClamAV failures are observable and fail closed', async () => {
     sender: 'external@example.net', recipients: ['alice@acme.example'], users, aliases, sizeBytes: 100,
   });
   assert.equal(unavailableResult.status, 'deferred');
+  assert.ok('queue' in unavailableResult && unavailableResult.queue);
   assert.equal(unavailableResult.queue.state, 'queued');
 });
 
@@ -195,6 +201,7 @@ test('LMTP temporary failures enter retry queue and exhaustion becomes a bounce'
     sender: 'external@example.net', recipients: ['alice@acme.example'], users, aliases, sizeBytes: 100,
   });
   assert.equal(result.status, 'deferred');
+  assert.ok('queue' in result && result.queue);
   const queueId = result.queue.queueId;
   let state = result.queue;
   for (let attempt = 0; attempt < 5; attempt += 1) {
@@ -216,13 +223,13 @@ test('quota rejection is explicit and does not acknowledge delivery', async () =
   });
   await assert.rejects(
     core.receiveInbound(tenantContext, { sender: 'external@example.net', recipients: ['alice@acme.example'], users, aliases, sizeBytes: 100 }),
-    (error) => error.code === 'QUOTA_EXCEEDED',
+    (error: unknown) => hasCode(error, 'QUOTA_EXCEEDED'),
   );
 });
 
 test('IMAP IDLE sequence is deterministic and reconnect-safe', () => {
   const idle = createImapIdleBroker({ clock: () => new Date('2026-08-22T10:00:00.000Z') });
-  const events = [];
+  const events: ImapIdleEvent[] = [];
   const subscription = idle.subscribe(tenantContext, { userId: 'alice', mailbox: 'INBOX', onEvent: (event) => events.push(event) });
   const first = idle.notify(masterContext, { userId: 'alice', mailbox: 'INBOX', uidNext: 10 });
   const second = idle.notify(masterContext, { userId: 'alice', mailbox: 'INBOX', uidNext: 11 });

@@ -298,7 +298,7 @@ function createTestLogger() {
   const output = new PassThrough();
   const errorOutput = new PassThrough();
   return {
-    logger: createLogger({ output: output as unknown as typeof process.stdout, errorOutput: errorOutput as unknown as typeof process.stderr }),
+    logger: createLogger({ output, errorOutput }),
     output,
     errorOutput,
   };

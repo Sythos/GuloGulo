@@ -11,6 +11,7 @@ import type {
   PostgresStore,
   PostgresStoreEnabled,
   SecretResolver,
+  PostgresStoreOptions,
 } from '../../../integrations/types.ts';
 import {
   CARD_DAV_SCHEMA_VERSION,
@@ -25,9 +26,22 @@ import {
   parseSyncToken,
   validateVCardObject,
 } from './carddav-store.ts';
+import type { CardDavScope, ParsedVCard } from './carddav-store.ts';
 
-type DavValue = any;
-type DavRecord = Record<string, DavValue>;
+type DavValue = unknown;
+type DavRecord = Record<string, unknown>;
+type DatabaseRow = Record<string, unknown>;
+interface DatabaseAddressBook extends DatabaseRow { tenant_id: string; user_id: string; address_book_id: string; href: string; display_name: string; description: string; color: string | null; revision: number | string; created_at: string | Date; updated_at: string | Date }
+interface DatabaseContact extends DatabaseRow { href: string; uid: string; full_name: string; etag: string; media_type: string; size_bytes: number; vcard_data: string; revision: number | string; created_at: string | Date; updated_at: string | Date }
+interface DatabaseChange extends DatabaseRow { revision: number | string; operation: string; href: string; uid: string | null; etag: string | null }
+type ContactMetadata = ReturnType<typeof contactMetadataRow>;
+type PublicContact = ReturnType<typeof publicContactRow>;
+type PublicAddressBook = ReturnType<typeof publicAddressBookRow>;
+type PublicChange = ReturnType<typeof publicChangeRow>;
+interface CollectionSync { schemaVersion: number; addressBookId: string; syncToken: string; ctag: string; previousSyncToken?: unknown; changes: readonly PublicChange[] }
+interface DeletedContact { href: string; status: 'deleted'; etag: null; syncToken: string }
+interface AddressBookExport { schemaVersion: number; exportType: string; addressBook: PublicAddressBook; contacts: readonly ContactMetadata[] }
+interface DatabaseScope extends CardDavScope { domain: string | undefined }
 
 const COLOR_PATTERN = /^#[0-9A-Fa-f]{6}(?:[0-9A-Fa-f]{2})?$/u;
 const MAX_DISPLAY_NAME_LENGTH = 256;
@@ -41,7 +55,7 @@ interface PostgresCardDavStoreOptions {
   /** Injectable for tests: overrides the `pg` Pool constructor used by the underlying PostgreSQL store. */
   readonly PoolClass?: PostgresPoolConstructor;
   /** Injectable for tests: overrides how the underlying PostgreSQL store is built. */
-  readonly createStore?: (options: DavRecord) => PostgresStore;
+  readonly createStore?: (options: PostgresStoreOptions) => PostgresStore;
 }
 
 interface DisabledPostgresCardDavStore {
@@ -54,29 +68,30 @@ interface EnabledPostgresCardDavStore {
   readonly enabled: true;
   readonly healthCheck: () => Promise<{ status: 'ok' }>;
   readonly close: () => Promise<void>;
-  readonly createAddressBook: (scope: DavValue, options?: DavRecord) => Promise<Readonly<DavRecord>>;
-  readonly getAddressBook: (scope: DavValue, options?: DavRecord) => Promise<Readonly<DavRecord>>;
-  readonly listAddressBooks: (scope: DavValue, options?: DavRecord) => Promise<readonly Readonly<DavRecord>[]>;
-  readonly deleteAddressBook: (scope: DavValue, options?: DavRecord) => Promise<Readonly<DavRecord>>;
-  readonly createContact: (scope: DavValue, options?: DavRecord) => Promise<Readonly<DavRecord>>;
-  readonly getContact: (scope: DavValue, options?: DavRecord) => Promise<Readonly<DavRecord>>;
-  readonly getContactMetadata: (scope: DavValue, options?: DavRecord) => Promise<Readonly<DavRecord>>;
-  readonly listContacts: (scope: DavValue, options?: DavRecord) => Promise<readonly Readonly<DavRecord>[]>;
-  readonly putContact: (scope: DavValue, options?: DavRecord) => Promise<Readonly<DavRecord>>;
-  readonly updateContact: (scope: DavValue, options?: DavRecord) => Promise<Readonly<DavRecord>>;
-  readonly upsertContact: (scope: DavValue, options?: DavRecord) => Promise<Readonly<DavRecord>>;
-  readonly deleteContact: (scope: DavValue, options?: DavRecord) => Promise<Readonly<DavRecord>>;
-  readonly syncCollection: (scope: DavValue, options?: DavRecord) => Promise<Readonly<DavRecord>>;
-  readonly exportAddressBookMetadata: (scope: DavValue, options?: DavRecord) => Promise<Readonly<DavRecord>>;
+  readonly createAddressBook: (scope: unknown, options?: DavRecord) => Promise<PublicAddressBook>;
+  readonly getAddressBook: (scope: unknown, options?: DavRecord) => Promise<PublicAddressBook>;
+  readonly listAddressBooks: (scope: unknown, options?: DavRecord) => Promise<readonly PublicAddressBook[]>;
+  readonly deleteAddressBook: (scope: unknown, options?: DavRecord) => Promise<{addressBookId: string; status: string}>;
+  readonly createContact: (scope: unknown, options?: DavRecord) => Promise<PublicContact>;
+  readonly getContact: (scope: unknown, options?: DavRecord) => Promise<PublicContact>;
+  readonly getContactMetadata: (scope: unknown, options?: DavRecord) => Promise<ContactMetadata>;
+  readonly listContacts: (scope: unknown, options?: DavRecord) => Promise<readonly ContactMetadata[]>;
+  readonly putContact: (scope: unknown, options?: DavRecord) => Promise<PublicContact>;
+  readonly updateContact: (scope: unknown, options?: DavRecord) => Promise<PublicContact>;
+  readonly upsertContact: (scope: unknown, options?: DavRecord) => Promise<PublicContact>;
+  readonly deleteContact: (scope: unknown, options?: DavRecord) => Promise<DeletedContact>;
+  readonly syncCollection: (scope: unknown, options?: DavRecord) => Promise<CollectionSync>;
+  readonly exportAddressBookMetadata: (scope: unknown, options?: DavRecord) => Promise<AddressBookExport>;
 }
 
 export type PostgresCardDavStore = DisabledPostgresCardDavStore | EnabledPostgresCardDavStore;
 
 function toIso(value: DavValue): string {
+  if (!(value instanceof Date) && typeof value !== 'string' && typeof value !== 'number') throw new CardDavError('database timestamp is invalid', 'INVALID_DATABASE_ROW', 500);
   return value instanceof Date ? value.toISOString() : new Date(value).toISOString();
 }
 
-function assertBoundedText(value: DavValue, field: string, { maxLength = 1024, allowEmpty = false, pattern }: DavRecord = {}): string {
+function assertBoundedText(value: DavValue, field: string, { maxLength = 1024, allowEmpty = false, pattern }: { maxLength?: number; allowEmpty?: boolean; pattern?: RegExp } = {}): string {
   if (typeof value !== 'string' || (!allowEmpty && value.length === 0) || value.length > maxLength) {
     throw new CardDavError(`${field} is invalid`, `INVALID_${field.toUpperCase()}`);
   }
@@ -91,7 +106,7 @@ function readVCardInput(options: DavRecord): DavValue {
   return value;
 }
 
-function contactMetadataRow(row: DavRecord): Readonly<DavRecord> {
+function contactMetadataRow(row: DatabaseContact) {
   const parsed = validateVCardObject(row.vcard_data);
   return Object.freeze({
     href: row.href,
@@ -108,11 +123,11 @@ function contactMetadataRow(row: DavRecord): Readonly<DavRecord> {
   });
 }
 
-function publicContactRow(row: DavRecord): Readonly<DavRecord> {
+function publicContactRow(row: DatabaseContact) {
   return Object.freeze({ ...contactMetadataRow(row), vCard: row.vcard_data });
 }
 
-function publicAddressBookRow(row: DavRecord): Readonly<DavRecord> {
+function publicAddressBookRow(row: DatabaseAddressBook) {
   const revision = Number(row.revision);
   const token = makeSyncToken({ tenantId: row.tenant_id, userId: row.user_id }, row.address_book_id, revision);
   return Object.freeze({
@@ -131,7 +146,7 @@ function publicAddressBookRow(row: DavRecord): Readonly<DavRecord> {
   });
 }
 
-function publicChangeRow(change: DavRecord): Readonly<DavRecord> {
+function publicChangeRow(change: { version: number; operation: string; href: string; uid: string | null; etag: string | null }) {
   return Object.freeze({
     version: change.version,
     operation: change.operation,
@@ -192,13 +207,13 @@ export function createPostgresCardDavStore({
   }
   const enabledStore: PostgresStoreEnabled = store;
 
-  function normalizeCardDavScope(scopeInput: DavValue): DavRecord {
+  function normalizeCardDavScope(scopeInput: DavValue): DatabaseScope {
     const normalized = normalizeScope(scopeInput);
-    const domain = typeof scopeInput?.domain === 'string' ? scopeInput.domain : undefined;
+    const domain = scopeInput !== null && typeof scopeInput === 'object' && 'domain' in scopeInput && typeof scopeInput.domain === 'string' ? scopeInput.domain : undefined;
     return { ...normalized, domain };
   }
 
-  function buildTenantContext(scope: DavRecord): DavValue {
+  function buildTenantContext(scope: DatabaseScope) {
     try {
       return assertTenantContext({ tenantId: scope.tenantId, domain: scope.domain, actorId: scope.userId, role: 'user' });
     } catch {
@@ -206,8 +221,8 @@ export function createPostgresCardDavStore({
     }
   }
 
-  async function getAddressBookRow(client: PostgresClientLike, scope: DavRecord, addressBookId: string, { forUpdate = false }: DavRecord = {}): Promise<DavRecord> {
-    const result = await client.query<DavRecord>(
+  async function getAddressBookRow(client: PostgresClientLike, scope: DatabaseScope, addressBookId: string, { forUpdate = false }: { forUpdate?: boolean } = {}): Promise<DatabaseAddressBook> {
+    const result = await client.query<DatabaseAddressBook>(
       `SELECT * FROM dav_address_books WHERE tenant_id = $1 AND user_id = $2 AND address_book_id = $3${forUpdate ? ' FOR UPDATE' : ''}`,
       [scope.tenantId, scope.userId, addressBookId],
     );
@@ -216,8 +231,8 @@ export function createPostgresCardDavStore({
     return row;
   }
 
-  async function bumpAddressBookRevision(client: PostgresClientLike, tenantId: string, userId: string, addressBookId: string, { href, uid = null, etag = null, operation }: DavRecord): Promise<number> {
-    const updated = await client.query<DavRecord>(
+  async function bumpAddressBookRevision(client: PostgresClientLike, tenantId: string, userId: string, addressBookId: string, { href, uid = null, etag = null, operation }: { href: string; uid?: string | null; etag?: string | null; operation: string }): Promise<number> {
+    const updated = await client.query<{ revision: number | string }>(
       'UPDATE dav_address_books SET revision = revision + 1, updated_at = now() WHERE tenant_id = $1 AND user_id = $2 AND address_book_id = $3 RETURNING revision',
       [tenantId, userId, addressBookId],
     );
@@ -229,7 +244,7 @@ export function createPostgresCardDavStore({
     return revision;
   }
 
-  async function insertContactRow(client: PostgresClientLike, scope: DavRecord, addressBookId: string, href: string, parsed: DavRecord): Promise<Readonly<DavRecord>> {
+  async function insertContactRow(client: PostgresClientLike, scope: DatabaseScope, addressBookId: string, href: string, parsed: ParsedVCard): Promise<PublicContact> {
     const uidClash = await client.query(
       'SELECT 1 FROM dav_contacts WHERE tenant_id = $1 AND user_id = $2 AND address_book_id = $3 AND uid = $4',
       [scope.tenantId, scope.userId, addressBookId, parsed.uid],
@@ -237,7 +252,7 @@ export function createPostgresCardDavStore({
     if ((uidClash.rowCount ?? 0) > 0) throw new CardDavError('vCard UID already exists in this address book', 'VCARD_UID_EXISTS', 409);
     const etag = makeEtag(parsed.canonical);
     const revision = await bumpAddressBookRevision(client, scope.tenantId, scope.userId, addressBookId, { href, uid: parsed.uid, etag, operation: 'created' });
-    const inserted = await client.query<DavRecord>(
+    const inserted = await client.query<DatabaseContact>(
       `INSERT INTO dav_contacts (tenant_id, user_id, address_book_id, href, uid, full_name, vcard_data, etag, media_type, size_bytes, revision)
        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11) RETURNING *`,
       [scope.tenantId, scope.userId, addressBookId, href, parsed.uid, parsed.fullName, parsed.canonical, etag, parsed.mediaType, Buffer.byteLength(parsed.canonical, 'utf8'), revision],
@@ -245,7 +260,7 @@ export function createPostgresCardDavStore({
     return publicContactRow(inserted.rows[0]);
   }
 
-  async function createAddressBook(scopeInput: DavValue, { addressBookId, displayName, description = '', color = null }: DavRecord = {}): Promise<Readonly<DavRecord>> {
+  async function createAddressBook(scopeInput: DavValue, { addressBookId, displayName, description = '', color = null }: DavRecord = {}) {
     const scope = normalizeCardDavScope(scopeInput);
     const abId = normalizeAddressBookId(addressBookId);
     const normalizedDisplayName = assertBoundedText(displayName, 'displayName', { maxLength: MAX_DISPLAY_NAME_LENGTH });
@@ -256,7 +271,7 @@ export function createPostgresCardDavStore({
     return enabledStore.withTenantTransaction(context, async (client) => {
       const existing = await client.query('SELECT 1 FROM dav_address_books WHERE tenant_id = $1 AND user_id = $2 AND address_book_id = $3', [scope.tenantId, scope.userId, abId]);
       if ((existing.rowCount ?? 0) > 0) throw new CardDavError('address book already exists', 'ADDRESS_BOOK_EXISTS', 409);
-      const inserted = await client.query<DavRecord>(
+      const inserted = await client.query<DatabaseAddressBook>(
         'INSERT INTO dav_address_books (tenant_id, user_id, address_book_id, href, display_name, description, color) VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *',
         [scope.tenantId, scope.userId, abId, href, normalizedDisplayName, normalizedDescription, normalizedColor],
       );
@@ -264,23 +279,23 @@ export function createPostgresCardDavStore({
     });
   }
 
-  async function getAddressBook(scopeInput: DavValue, { addressBookId }: DavRecord = {}): Promise<Readonly<DavRecord>> {
+  async function getAddressBook(scopeInput: DavValue, { addressBookId }: DavRecord = {}) {
     const scope = normalizeCardDavScope(scopeInput);
     const abId = normalizeAddressBookId(addressBookId);
     const context = buildTenantContext(scope);
     return enabledStore.withTenantTransaction(context, async (client) => publicAddressBookRow(await getAddressBookRow(client, scope, abId)));
   }
 
-  async function listAddressBooks(scopeInput: DavValue): Promise<readonly Readonly<DavRecord>[]> {
+  async function listAddressBooks(scopeInput: DavValue) {
     const scope = normalizeCardDavScope(scopeInput);
     const context = buildTenantContext(scope);
     return enabledStore.withTenantTransaction(context, async (client) => {
-      const result = await client.query<DavRecord>('SELECT * FROM dav_address_books WHERE tenant_id = $1 AND user_id = $2 ORDER BY address_book_id', [scope.tenantId, scope.userId]);
+      const result = await client.query<DatabaseAddressBook>('SELECT * FROM dav_address_books WHERE tenant_id = $1 AND user_id = $2 ORDER BY address_book_id', [scope.tenantId, scope.userId]);
       return Object.freeze(result.rows.map((row) => publicAddressBookRow(row)));
     });
   }
 
-  async function deleteAddressBook(scopeInput: DavValue, { addressBookId, ifMatch }: DavRecord = {}): Promise<Readonly<DavRecord>> {
+  async function deleteAddressBook(scopeInput: DavValue, { addressBookId, ifMatch }: DavRecord = {}) {
     const scope = normalizeCardDavScope(scopeInput);
     const abId = normalizeAddressBookId(addressBookId);
     const context = buildTenantContext(scope);
@@ -293,7 +308,7 @@ export function createPostgresCardDavStore({
     });
   }
 
-  async function createContact(scopeInput: DavValue, { addressBookId, href: hrefInput, ifNoneMatch, ...options }: DavRecord = {}): Promise<Readonly<DavRecord>> {
+  async function createContact(scopeInput: DavValue, { addressBookId, href: hrefInput, ifNoneMatch, ...options }: DavRecord = {}) {
     const scope = normalizeCardDavScope(scopeInput);
     const abId = normalizeAddressBookId(addressBookId);
     const parsed = validateVCardObject(readVCardInput(options));
@@ -308,46 +323,46 @@ export function createPostgresCardDavStore({
     });
   }
 
-  async function getContact(scopeInput: DavValue, { addressBookId, href: hrefInput }: DavRecord = {}): Promise<Readonly<DavRecord>> {
+  async function getContact(scopeInput: DavValue, { addressBookId, href: hrefInput }: DavRecord = {}) {
     const scope = normalizeCardDavScope(scopeInput);
     const abId = normalizeAddressBookId(addressBookId);
     const href = normalizeHref(hrefInput);
     const context = buildTenantContext(scope);
     return enabledStore.withTenantTransaction(context, async (client) => {
       await getAddressBookRow(client, scope, abId);
-      const result = await client.query<DavRecord>('SELECT * FROM dav_contacts WHERE tenant_id = $1 AND user_id = $2 AND address_book_id = $3 AND href = $4', [scope.tenantId, scope.userId, abId, href]);
+      const result = await client.query<DatabaseContact>('SELECT * FROM dav_contacts WHERE tenant_id = $1 AND user_id = $2 AND address_book_id = $3 AND href = $4', [scope.tenantId, scope.userId, abId, href]);
       const row = result.rows[0];
       if (!row) throw new CardDavError('contact was not found in this tenant/user scope', 'CONTACT_NOT_FOUND', 404);
       return publicContactRow(row);
     });
   }
 
-  async function getContactMetadata(scopeInput: DavValue, { addressBookId, href: hrefInput }: DavRecord = {}): Promise<Readonly<DavRecord>> {
+  async function getContactMetadata(scopeInput: DavValue, { addressBookId, href: hrefInput }: DavRecord = {}) {
     const scope = normalizeCardDavScope(scopeInput);
     const abId = normalizeAddressBookId(addressBookId);
     const href = normalizeHref(hrefInput);
     const context = buildTenantContext(scope);
     return enabledStore.withTenantTransaction(context, async (client) => {
       await getAddressBookRow(client, scope, abId);
-      const result = await client.query<DavRecord>('SELECT * FROM dav_contacts WHERE tenant_id = $1 AND user_id = $2 AND address_book_id = $3 AND href = $4', [scope.tenantId, scope.userId, abId, href]);
+      const result = await client.query<DatabaseContact>('SELECT * FROM dav_contacts WHERE tenant_id = $1 AND user_id = $2 AND address_book_id = $3 AND href = $4', [scope.tenantId, scope.userId, abId, href]);
       const row = result.rows[0];
       if (!row) throw new CardDavError('contact was not found in this tenant/user scope', 'CONTACT_NOT_FOUND', 404);
       return contactMetadataRow(row);
     });
   }
 
-  async function listContacts(scopeInput: DavValue, { addressBookId }: DavRecord = {}): Promise<readonly Readonly<DavRecord>[]> {
+  async function listContacts(scopeInput: DavValue, { addressBookId }: DavRecord = {}) {
     const scope = normalizeCardDavScope(scopeInput);
     const abId = normalizeAddressBookId(addressBookId);
     const context = buildTenantContext(scope);
     return enabledStore.withTenantTransaction(context, async (client) => {
       await getAddressBookRow(client, scope, abId);
-      const result = await client.query<DavRecord>('SELECT * FROM dav_contacts WHERE tenant_id = $1 AND user_id = $2 AND address_book_id = $3 ORDER BY href', [scope.tenantId, scope.userId, abId]);
+      const result = await client.query<DatabaseContact>('SELECT * FROM dav_contacts WHERE tenant_id = $1 AND user_id = $2 AND address_book_id = $3 ORDER BY href', [scope.tenantId, scope.userId, abId]);
       return Object.freeze(result.rows.map((row) => contactMetadataRow(row)));
     });
   }
 
-  async function putContact(scopeInput: DavValue, { addressBookId, href: hrefInput, ifMatch, ifNoneMatch, ...options }: DavRecord = {}): Promise<Readonly<DavRecord>> {
+  async function putContact(scopeInput: DavValue, { addressBookId, href: hrefInput, ifMatch, ifNoneMatch, ...options }: DavRecord = {}) {
     const scope = normalizeCardDavScope(scopeInput);
     const abId = normalizeAddressBookId(addressBookId);
     const parsed = validateVCardObject(readVCardInput(options));
@@ -355,7 +370,7 @@ export function createPostgresCardDavStore({
     const context = buildTenantContext(scope);
     return enabledStore.withTenantTransaction(context, async (client) => {
       await getAddressBookRow(client, scope, abId, { forUpdate: true });
-      const existingResult = await client.query<DavRecord>('SELECT * FROM dav_contacts WHERE tenant_id = $1 AND user_id = $2 AND address_book_id = $3 AND href = $4 FOR UPDATE', [scope.tenantId, scope.userId, abId, href]);
+      const existingResult = await client.query<DatabaseContact>('SELECT * FROM dav_contacts WHERE tenant_id = $1 AND user_id = $2 AND address_book_id = $3 AND href = $4 FOR UPDATE', [scope.tenantId, scope.userId, abId, href]);
       const existing = existingResult.rows[0];
       if (!existing) {
         if (ifNoneMatch === '*') return insertContactRow(client, scope, abId, href, parsed);
@@ -375,7 +390,7 @@ export function createPostgresCardDavStore({
       // row when the recomputed ETag is unchanged.
       if (candidateEtag === existing.etag) return publicContactRow(existing);
       const revision = await bumpAddressBookRevision(client, scope.tenantId, scope.userId, abId, { href, uid: parsed.uid, etag: candidateEtag, operation: 'updated' });
-      const updated = await client.query<DavRecord>(
+      const updated = await client.query<DatabaseContact>(
         `UPDATE dav_contacts SET full_name = $1, vcard_data = $2, etag = $3, media_type = $4, size_bytes = $5, revision = $6, updated_at = now()
          WHERE tenant_id = $7 AND user_id = $8 AND address_book_id = $9 AND href = $10 RETURNING *`,
         [parsed.fullName, parsed.canonical, candidateEtag, parsed.mediaType, Buffer.byteLength(parsed.canonical, 'utf8'), revision, scope.tenantId, scope.userId, abId, href],
@@ -384,14 +399,14 @@ export function createPostgresCardDavStore({
     });
   }
 
-  async function deleteContact(scopeInput: DavValue, { addressBookId, href: hrefInput, ifMatch }: DavRecord = {}): Promise<Readonly<DavRecord>> {
+  async function deleteContact(scopeInput: DavValue, { addressBookId, href: hrefInput, ifMatch }: DavRecord = {}): Promise<DeletedContact> {
     const scope = normalizeCardDavScope(scopeInput);
     const abId = normalizeAddressBookId(addressBookId);
     const href = normalizeHref(hrefInput);
     const context = buildTenantContext(scope);
     return enabledStore.withTenantTransaction(context, async (client) => {
       await getAddressBookRow(client, scope, abId, { forUpdate: true });
-      const result = await client.query<DavRecord>('SELECT * FROM dav_contacts WHERE tenant_id = $1 AND user_id = $2 AND address_book_id = $3 AND href = $4 FOR UPDATE', [scope.tenantId, scope.userId, abId, href]);
+      const result = await client.query<DatabaseContact>('SELECT * FROM dav_contacts WHERE tenant_id = $1 AND user_id = $2 AND address_book_id = $3 AND href = $4 FOR UPDATE', [scope.tenantId, scope.userId, abId, href]);
       const contact = result.rows[0];
       if (!contact) throw new CardDavError('contact was not found in this tenant/user scope', 'CONTACT_NOT_FOUND', 404);
       assertIfMatch(ifMatch, contact.etag, 'contact');
@@ -406,7 +421,7 @@ export function createPostgresCardDavStore({
     });
   }
 
-  async function syncCollection(scopeInput: DavValue, { addressBookId, syncToken: suppliedToken }: DavRecord = {}): Promise<Readonly<DavRecord>> {
+  async function syncCollection(scopeInput: DavValue, { addressBookId, syncToken: suppliedToken }: DavRecord = {}): Promise<CollectionSync> {
     const scope = normalizeCardDavScope(scopeInput);
     const abId = normalizeAddressBookId(addressBookId);
     const context = buildTenantContext(scope);
@@ -415,7 +430,7 @@ export function createPostgresCardDavStore({
       const currentRevision = Number(row.revision);
       const currentToken = makeSyncToken({ tenantId: scope.tenantId, userId: scope.userId }, abId, currentRevision);
       if (suppliedToken === undefined || suppliedToken === null) {
-        const result = await client.query<DavRecord>('SELECT * FROM dav_contacts WHERE tenant_id = $1 AND user_id = $2 AND address_book_id = $3 ORDER BY href', [scope.tenantId, scope.userId, abId]);
+        const result = await client.query<DatabaseContact>('SELECT * FROM dav_contacts WHERE tenant_id = $1 AND user_id = $2 AND address_book_id = $3 ORDER BY href', [scope.tenantId, scope.userId, abId]);
         return Object.freeze({
           schemaVersion: CARD_DAV_SCHEMA_VERSION,
           addressBookId: abId,
@@ -426,7 +441,7 @@ export function createPostgresCardDavStore({
       }
       const fromVersion = parseSyncToken(suppliedToken, { tenantId: scope.tenantId, userId: scope.userId }, abId);
       if (fromVersion > currentRevision) throw new CardDavError('syncToken is ahead of the address book state', 'SYNC_TOKEN_INVALID', 409);
-      const changes = await client.query<DavRecord>(
+      const changes = await client.query<DatabaseChange>(
         'SELECT * FROM dav_contact_changes WHERE tenant_id = $1 AND user_id = $2 AND address_book_id = $3 AND revision > $4 ORDER BY revision',
         [scope.tenantId, scope.userId, abId, fromVersion],
       );
@@ -441,13 +456,13 @@ export function createPostgresCardDavStore({
     });
   }
 
-  async function exportAddressBookMetadata(scopeInput: DavValue, { addressBookId }: DavRecord = {}): Promise<Readonly<DavRecord>> {
+  async function exportAddressBookMetadata(scopeInput: DavValue, { addressBookId }: DavRecord = {}): Promise<AddressBookExport> {
     const scope = normalizeCardDavScope(scopeInput);
     const abId = normalizeAddressBookId(addressBookId);
     const context = buildTenantContext(scope);
     return enabledStore.withTenantTransaction(context, async (client) => {
       const row = await getAddressBookRow(client, scope, abId);
-      const result = await client.query<DavRecord>('SELECT * FROM dav_contacts WHERE tenant_id = $1 AND user_id = $2 AND address_book_id = $3 ORDER BY href', [scope.tenantId, scope.userId, abId]);
+      const result = await client.query<DatabaseContact>('SELECT * FROM dav_contacts WHERE tenant_id = $1 AND user_id = $2 AND address_book_id = $3 ORDER BY href', [scope.tenantId, scope.userId, abId]);
       return Object.freeze({
         schemaVersion: CARD_DAV_SCHEMA_VERSION,
         exportType: 'carddav-address-book-metadata',

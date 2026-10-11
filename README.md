@@ -241,7 +241,8 @@ still missing.
 - [x] API/MCP are read-only;
 - [x] future features are not enabled;
 - [x] ADRs are current;
-- [x] canonical TypeScript source tree audited, with a single build boundary and zero compatibility bridges;
+- [x] canonical TypeScript source tree audited, with a single build boundary,
+  zero compatibility bridges, and no whole-file type-check bypasses;
 - [x] optional upstream Plesk/cPanel tenant-tool contract with safe binding and
   read-only capabilities;
 - [x] deployment documentation is complete for the packaging hand-off in

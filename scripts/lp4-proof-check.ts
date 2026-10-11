@@ -2,7 +2,12 @@
 // SPDX-FileCopyrightText: 2026 Sythos (https://www.sythos.net)
 // Author: Sythos (https://www.sythos.net)
 
-type ProofRecord = Record<string, any>;
+type ProofRecord = Record<string, unknown>;
+
+function proofRecord(value: unknown, name: string): ProofRecord {
+  assert(value !== null && typeof value === 'object' && !Array.isArray(value), `${name} must be an object`);
+  return value as ProofRecord;
+}
 
 function requiredEnvironment(name: string): string {
   const value = process.env[name];
@@ -18,7 +23,10 @@ async function request(path: string, options: RequestInit = {}): Promise<{ respo
   const response = await fetch(`${baseUrl}${path}`, { redirect: 'manual', ...options });
   const text = await response.text();
   let body: ProofRecord = {};
-  if (text.length > 0 && response.headers.get('content-type')?.includes('json')) body = JSON.parse(text) as ProofRecord;
+  if (text.length > 0 && response.headers.get('content-type')?.includes('json')) {
+    const parsed: unknown = JSON.parse(text);
+    body = proofRecord(parsed, `${path} JSON response`);
+  }
   return { response, body };
 }
 
@@ -44,7 +52,8 @@ const login = await request('/api/session/login', {
   body: JSON.stringify({ email, password, rememberMe: false }),
 });
 assert(login.response.status === 200 && login.body.authenticated === true, 'synthetic login failed');
-assert(login.body.user?.tenantId === tenantId && login.body.user?.userId === userId, 'login identity is not tenant/user scoped');
+const loginUser = proofRecord(login.body.user, 'login user');
+assert(loginUser.tenantId === tenantId && loginUser.userId === userId, 'login identity is not tenant/user scoped');
 assert(typeof login.body.csrfToken === 'string' && login.body.csrfToken.length > 0, 'login omitted CSRF token');
 assert(!JSON.stringify(login.body).includes(password), 'login response exposed the password');
 const setCookie = login.response.headers.get('set-cookie') || '';
@@ -53,19 +62,25 @@ for (const attribute of ['Secure', 'HttpOnly', 'Path=/', 'SameSite=Lax']) assert
 const cookie = setCookie.split(';', 1)[0];
 
 const authenticated = await request('/api/session', { headers: { cookie } });
-assert(authenticated.body.authenticated === true && authenticated.body.user?.tenantId === tenantId, 'session lookup lost tenant scope');
+const sessionUser = proofRecord(authenticated.body.user, 'session user');
+assert(authenticated.body.authenticated === true && sessionUser.tenantId === tenantId, 'session lookup lost tenant scope');
 
 for (const [path, collection] of [['/api/calendar/events', 'events'], ['/api/contacts', 'contacts']] as const) {
   const result = await request(path, { headers: { cookie } });
   assert(result.response.status === 200, `${path} did not return 200`);
-  assert(result.body.scope?.tenantId === tenantId && result.body.scope?.userId === userId, `${path} scope is invalid`);
-  assert(Array.isArray(result.body.data?.[collection]) && result.body.data[collection].length === 1, `${path} fixture is missing`);
-  assert(typeof result.body.data.syncToken === 'string' && result.body.data.syncToken.length > 16, `${path} sync token is missing`);
-  assert(typeof result.body.data[collection][0].etag === 'string', `${path} ETag is missing`);
+  const scope = proofRecord(result.body.scope, `${path} scope`);
+  assert(scope.tenantId === tenantId && scope.userId === userId, `${path} scope is invalid`);
+  const data = proofRecord(result.body.data, `${path} data`);
+  const entries: unknown = data[collection];
+  assert(Array.isArray(entries) && entries.length === 1, `${path} fixture is missing`);
+  assert(typeof data.syncToken === 'string' && data.syncToken.length > 16, `${path} sync token is missing`);
+  const entry = proofRecord(entries[0], `${path} fixture`);
+  assert(typeof entry.etag === 'string', `${path} ETag is missing`);
 }
 
 const discovery = await request('/api/discovery', { headers: { cookie } });
-assert(discovery.response.status === 200 && discovery.body.scope?.tenantId === tenantId, 'discovery API is not tenant scoped');
+const discoveryScope = proofRecord(discovery.body.scope, 'discovery scope');
+assert(discovery.response.status === 200 && discoveryScope.tenantId === tenantId, 'discovery API is not tenant scoped');
 assert(JSON.stringify(discovery.body).includes(password) === false, 'discovery exposed the login password');
 
 for (const [path, service] of [['/.well-known/caldav', 'caldav'], ['/.well-known/carddav', 'carddav']] as const) {

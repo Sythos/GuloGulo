@@ -2,7 +2,6 @@
 // SPDX-FileCopyrightText: 2026 Sythos (https://www.sythos.net)
 // Author: Sythos (https://www.sythos.net)
 
-// @ts-nocheck
 
 import assert from 'node:assert/strict';
 import test from 'node:test';
@@ -53,25 +52,25 @@ test('LP1 accepts the frozen internal dual-stack topology and loopback bindings'
 test('LP1 rejects public network, host network, and Docker socket claims', () => {
   assert.throws(
     () => createLocalProofTopology({ ...VALID_TOPOLOGY, internalNetwork: false }),
-    (error) => error.code === 'LP1_NETWORK_INVALID',
+    (error: unknown) => error instanceof Error && 'code' in error && error.code === 'LP1_NETWORK_INVALID',
   );
   assert.throws(
     () => createLocalProofTopology({ ...VALID_TOPOLOGY, hostNetwork: true }),
-    (error) => error.code === 'LP1_HOST_NETWORK_INVALID',
+    (error: unknown) => error instanceof Error && 'code' in error && error.code === 'LP1_HOST_NETWORK_INVALID',
   );
   assert.throws(
     () => createLocalProofTopology({ ...VALID_TOPOLOGY, dockerSocketMounted: true }),
-    (error) => error.code === 'LP1_SOCKET_INVALID',
+    (error: unknown) => error instanceof Error && 'code' in error && error.code === 'LP1_SOCKET_INVALID',
   );
 });
 
 test('LP1 rejects public host bindings and incomplete volumes', () => {
   assert.throws(
     () => createLocalProofTopology({ ...VALID_TOPOLOGY, hostBindings: ['0.0.0.0:18080->8080/tcp', '[::1]:18080->8080/tcp'] }),
-    (error) => error.code === 'LP1_HOST_BINDING_INVALID',
+    (error: unknown) => error instanceof Error && 'code' in error && error.code === 'LP1_HOST_BINDING_INVALID',
   );
   assert.throws(
     () => createLocalProofTopology({ ...VALID_TOPOLOGY, volumes: VALID_TOPOLOGY.volumes.slice(1) }),
-    (error) => error.code === 'LP1_VOLUMES_INVALID',
+    (error: unknown) => error instanceof Error && 'code' in error && error.code === 'LP1_VOLUMES_INVALID',
   );
 });

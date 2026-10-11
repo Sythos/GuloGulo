@@ -7,6 +7,8 @@ import test from 'node:test';
 
 import { createCpanelAdapter } from './cpanel-adapter.ts';
 import { createTenantContext } from '../../integrations/tenant-context.ts';
+import type { IntegrationConfig } from '../../integrations/types.ts';
+import { createSessionManager } from '../../web/security/session-manager.ts';
 import type { PlatformAdapter } from '../contract/platform-adapter.ts';
 
 /** An environment with no GULOGULO_CONFIG_FILE set: config.ts falls back to
@@ -24,7 +26,9 @@ test('createCpanelAdapter satisfies the PlatformAdapter contract and identifies 
 
 test('loadConfig() delegates to src/runtime/config.ts and resolves disabled integrations by default', async () => {
   const adapter = createCpanelAdapter({ environment: emptyEnvironment() });
-  const config = await adapter.loadConfig() as Record<string, any>;
+  const config = await adapter.loadConfig();
+  assert.ok(config.contract?.ldap);
+  assert.ok(config.contract.postgres);
   assert.equal(config.contract.ldap.enabled, false);
   assert.equal(config.contract.postgres.enabled, false);
 });
@@ -43,7 +47,7 @@ test('createIdentityClient() builds a working enabled client when cpanel setting
     environment: emptyEnvironment(),
     resolveSecret: async () => 'resolved-token',
   });
-  const config = {
+  const config: IntegrationConfig = {
     contract: {
       cpanel: {
         enabled: true,
@@ -53,7 +57,7 @@ test('createIdentityClient() builds a working enabled client when cpanel setting
         timeoutMs: 100,
       },
     },
-  } as any;
+  };
   const client = await adapter.createIdentityClient(config);
   assert.equal(client.enabled, true);
   // No real cPanel/IMAP host is reachable from a test machine, so this
@@ -93,7 +97,10 @@ test('createBackupStorage() builds a real filesystem adapter with the shared /va
 
 test('createBackupStorage() honors an overridden contract.backup.path', async () => {
   const adapter = createCpanelAdapter({ environment: emptyEnvironment() });
-  const storage = await adapter.createBackupStorage!({ contract: { backup: { path: '/srv/gulogulo-backups' } } } as any);
+  const config: IntegrationConfig & { contract: { backup: { path: string } } } = {
+    contract: { backup: { path: '/srv/gulogulo-backups' } },
+  };
+  const storage = await adapter.createBackupStorage!(config);
   assert.equal(storage.basePath, '/srv/gulogulo-backups');
 });
 
@@ -102,9 +109,9 @@ test('createSessionStore() returns a working in-memory SessionStore', async () =
   const store = await adapter.createSessionStore();
   assert.equal(store.size, 0);
   assert.equal(store.get('missing-session'), undefined);
-  const session = { sessionId: 'fake' } as any;
-  store.set('fake', session);
-  assert.equal(store.get('fake'), session);
-  assert.equal(store.delete('fake'), true);
+  const session = createSessionManager().createSession({ tenantId: 'acme', domain: 'acme.example', userId: 'jdoe' });
+  store.set(session.sessionId, session);
+  assert.equal(store.get(session.sessionId), session);
+  assert.equal(store.delete(session.sessionId), true);
   assert.equal([...store.entries()].length, 0);
 });

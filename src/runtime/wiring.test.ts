@@ -3,6 +3,7 @@
 // Author: Sythos (https://www.sythos.net)
 
 import assert from 'node:assert/strict';
+import { validateICalendar } from '../core/dav/caldav/caldav-contract.ts';
 import { request, type IncomingHttpHeaders } from 'node:http';
 import { PassThrough } from 'node:stream';
 import type { AddressInfo } from 'node:net';
@@ -64,7 +65,7 @@ class FakeImapClient implements ImapClient {
 }
 
 function ical(summaryText: string) {
-  return { summary: summaryText, description: '', dtStart: { value: '20260901T100000Z', kind: 'date-time', timeZone: 'UTC' }, dtEnd: { value: '20260901T110000Z', kind: 'date-time', timeZone: 'UTC' } };
+  return validateICalendar(`BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//Gulo Gulo//Test//EN\r\nBEGIN:VEVENT\r\nUID:uid-1\r\nDTSTAMP:20260901T000000Z\r\nDTSTART:20260901T100000Z\r\nDTEND:20260901T110000Z\r\nSUMMARY:${summaryText}\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n`);
 }
 
 function createFakeDavStore(options: { failing?: boolean } = {}): { store: DavStore; actors: Array<Record<string, unknown>> } {
@@ -79,32 +80,77 @@ function createFakeDavStore(options: { failing?: boolean } = {}): { store: DavSt
     'acme/bob': ['bob-secret-contact'],
     'other/eve': ['eve-secret-contact'],
   };
-  const key = (actor: Record<string, string>) => `${actor.tenantId}/${actor.userId}`;
+  const key = (actor: unknown) => {
+    const scope = jsonObject(actor);
+    assert.equal(typeof scope.tenantId, 'string');
+    assert.equal(typeof scope.userId, 'string');
+    return `${String(scope.tenantId)}/${String(scope.userId)}`;
+  };
   const fail = () => { if (options.failing === true) throw new Error('database unavailable'); };
-  const store = {
+  const unavailable = async (): Promise<never> => { throw new Error('Unexpected DAV test operation'); };
+  const store: DavStore = {
     caldav: {
       enabled: true,
-      listCalendarCollections: async (actor: Record<string, string>) => {
-        actors.push(actor); fail();
-        return (calendars[key(actor)] ?? []).map((calendar) => ({ calendarId: calendar.calendarId, displayName: 'Main', syncToken: 'sync-token' }));
+      healthCheck: async () => ({ status: 'ok' }),
+      close: async () => {},
+      createCalendarCollection: unavailable,
+      getCalendarCollection: unavailable,
+      setCalendarAcl: unavailable,
+      revokeCalendarAcl: unavailable,
+      getCalendarEtag: unavailable,
+      createCalendarObject: unavailable,
+      getCalendarObject: unavailable,
+      updateCalendarObject: unavailable,
+      deleteCalendarObject: unavailable,
+      deleteCalendarCollection: unavailable,
+      listCalendarCollections: async (actor) => {
+        actors.push(jsonObject(actor)); fail();
+        return (calendars[key(actor)] ?? []).map((calendar) => ({
+          calendarId: calendar.calendarId, collectionId: 'main', href: '/dav/calendars/main/',
+          tenantId: String(jsonObject(actor).tenantId), ownerUserId: String(jsonObject(actor).userId),
+          displayName: 'Main', description: '', timezone: 'UTC', color: null, permissions: ['read'], acl: [],
+          syncToken: 'sync-token', createdAt: '2026-09-01T00:00:00Z', updatedAt: '2026-09-01T00:00:00Z',
+        }));
       },
-      listCalendarObjects: async (actor: Record<string, string>, { calendarId }: { calendarId: string }) => ({
+      listCalendarObjects: async (actor, { calendarId } = {}) => ({
+        calendarId: String(calendarId), deletedObjectIds: [], syncToken: 'sync-token',
         objects: (calendars[key(actor)] ?? []).filter((calendar) => calendar.calendarId === calendarId).map((calendar) => ({
-          objectId: 'event-1', href: `/dav/calendars/${actor.tenantId}/${calendarId}/event-1`, uid: 'uid-1', etag: '"etag-1"', metadata: ical(calendar.summary),
+          objectId: 'event-1', href: `/dav/calendars/${String(jsonObject(actor).tenantId)}/${String(calendarId)}/event-1`, uid: 'uid-1', etag: '"etag-1"', metadata: ical(calendar.summary),
+          calendarId: String(calendarId), tenantId: String(jsonObject(actor).tenantId), ownerUserId: String(jsonObject(actor).userId),
+          createdAt: '2026-09-01T00:00:00Z', updatedAt: '2026-09-01T00:00:00Z', ical: ical(calendar.summary).canonicalText,
         })),
       }),
     },
     carddav: {
       enabled: true,
-      listAddressBooks: async (scope: Record<string, string>) => {
-        actors.push(scope); fail();
-        return (contacts[key(scope)] ?? []).length > 0 ? [{ addressBookId: 'default', displayName: 'Contacts', syncToken: 'sync-token' }] : [];
+      healthCheck: async () => ({ status: 'ok' }),
+      close: async () => {},
+      createAddressBook: unavailable,
+      getAddressBook: unavailable,
+      deleteAddressBook: unavailable,
+      createContact: unavailable,
+      getContact: unavailable,
+      getContactMetadata: unavailable,
+      putContact: unavailable,
+      updateContact: unavailable,
+      upsertContact: unavailable,
+      deleteContact: unavailable,
+      syncCollection: unavailable,
+      exportAddressBookMetadata: unavailable,
+      listAddressBooks: async (scope) => {
+        actors.push(jsonObject(scope)); fail();
+        return (contacts[key(scope)] ?? []).length > 0 ? [{
+          schemaVersion: 1, addressBookId: 'default', displayName: 'Contacts', syncToken: 'sync-token',
+          href: '/dav/addressbooks/default/', description: '', color: null, etag: '"etag"', ctag: 'ctag',
+          supportedAddressData: ['text/vcard'], createdAt: '2026-09-01T00:00:00Z', updatedAt: '2026-09-01T00:00:00Z',
+        }] : [];
       },
-      listContacts: async (scope: Record<string, string>) => (contacts[key(scope)] ?? []).map((name, index) => ({
+      listContacts: async (scope) => (contacts[key(scope)] ?? []).map((name, index) => ({
         href: `c${index}.vcf`, uid: `uid-${index}`, etag: '"etag"', fullName: name, emailCount: 1, telCount: 0,
+        mediaType: 'text/vcard', sizeBytes: 128, createdAt: '2026-09-01T00:00:00Z', updatedAt: '2026-09-01T00:00:00Z', propertyNames: ['FN'],
       })),
     },
-  } as unknown as DavStore;
+  };
   return { store, actors };
 }
 
@@ -113,7 +159,7 @@ function createTestRuntime(options: { davStore?: DavStore } = {}) {
   const errorOutput = new PassThrough();
   return createProductionRuntimeServer({
     config: { host: '127.0.0.1', port: 0, serviceName: 'gulogulo-test', environment: 'test', shutdownTimeoutMs: 1_000 },
-    logger: createLogger({ output: output as unknown as typeof process.stdout, errorOutput: errorOutput as unknown as typeof process.stderr }),
+    logger: createLogger({ output, errorOutput }),
     authenticateLogin: async ({ email, password }) => {
       const identity = IDENTITIES[email];
       return identity !== undefined && PASSWORDS[email] === password ? { ...identity, actorId: identity.userId, role: 'user' } : null;
@@ -125,7 +171,17 @@ function createTestRuntime(options: { davStore?: DavStore } = {}) {
 }
 
 type TestRuntime = ReturnType<typeof createTestRuntime>;
-interface JsonResponse { statusCode: number | undefined; headers: IncomingHttpHeaders; body: any; raw: string }
+interface JsonResponse { statusCode: number | undefined; headers: IncomingHttpHeaders; body: Record<string, unknown>; raw: string }
+
+function jsonObject(value: unknown): Record<string, unknown> {
+  assert.ok(value !== null && typeof value === 'object' && !Array.isArray(value), 'Expected a JSON object');
+  return value as Record<string, unknown>;
+}
+
+function jsonArray(value: unknown): unknown[] {
+  assert.ok(Array.isArray(value), 'Expected a JSON array');
+  return value;
+}
 
 function requestJson(runtime: TestRuntime, path: string, { method = 'GET', headers = {}, body }: { method?: string; headers?: Record<string, string>; body?: unknown } = {}): Promise<JsonResponse> {
   const address = runtime.server.address() as AddressInfo;
@@ -138,7 +194,7 @@ function requestJson(runtime: TestRuntime, path: string, { method = 'GET', heade
       let raw = '';
       response.setEncoding('utf8');
       response.on('data', (chunk) => { raw += chunk; });
-      response.on('end', () => resolve({ statusCode: response.statusCode, headers: response.headers, body: raw.length > 0 ? JSON.parse(raw) : null, raw }));
+      response.on('end', () => resolve({ statusCode: response.statusCode, headers: response.headers, body: jsonObject(JSON.parse(raw || '{}')), raw }));
     });
     handle.on('error', reject);
     handle.end(payload);
@@ -173,19 +229,19 @@ test('production wiring returns the signed-in user\'s real mail, calendar and co
     const mail = await requestJson(runtime, '/api/mail/messages', { headers: { cookie } });
     assert.equal(mail.statusCode, 200);
     assert.deepEqual(mail.body.scope, { tenantId: 'acme', userId: 'alice' });
-    assert.deepEqual(mail.body.messages.map((message: { subject: string }) => message.subject), ['alice newest', 'alice-secret-subject']);
-    assert.deepEqual(mail.body.messages.map((message: { unread: boolean }) => message.unread), [false, true]);
+    assert.deepEqual(jsonArray(mail.body.messages).map((message) => jsonObject(message).subject), ['alice newest', 'alice-secret-subject']);
+    assert.deepEqual(jsonArray(mail.body.messages).map((message) => jsonObject(message).unread), [false, true]);
     assert.deepEqual(FakeImapClient.logins, ['alice@acme.example']);
 
     const calendar = await requestJson(runtime, '/api/calendar/events', { headers: { cookie } });
     assert.equal(calendar.statusCode, 200);
-    assert.equal(calendar.body.events.length, 1);
-    assert.equal(calendar.body.events[0].summary, 'alice-secret-event');
-    assert.equal(calendar.body.events[0].start, '2026-09-01T10:00:00Z');
+    assert.equal(jsonArray(calendar.body.events).length, 1);
+    assert.equal(jsonObject(jsonArray(calendar.body.events)[0]).summary, 'alice-secret-event');
+    assert.equal(jsonObject(jsonArray(calendar.body.events)[0]).start, '2026-09-01T10:00:00Z');
 
     const contacts = await requestJson(runtime, '/api/contacts', { headers: { cookie } });
     assert.equal(contacts.statusCode, 200);
-    assert.deepEqual(contacts.body.contacts.map((contact: { displayName: string }) => contact.displayName), ['alice-secret-contact']);
+    assert.deepEqual(jsonArray(contacts.body.contacts).map((contact) => jsonObject(contact).displayName), ['alice-secret-contact']);
 
     const discovery = await requestJson(runtime, '/api/discovery', { headers: { cookie } });
     assert.equal(discovery.statusCode, 200);
@@ -207,18 +263,18 @@ test('another user in the same tenant and a user of another tenant only see thei
     const bobMail = await requestJson(runtime, '/api/mail/messages', { headers: { cookie: bob } });
     const bobCalendar = await requestJson(runtime, '/api/calendar/events', { headers: { cookie: bob } });
     const bobContacts = await requestJson(runtime, '/api/contacts', { headers: { cookie: bob } });
-    assert.equal(bobMail.body.messages.length, 1);
+    assert.equal(jsonArray(bobMail.body.messages).length, 1);
     for (const response of [bobMail, bobCalendar, bobContacts]) {
       assert.equal(/alice-secret|eve-secret/u.test(response.raw), false);
       assert.deepEqual(response.body.scope, { tenantId: 'acme', userId: 'bob' });
     }
-    assert.equal(bobCalendar.body.events[0].summary, 'bob-secret-event');
+    assert.equal(jsonObject(jsonArray(bobCalendar.body.events)[0]).summary, 'bob-secret-event');
 
     const eve = await login(runtime, 'eve@other.example');
     const eveMail = await requestJson(runtime, '/api/mail/messages', { headers: { cookie: eve } });
     const eveContacts = await requestJson(runtime, '/api/contacts', { headers: { cookie: eve } });
     assert.equal(/alice-secret|bob-secret/u.test(eveMail.raw + eveContacts.raw), false);
-    assert.deepEqual(eveContacts.body.contacts.map((contact: { displayName: string }) => contact.displayName), ['eve-secret-contact']);
+    assert.deepEqual(jsonArray(eveContacts.body.contacts).map((contact) => jsonObject(contact).displayName), ['eve-secret-contact']);
 
     // The discovery contract belongs to tenant acme; another tenant must not receive it.
     const eveDiscovery = await requestJson(runtime, '/api/discovery', { headers: { cookie: eve } });
@@ -235,13 +291,13 @@ test('backend failures are reported as 503, never as an empty list', async () =>
     FakeImapClient.connectError = imapClientError('connection timed out', 'TIMEOUT');
     const mail = await requestJson(runtime, '/api/mail/messages', { headers: { cookie } });
     assert.equal(mail.statusCode, 503);
-    assert.equal(mail.body.error.code, 'RESOURCE_UNAVAILABLE');
+    assert.equal(jsonObject(mail.body.error).code, 'RESOURCE_UNAVAILABLE');
     assert.equal(Object.hasOwn(mail.body, 'messages'), false);
 
     for (const path of ['/api/calendar/events', '/api/contacts']) {
       const response = await requestJson(runtime, path, { headers: { cookie } });
       assert.equal(response.statusCode, 503, path);
-      assert.equal(response.body.error.code, 'RESOURCE_UNAVAILABLE');
+      assert.equal(jsonObject(response.body.error).code, 'RESOURCE_UNAVAILABLE');
       assert.equal(response.raw.includes('database unavailable'), false);
     }
   });

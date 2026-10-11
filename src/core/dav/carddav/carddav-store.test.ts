@@ -26,7 +26,7 @@ function makeClock() {
   };
 }
 
-function aliceCard({ fullName = 'Alice Example', email = 'alice@example.test', note = '' }: any = {}) {
+function aliceCard({ fullName = 'Alice Example', email = 'alice@example.test', note = '' }: { fullName?: string; email?: string; note?: string } = {}) {
   return [
     'BEGIN:VCARD',
     'VERSION:4.0',
@@ -59,15 +59,15 @@ test('address books are persisted and listed only inside the exact tenant/user s
   assert.equal(store.listAddressBooks({ scope: otherTenantAlice }).length, 0);
   assert.throws(
     () => store.listAddressBooks({ scope: { tenantId: 'acme', userId: 'alice', role: 'master' } }),
-    (error: any) => error instanceof CardDavError && error.code === 'SCOPE_ROLE_DENIED' && error.status === 403,
+    (error: unknown) => error instanceof CardDavError && error instanceof CardDavError && error.code === 'SCOPE_ROLE_DENIED' && error.status === 403,
   );
   assert.throws(
     () => store.listAddressBooks({ scope: { tenantId: 'acme', userId: 'alice', targetUserId: 'bob' } }),
-    (error: any) => error instanceof CardDavError && error.code === 'SCOPE_TARGET_DENIED' && error.status === 403,
+    (error: unknown) => error instanceof CardDavError && error instanceof CardDavError && error.code === 'SCOPE_TARGET_DENIED' && error.status === 403,
   );
   assert.throws(
     () => store.getAddressBook({ scope: bob, addressBookId: 'personal' }),
-    (error: any) => error instanceof CardDavError && error.code === 'ADDRESS_BOOK_NOT_FOUND' && error.status === 404,
+    (error: unknown) => error instanceof CardDavError && error instanceof CardDavError && error.code === 'ADDRESS_BOOK_NOT_FOUND' && error.status === 404,
   );
 });
 
@@ -92,11 +92,11 @@ test('vCard validation normalizes CRLF/folding and exposes safe metadata', () =>
   assert.equal(parsed.mediaType, 'text/vcard; version=3.0');
   assert.throws(
     () => validateVCardObject('BEGIN:VCARD\r\nVERSION:4.0\r\nFN:Missing UID\r\nEND:VCARD'),
-    (error: any) => error.code === 'VCARD_UID_INVALID',
+    (error: unknown) => error instanceof CardDavError && error.code === 'VCARD_UID_INVALID',
   );
   assert.throws(
     () => validateVCardObject('BEGIN:VCARD\r\nVERSION:2.1\r\nUID:legacy\r\nFN:Legacy\r\nEND:VCARD'),
-    (error: any) => error.code === 'VCARD_VERSION_INVALID',
+    (error: unknown) => error instanceof CardDavError && error.code === 'VCARD_VERSION_INVALID',
   );
 });
 
@@ -114,22 +114,22 @@ test('contact create/update/delete enforce conditional ETags', () => {
 
   assert.throws(
     () => store.createContact({ scope: alice, addressBookId: 'personal', href: 'missing.vcf', vCard: aliceCard() }),
-    (error: any) => error.code === 'PRECONDITION_REQUIRED' && error.status === 428,
+    (error: unknown) => error instanceof CardDavError && error.code === 'PRECONDITION_REQUIRED' && error.status === 428,
   );
 
   assert.match(created.etag, /^"[A-Za-z0-9_-]+"$/u);
   assert.equal(created.vCard.endsWith('\r\n'), true);
   assert.throws(
     () => store.createContact({ scope: alice, addressBookId: 'personal', href: 'alice-1.vcf', ifNoneMatch: '*', vCard: aliceCard() }),
-    (error: any) => error.code === 'CONTACT_EXISTS' && error.status === 412,
+    (error: unknown) => error instanceof CardDavError && error.code === 'CONTACT_EXISTS' && error.status === 412,
   );
   assert.throws(
     () => store.putContact({ scope: alice, addressBookId: 'personal', href: 'alice-1.vcf', vCard: aliceCard({ fullName: 'Changed' }) }),
-    (error: any) => error.code === 'PRECONDITION_REQUIRED' && error.status === 428,
+    (error: unknown) => error instanceof CardDavError && error.code === 'PRECONDITION_REQUIRED' && error.status === 428,
   );
   assert.throws(
     () => store.putContact({ scope: alice, addressBookId: 'personal', href: 'alice-1.vcf', ifMatch: '"stale"', vCard: aliceCard({ fullName: 'Changed' }) }),
-    (error: any) => error.code === 'ETAG_MISMATCH' && error.status === 412,
+    (error: unknown) => error instanceof CardDavError && error.code === 'ETAG_MISMATCH' && error.status === 412,
   );
   time.advance(1000);
   const updated = store.putContact({
@@ -144,7 +144,7 @@ test('contact create/update/delete enforce conditional ETags', () => {
   assert.equal(updated.updatedAt, '2026-08-22T20:00:01.000Z');
   assert.throws(
     () => store.deleteContact({ scope: alice, addressBookId: 'personal', href: 'alice-1.vcf', ifMatch: created.etag }),
-    (error: any) => error.code === 'ETAG_MISMATCH' && error.status === 412,
+    (error: unknown) => error instanceof CardDavError && error.code === 'ETAG_MISMATCH' && error.status === 412,
   );
   const deleted = store.deleteContact({ scope: alice, addressBookId: 'personal', href: 'alice-1.vcf', ifMatch: updated.etag });
   assert.deepEqual({ href: deleted.href, status: deleted.status, etag: deleted.etag }, {
@@ -173,7 +173,7 @@ test('conditional PUT can create a missing object and keeps UID immutable', () =
       ifMatch: created.etag,
       vCard: aliceCard().replace('UID:alice-1', 'UID:another'),
     }),
-    (error: any) => error.code === 'VCARD_UID_IMMUTABLE',
+    (error: unknown) => error instanceof CardDavError && error.code === 'VCARD_UID_IMMUTABLE',
   );
 });
 
@@ -197,11 +197,11 @@ test('sync tokens are opaque and collection/owner scoped, including tombstones',
   assert.notEqual(afterDelete.syncToken, afterCreate.syncToken);
   assert.throws(
     () => store.syncCollection({ scope: bob, addressBookId: 'personal', syncToken: afterCreate.syncToken }),
-    (error: any) => error.code === 'ADDRESS_BOOK_NOT_FOUND',
+    (error: unknown) => error instanceof CardDavError && error.code === 'ADDRESS_BOOK_NOT_FOUND',
   );
   assert.throws(
     () => store.syncCollection({ scope: alice, addressBookId: 'personal', syncToken: afterCreate.syncToken.replace(/:1$/u, ':999') }),
-    (error: any) => error.code === 'SYNC_TOKEN_INVALID' && error.status === 409,
+    (error: unknown) => error instanceof CardDavError && error.code === 'SYNC_TOKEN_INVALID' && error.status === 409,
   );
 });
 
@@ -218,7 +218,7 @@ test('metadata export never includes vCard content or identity/session data', ()
   assert.equal(Object.hasOwn(exported, 'sessionId'), false);
   assert.throws(
     () => store.exportAddressBookMetadata({ scope: bob, addressBookId: 'personal' }),
-    (error: any) => error.code === 'ADDRESS_BOOK_NOT_FOUND' && error.status === 404,
+    (error: unknown) => error instanceof CardDavError && error.code === 'ADDRESS_BOOK_NOT_FOUND' && error.status === 404,
   );
 });
 
@@ -226,15 +226,15 @@ test('unsafe collection, href, and vCard inputs fail closed', () => {
   const store = new CardDavStore({ clock: () => Date.parse('2026-08-22T20:00:00Z') });
   assert.throws(
     () => store.createAddressBook({ scope: alice, addressBookId: '../private', displayName: 'Private' }),
-    (error: any) => error.code === 'INVALID_ADDRESSBOOKID',
+    (error: unknown) => error instanceof CardDavError && error.code === 'INVALID_ADDRESSBOOKID',
   );
   createAliceBook(store);
   assert.throws(
     () => store.createContact({ scope: alice, addressBookId: 'personal', href: '../secret.vcf', ifNoneMatch: '*', vCard: aliceCard() }),
-    (error: any) => error.code === 'INVALID_HREF',
+    (error: unknown) => error instanceof CardDavError && error.code === 'INVALID_HREF',
   );
   assert.throws(
     () => store.createContact({ scope: alice, addressBookId: 'personal', href: 'bad.vcf', ifNoneMatch: '*', vCard: `${aliceCard()}\0` }),
-    (error: any) => error.code === 'VCARD_INVALID',
+    (error: unknown) => error instanceof CardDavError && error.code === 'VCARD_INVALID',
   );
 });

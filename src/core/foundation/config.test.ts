@@ -2,8 +2,6 @@
 // SPDX-FileCopyrightText: 2026 Sythos (https://www.sythos.net)
 // Author: Sythos (https://www.sythos.net)
 
-// @ts-nocheck
-
 import assert from 'node:assert/strict';
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -17,7 +15,7 @@ import {
   loadConfiguration,
 } from '../../runtime/config.js';
 
-function withConfigFile(configuration, callback) {
+function withConfigFile<T>(configuration: unknown, callback: (filePath: string) => T): T {
   const directory = mkdtempSync(join(tmpdir(), 'gulogulo-config-'));
   const filePath = join(directory, 'config.json');
   writeFileSync(filePath, JSON.stringify(configuration), 'utf8');
@@ -28,6 +26,15 @@ function withConfigFile(configuration, callback) {
     rmSync(directory, { recursive: true, force: true });
   }
 }
+
+test('invalid options are rejected before file-reader access', () => {
+  for (const options of [null, false, [], 'invalid']) {
+    assert.throws(
+      () => Reflect.apply(loadConfiguration, undefined, [{}, options]),
+      /Configuration error: options must be an object/,
+    );
+  }
+});
 
 test('configuration defaults are versioned, deterministic, and secret-free', () => {
   const first = loadConfiguration({}, { configFilePath: null });

@@ -62,9 +62,9 @@ const context = createTenantContext({
 const queue = createMailQueue();
 const queueStarted = performance.now();
 for (let index = 0; index < 16; index += 1) {
-  const entry = queue.enqueue(context, { sender: 'alice@example.test', recipients: ['alice@example.test'], sizeBytes: 128 } as never);
+  const entry = queue.enqueue(context, { sender: 'alice@example.test', recipients: ['alice@example.test'], sizeBytes: 128 });
   queue.claim(entry.queueId, context);
-  queue.complete(entry.queueId, context, { state: 'delivered' } as never);
+  queue.complete(entry.queueId, context, { state: 'delivered' });
 }
 const queueP95Ms = performance.now() - queueStarted;
 

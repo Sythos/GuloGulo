@@ -2,7 +2,13 @@
 // SPDX-FileCopyrightText: 2026 Sythos (https://www.sythos.net)
 // Author: Sythos (https://www.sythos.net)
 
-// @ts-nocheck
+type EvidenceStatus = 'verified' | 'contract' | 'deferred' | 'exception';
+interface Approval { readonly approvedBy: string; readonly approvedAt: string }
+interface ExceptionFields { owner?: string; mitigation?: string; rationale?: string; approval?: Readonly<Approval> }
+interface ChecklistEntry extends ExceptionFields { id: string; status: EvidenceStatus; evidence: readonly string[] }
+interface SecurityFinding extends ExceptionFields { id: string; title: string; severity: string; status: string }
+interface Review extends ExceptionFields { id: string; status: string; evidence: readonly string[] }
+interface TestEvidence { name: string; command: string; status: string; evidence: string }
 
 /**
  * M10 release-evidence contract.
@@ -21,7 +27,7 @@ const EVIDENCE_STATUSES = Object.freeze([
   'contract',
   'deferred',
   'exception',
-]);
+] as const);
 
 const SECURITY_SEVERITIES = Object.freeze(['critical', 'high', 'medium', 'low']);
 const SECURITY_FINDING_STATUSES = Object.freeze(['resolved', 'accepted', 'open']);
@@ -96,26 +102,25 @@ const SECTION30_DOMAINS = Object.freeze(['security', 'data', 'interop', 'operati
 const LOCAL_PATH_PATTERN = /(?:^[A-Za-z]:[\\/]|^\\\\|^\/Users\/|^\/home\/|^\/private\/|F:\\Dev\\GuloGulo|C:\\Users\\)/i;
 const SECRET_PATTERN = /(?:-----BEGIN .*PRIVATE KEY-----|(?:password|passwd|secret|token|api[_-]?key|private[_-]?key)\s*[:=]|(?:ghp|github_pat|sk)-[A-Za-z0-9_-]{12,})/i;
 
-function releaseError(message, code = 'INVALID_RELEASE_EVIDENCE') {
-  const error = new Error(message);
-  error.code = code;
+function releaseError(message: string, code = 'INVALID_RELEASE_EVIDENCE') {
+  const error = Object.assign(new Error(message), { code });
   return error;
 }
 
-function assertPlainObject(value, field) {
+function assertPlainObject(value: unknown, field: string): asserts value is Record<string, unknown> {
   if (!value || typeof value !== 'object' || Array.isArray(value)) {
     throw releaseError(`${field} must be an object`, 'INVALID_RELEASE_SHAPE');
   }
 }
 
-function assertString(value, field, { min = 1, max = 256 } = {}) {
+function assertString(value: unknown, field: string, { min = 1, max = 256 } = {}) {
   if (typeof value !== 'string' || value.length < min || value.length > max || value.trim() !== value) {
     throw releaseError(`${field} must be a trimmed string of ${min}-${max} characters`, 'INVALID_RELEASE_FIELD');
   }
   return value;
 }
 
-function assertDate(value, field) {
+function assertDate(value: unknown, field: string) {
   const date = assertString(value, field, { max: 64 });
   if (Number.isNaN(Date.parse(date))) {
     throw releaseError(`${field} must be an ISO-8601 date`, 'INVALID_RELEASE_DATE');
@@ -123,7 +128,7 @@ function assertDate(value, field) {
   return date;
 }
 
-function assertSafeText(value, field) {
+function assertSafeText(value: unknown, field: string) {
   const text = assertString(value, field, { max: 2048 });
   if (LOCAL_PATH_PATTERN.test(text) || SECRET_PATTERN.test(text)) {
     throw releaseError(`${field} contains a local path or secret-like value`, 'UNSAFE_RELEASE_EVIDENCE');
@@ -131,7 +136,7 @@ function assertSafeText(value, field) {
   return text;
 }
 
-function assertSafeReference(value, field) {
+function assertSafeReference(value: unknown, field: string) {
   const reference = assertSafeText(value, field);
   if (reference.includes('\\') || reference.split('/').includes('..')) {
     throw releaseError(`${field} must be a repository-relative reference`, 'UNSAFE_RELEASE_REFERENCE');
@@ -139,14 +144,15 @@ function assertSafeReference(value, field) {
   return reference;
 }
 
-function assertEnum(value, field, allowed) {
-  if (!allowed.includes(value)) {
+function assertEnum<T extends string>(value: unknown, field: string, allowed: readonly T[]): T {
+  const matched = allowed.find((item) => item === value);
+  if (matched === undefined) {
     throw releaseError(`${field} must be one of: ${allowed.join(', ')}`, 'INVALID_RELEASE_ENUM');
   }
-  return value;
+  return matched;
 }
 
-function normalizeApproval(value, field) {
+function normalizeApproval(value: unknown, field: string) {
   assertPlainObject(value, field);
   return Object.freeze({
     approvedBy: assertSafeText(value.approvedBy, `${field}.approvedBy`),
@@ -154,7 +160,7 @@ function normalizeApproval(value, field) {
   });
 }
 
-function normalizeChecklistEntry(entry, index) {
+function normalizeChecklistEntry(entry: unknown, index: number) {
   const field = `section30[${index}]`;
   assertPlainObject(entry, field);
   const id = assertString(entry.id, `${field}.id`, { max: 96 });
@@ -165,7 +171,7 @@ function normalizeChecklistEntry(entry, index) {
   const evidence = Array.isArray(entry.evidence)
     ? entry.evidence.map((value, evidenceIndex) => assertSafeReference(value, `${field}.evidence[${evidenceIndex}]`))
     : [];
-  const normalized = {
+  const normalized: ChecklistEntry = {
     id,
     status,
     evidence: Object.freeze(evidence),
@@ -176,7 +182,7 @@ function normalizeChecklistEntry(entry, index) {
       throw releaseError(`${field} needs at least one evidence reference`, 'MISSING_SECTION30_EVIDENCE');
     }
   } else {
-    normalized.owner = assertSafeText(entry.owner, `${field}.owner`, { max: 128 });
+    normalized.owner = assertSafeText(entry.owner, `${field}.owner`);
     normalized.mitigation = assertSafeText(entry.mitigation, `${field}.mitigation`);
     normalized.rationale = assertSafeText(entry.rationale, `${field}.rationale`);
     normalized.approval = normalizeApproval(entry.approval, `${field}.approval`);
@@ -184,7 +190,7 @@ function normalizeChecklistEntry(entry, index) {
   return Object.freeze(normalized);
 }
 
-function normalizeSecurityFinding(finding, index) {
+function normalizeSecurityFinding(finding: unknown, index: number) {
   const field = `securityFindings[${index}]`;
   assertPlainObject(finding, field);
   const severity = assertEnum(finding.severity, `${field}.severity`, SECURITY_SEVERITIES);
@@ -192,21 +198,21 @@ function normalizeSecurityFinding(finding, index) {
   if (status === 'open' && (severity === 'critical' || severity === 'high')) {
     throw releaseError(`${field} leaves a critical or high finding open`, 'UNRESOLVED_SECURITY_FINDING');
   }
-  const normalized = {
+  const normalized: SecurityFinding = {
     id: assertString(finding.id, `${field}.id`, { max: 96 }),
     title: assertSafeText(finding.title, `${field}.title`),
     severity,
     status,
   };
   if (status !== 'resolved') {
-    normalized.owner = assertSafeText(finding.owner, `${field}.owner`, { max: 128 });
+    normalized.owner = assertSafeText(finding.owner, `${field}.owner`);
     normalized.mitigation = assertSafeText(finding.mitigation, `${field}.mitigation`);
     normalized.approval = normalizeApproval(finding.approval, `${field}.approval`);
   }
   return Object.freeze(normalized);
 }
 
-function normalizeTestEvidence(entry, index) {
+function normalizeTestEvidence(entry: unknown, index: number): Readonly<TestEvidence> {
   const field = `tests[${index}]`;
   assertPlainObject(entry, field);
   return Object.freeze({
@@ -217,11 +223,11 @@ function normalizeTestEvidence(entry, index) {
   });
 }
 
-function normalizeReview(entry, index) {
+function normalizeReview(entry: unknown, index: number) {
   const field = `reviews[${index}]`;
   assertPlainObject(entry, field);
   const status = assertEnum(entry.status, `${field}.status`, REVIEW_STATUSES);
-  const normalized = {
+  const normalized: Review = {
     id: assertString(entry.id, `${field}.id`, { max: 96 }),
     status,
     evidence: Object.freeze((Array.isArray(entry.evidence) ? entry.evidence : [])
@@ -231,19 +237,19 @@ function normalizeReview(entry, index) {
     throw releaseError(`${field} needs at least one evidence reference`, 'MISSING_REVIEW_EVIDENCE');
   }
   if (status !== 'passed') {
-    normalized.owner = assertSafeText(entry.owner, `${field}.owner`, { max: 128 });
+    normalized.owner = assertSafeText(entry.owner, `${field}.owner`);
     normalized.mitigation = assertSafeText(entry.mitigation, `${field}.mitigation`);
     normalized.approval = normalizeApproval(entry.approval, `${field}.approval`);
   }
   return Object.freeze(normalized);
 }
 
-function normalizeReviews(entries) {
+function normalizeReviews(entries: unknown) {
   if (!Array.isArray(entries)) {
     throw releaseError('reviews must be an array', 'INVALID_RELEASE_SHAPE');
   }
   const normalized = entries.map(normalizeReview);
-  const ids = new Set();
+  const ids = new Set<string>();
   for (const review of normalized) {
     if (!REQUIRED_REVIEWS.includes(review.id)) {
       throw releaseError(`${review.id} is not a required M10 review`, 'UNKNOWN_M10_REVIEW');
@@ -258,7 +264,7 @@ function normalizeReviews(entries) {
   return Object.freeze(normalized);
 }
 
-function normalizeArtifacts(artifacts) {
+function normalizeArtifacts(artifacts: unknown) {
   if (!Array.isArray(artifacts) || artifacts.length === 0) {
     throw releaseError('artifacts must contain at least one repository-relative reference', 'MISSING_RELEASE_ARTIFACTS');
   }
@@ -273,12 +279,12 @@ function normalizeArtifacts(artifacts) {
   }));
 }
 
-function normalizeSection30(entries) {
+function normalizeSection30(entries: unknown) {
   if (!Array.isArray(entries)) {
     throw releaseError('section30 must be an array', 'INVALID_RELEASE_SHAPE');
   }
   const normalized = entries.map(normalizeChecklistEntry);
-  const ids = new Set();
+  const ids = new Set<string>();
   for (const entry of normalized) {
     if (ids.has(entry.id)) throw releaseError(`section30 contains duplicate item ${entry.id}`, 'DUPLICATE_SECTION30_ITEM');
     ids.add(entry.id);
@@ -290,19 +296,25 @@ function normalizeSection30(entries) {
   return Object.freeze(normalized);
 }
 
-function countStatuses(entries) {
+function countStatuses(entries: readonly Readonly<ChecklistEntry>[]) {
   return Object.freeze(EVIDENCE_STATUSES.reduce((counts, status) => {
     counts[status] = entries.filter((entry) => entry.status === status).length;
     return counts;
-  }, {}));
+  }, { verified: 0, contract: 0, deferred: 0, exception: 0 }));
 }
 
-function createReleaseEvidence(input = {}) {
+function optionalArray(value: unknown, field: string): unknown[] {
+  if (value == null) return [];
+  if (!Array.isArray(value)) throw releaseError(`${field} must be an array`, 'INVALID_RELEASE_SHAPE');
+  return value;
+}
+
+function createReleaseEvidence(input: unknown = {}) {
   assertPlainObject(input, 'releaseEvidence');
   const section30 = normalizeSection30(input.section30);
   const reviews = normalizeReviews(input.reviews);
-  const securityFindings = Object.freeze((input.securityFindings ?? []).map(normalizeSecurityFinding));
-  const tests = Object.freeze((input.tests ?? []).map(normalizeTestEvidence));
+  const securityFindings = Object.freeze(optionalArray(input.securityFindings, 'securityFindings').map(normalizeSecurityFinding));
+  const tests = Object.freeze(optionalArray(input.tests, 'tests').map(normalizeTestEvidence));
   const decision = assertEnum(input.releaseDecision, 'releaseDecision', RELEASE_DECISIONS);
   const normalized = {
     evidenceVersion: assertString(input.evidenceVersion ?? RELEASE_EVIDENCE_VERSION, 'evidenceVersion', { max: 16 }),
@@ -317,8 +329,8 @@ function createReleaseEvidence(input = {}) {
     securityFindings,
     tests,
     artifacts: normalizeArtifacts(input.artifacts),
-    residualRisks: Object.freeze((input.residualRisks ?? []).map((value, index) => assertSafeText(value, `residualRisks[${index}]`))),
-    nextCandidates: Object.freeze((input.nextCandidates ?? []).map((value, index) => assertSafeText(value, `nextCandidates[${index}]`))),
+    residualRisks: Object.freeze(optionalArray(input.residualRisks, 'residualRisks').map((value, index) => assertSafeText(value, `residualRisks[${index}]`))),
+    nextCandidates: Object.freeze(optionalArray(input.nextCandidates, 'nextCandidates').map((value, index) => assertSafeText(value, `nextCandidates[${index}]`))),
   };
 
   if (normalized.product !== 'Gulo Gulo') {
@@ -336,7 +348,7 @@ function createReleaseEvidence(input = {}) {
   return Object.freeze(normalized);
 }
 
-function evaluateReleaseEvidence(evidence) {
+function evaluateReleaseEvidence(evidence: unknown) {
   const normalized = createReleaseEvidence(evidence);
   const contractOnly = normalized.section30.some((entry) => entry.status !== 'verified');
   const conditionalTests = normalized.tests.some((entry) => entry.status !== 'passed');

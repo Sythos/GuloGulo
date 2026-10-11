@@ -2,11 +2,20 @@
 // SPDX-FileCopyrightText: 2026 Sythos (https://www.sythos.net)
 // Author: Sythos (https://www.sythos.net)
 
-// @ts-nocheck
-
 import { Buffer } from 'node:buffer';
 
 import { sanitizeLogValue } from '../../runtime/logger.ts';
+
+export interface StructuredEventOptions {
+  service?: string; event?: string; level?: string; timestamp?: Date | string | number;
+  tenant?: unknown; actor?: unknown; subject?: unknown; result?: string | null; reason?: unknown;
+  details?: unknown; audit?: boolean; auditRetentionDays?: number; maxBytes?: number;
+}
+export interface StructuredEvent {
+  timestamp: string; level: string; service: string; event: string; audit: boolean;
+  tenant: string | null; actor: string | null; subject: string | null; result: string | null;
+  reason: string | null; audit_retention_days: number; details: Record<string, unknown>;
+}
 
 const EVENT_NAME_PATTERN = /^[a-z][a-z0-9_.:-]{1,96}$/u;
 const IDENTIFIER_PATTERN = /^[A-Za-z0-9_.@:+/%/-]{1,192}$/u;
@@ -26,7 +35,7 @@ const RESERVED_DETAILS = new Set([
   'reason',
 ]);
 
-function normalizeIdentifier(value, name, { required = false } = {}) {
+function normalizeIdentifier(value: unknown, name: string, { required = false }: { required?: boolean } = {}) {
   if (value === undefined || value === null || value === '') {
     if (required) {
       throw new TypeError(`${name} is required for an audit event`);
@@ -34,6 +43,9 @@ function normalizeIdentifier(value, name, { required = false } = {}) {
     return null;
   }
 
+  if (typeof value !== 'string' && typeof value !== 'number' && typeof value !== 'boolean' && typeof value !== 'bigint' && typeof value !== 'symbol') {
+    throw new TypeError(`${name} must be a short safe identifier`);
+  }
   const normalized = String(value);
   if (!IDENTIFIER_PATTERN.test(normalized)) {
     throw new TypeError(`${name} must be a short safe identifier`);
@@ -42,7 +54,7 @@ function normalizeIdentifier(value, name, { required = false } = {}) {
   return normalized;
 }
 
-function normalizeTimestamp(value) {
+function normalizeTimestamp(value: Date | string | number | undefined) {
   const timestamp = value instanceof Date ? value : new Date(value ?? Date.now());
   if (Number.isNaN(timestamp.getTime())) {
     throw new TypeError('Event timestamp must be a valid date');
@@ -51,7 +63,7 @@ function normalizeTimestamp(value) {
   return timestamp.toISOString();
 }
 
-function normalizeDetails(details) {
+function normalizeDetails(details: unknown): Record<string, unknown> {
   if (details === undefined || details === null) {
     return {};
   }
@@ -60,7 +72,10 @@ function normalizeDetails(details) {
   }
 
   const sanitized = sanitizeLogValue(details);
-  const normalized = {};
+  if (sanitized === null || typeof sanitized !== 'object' || Array.isArray(sanitized)) {
+    throw new TypeError('Sanitized event details must be an object');
+  }
+  const normalized: Record<string, unknown> = {};
   for (const [key, value] of Object.entries(sanitized)) {
     if (!RESERVED_DETAILS.has(key)) {
       normalized[key] = value;
@@ -69,7 +84,7 @@ function normalizeDetails(details) {
   return normalized;
 }
 
-function freezeEvent(event) {
+function freezeEvent(event: StructuredEvent) {
   return Object.freeze({
     ...event,
     details: Object.freeze({ ...event.details }),
@@ -95,7 +110,7 @@ export function createStructuredEvent({
   audit = false,
   auditRetentionDays = 365,
   maxBytes = 256 * 1024,
-} = {}) {
+}: StructuredEventOptions = {}) {
   if (typeof service !== 'string' || !IDENTIFIER_PATTERN.test(service)) {
     throw new TypeError('Event service must be a short safe identifier');
   }
@@ -141,12 +156,12 @@ export function createStructuredEvent({
   return freezeEvent(record);
 }
 
-export function createAuditEvent(options = {}) {
+export function createAuditEvent(options: StructuredEventOptions = {}) {
   return createStructuredEvent({ ...options, audit: true });
 }
 
-export function serializeStructuredEvent(event) {
-  if (event === null || typeof event !== 'object' || typeof event.event !== 'string') {
+export function serializeStructuredEvent(event: unknown) {
+  if (event === null || typeof event !== 'object' || !('event' in event) || typeof event.event !== 'string') {
     throw new TypeError('A structured event is required');
   }
 
@@ -156,8 +171,8 @@ export function serializeStructuredEvent(event) {
   return JSON.stringify(sanitized) + '\n';
 }
 
-export function isAuditEvent(event) {
-  return event !== null && typeof event === 'object' && event.audit === true;
+export function isAuditEvent(event: unknown) {
+  return event !== null && typeof event === 'object' && 'audit' in event && event.audit === true;
 }
 
 export const STRUCTURED_EVENT_LEVELS = LEVELS;

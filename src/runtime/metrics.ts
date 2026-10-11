@@ -2,7 +2,13 @@
 // SPDX-FileCopyrightText: 2026 Sythos (https://www.sythos.net)
 // Author: Sythos (https://www.sythos.net)
 
-// @ts-nocheck
+type Labels = Record<string, string | number | boolean>;
+interface MetricSeries { name: string; labels: Record<string, string>; value: number }
+interface HistogramSeries { name: string; labels: Record<string, string>; count: number; sum: number }
+export type DependencyStatus = 'ok' | 'starting' | 'degraded' | 'failed' | 'unknown' | 'disabled';
+interface DependencyEntry { status: DependencyStatus; checked_at: string; latency_ms?: number; reason?: string }
+interface DependencyOptions { latencyMs?: number; reason?: unknown }
+export type InitialDependencies = Record<string, DependencyStatus | (DependencyOptions & {status?: DependencyStatus})>;
 
 const METRIC_NAME_PATTERN = /^[A-Za-z_:][A-Za-z0-9_:]*$/;
 const LABEL_NAME_PATTERN = /^[A-Za-z_][A-Za-z0-9_]*$/;
@@ -29,7 +35,7 @@ export const DEPENDENCY_STATUS_CODES = Object.freeze({
   disabled: 1,
 });
 
-function assertMetricName(name) {
+function assertMetricName(name: string) {
   if (typeof name !== 'string' || !METRIC_NAME_PATTERN.test(name)) {
     throw new TypeError('Metric names must use Prometheus-compatible characters');
   }
@@ -41,12 +47,12 @@ function assertMetricName(name) {
   return name;
 }
 
-function normalizeLabels(labels = {}) {
+function normalizeLabels(labels: Labels = {}) {
   if (labels === null || typeof labels !== 'object' || Array.isArray(labels)) {
     throw new TypeError('Metric labels must be an object');
   }
 
-  const normalized = {};
+  const normalized: Record<string, string> = {};
   for (const key of Object.keys(labels).sort()) {
     if (!LABEL_NAME_PATTERN.test(key) || SENSITIVE_LABEL_PATTERN.test(key)) {
       throw new TypeError('Metric labels must use safe, non-sensitive names');
@@ -63,11 +69,11 @@ function normalizeLabels(labels = {}) {
   return normalized;
 }
 
-function seriesKey(name, labels) {
+function seriesKey(name: string, labels: Record<string, string>) {
   return name + '|' + JSON.stringify(labels);
 }
 
-function finiteNumber(value, name) {
+function finiteNumber(value: number, name: string) {
   if (typeof value !== 'number' || !Number.isFinite(value)) {
     throw new TypeError(name + ' must be a finite number');
   }
@@ -75,11 +81,11 @@ function finiteNumber(value, name) {
   return value;
 }
 
-function cloneLabels(labels) {
+function cloneLabels(labels: Record<string, string>) {
   return { ...labels };
 }
 
-function cloneSeries(series) {
+function cloneSeries(series: MetricSeries) {
   return {
     name: series.name,
     labels: cloneLabels(series.labels),
@@ -87,7 +93,7 @@ function cloneSeries(series) {
   };
 }
 
-function renderLabels(labels) {
+function renderLabels(labels: Record<string, string>) {
   const entries = Object.entries(labels);
   if (entries.length === 0) {
     return '';
@@ -102,7 +108,7 @@ function renderLabels(labels) {
   );
 }
 
-function renderValue(value) {
+function renderValue(value: number) {
   return Number.isFinite(value) ? String(value) : '0';
 }
 
@@ -116,11 +122,11 @@ function renderValue(value) {
  * telemetry.
  */
 export function createMetrics({ clock = () => new Date() } = {}) {
-  const counters = new Map();
-  const gauges = new Map();
-  const histograms = new Map();
+  const counters = new Map<string, MetricSeries>();
+  const gauges = new Map<string, MetricSeries>();
+  const histograms = new Map<string, HistogramSeries>();
 
-  function increment(name, amount = 1, labels = {}) {
+  function increment(name: string, amount = 1, labels: Labels = {}) {
     assertMetricName(name);
     const value = finiteNumber(amount, 'Counter increment');
     if (value < 0) {
@@ -139,7 +145,7 @@ export function createMetrics({ clock = () => new Date() } = {}) {
     return current.value;
   }
 
-  function set(name, value, labels = {}) {
+  function set(name: string, value: number, labels: Labels = {}) {
     assertMetricName(name);
     const normalizedLabels = normalizeLabels(labels);
     const key = seriesKey(name, normalizedLabels);
@@ -153,7 +159,7 @@ export function createMetrics({ clock = () => new Date() } = {}) {
     return current.value;
   }
 
-  function add(name, amount, labels = {}) {
+  function add(name: string, amount: number, labels: Labels = {}) {
     assertMetricName(name);
     const value = finiteNumber(amount, 'Gauge increment');
     const normalizedLabels = normalizeLabels(labels);
@@ -168,7 +174,7 @@ export function createMetrics({ clock = () => new Date() } = {}) {
     return current.value;
   }
 
-  function observe(name, value, labels = {}) {
+  function observe(name: string, value: number, labels: Labels = {}) {
     assertMetricName(name);
     const observation = finiteNumber(value, 'Histogram observation');
     if (observation < 0) {
@@ -273,7 +279,7 @@ export function createMetrics({ clock = () => new Date() } = {}) {
   });
 }
 
-function normalizeDependencyName(name) {
+function normalizeDependencyName(name: string) {
   if (typeof name !== 'string' || !DEPENDENCY_NAME_PATTERN.test(name)) {
     throw new TypeError('Dependency names must use short safe identifiers');
   }
@@ -281,7 +287,7 @@ function normalizeDependencyName(name) {
   return name;
 }
 
-function normalizeDependencyStatus(status) {
+function normalizeDependencyStatus(status: DependencyStatus) {
   if (!DEPENDENCY_STATUSES.includes(status)) {
     throw new TypeError('Unsupported dependency status');
   }
@@ -289,8 +295,12 @@ function normalizeDependencyStatus(status) {
   return status;
 }
 
-function normalizeReason(reason) {
+function normalizeReason(reason: unknown) {
   if (reason === undefined || reason === null) {
+    return undefined;
+  }
+
+  if (typeof reason !== 'string' && typeof reason !== 'number' && typeof reason !== 'boolean' && typeof reason !== 'bigint') {
     return undefined;
   }
 
@@ -302,7 +312,7 @@ function normalizeReason(reason) {
   return value;
 }
 
-function cloneDependency(entry) {
+function cloneDependency(entry: DependencyEntry) {
   return {
     status: entry.status,
     ...(entry.latency_ms === undefined ? {} : { latency_ms: entry.latency_ms }),
@@ -321,13 +331,13 @@ export function createDependencyRegistry({
   initial = {},
   metrics = null,
   clock = () => new Date(),
-} = {}) {
-  const entries = new Map();
+}: { initial?: InitialDependencies; metrics?: ReturnType<typeof createMetrics> | null; clock?: () => Date } = {}) {
+  const entries = new Map<string, DependencyEntry>();
 
-  function setStatus(name, status, { latencyMs, reason } = {}) {
+  function setStatus(name: string, status: DependencyStatus, { latencyMs, reason }: DependencyOptions = {}) {
     const normalizedName = normalizeDependencyName(name);
     const normalizedStatus = normalizeDependencyStatus(status);
-    const entry = {
+    const entry: DependencyEntry = {
       status: normalizedStatus,
       checked_at: clock().toISOString(),
     };
@@ -376,15 +386,16 @@ export function createDependencyRegistry({
 
   loadInitial();
 
-  function get(name) {
+  function get(name: string) {
     const entry = entries.get(normalizeDependencyName(name));
     return entry === undefined ? undefined : cloneDependency(entry);
   }
 
   function snapshot() {
-    const result = {};
+    const result: Record<string, ReturnType<typeof cloneDependency>> = {};
     for (const name of [...entries.keys()].sort()) {
-      result[name] = cloneDependency(entries.get(name));
+      const entry = entries.get(name);
+      if (entry !== undefined) result[name] = cloneDependency(entry);
     }
     return result;
   }

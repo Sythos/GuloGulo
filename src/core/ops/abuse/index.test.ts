@@ -2,7 +2,6 @@
 // SPDX-FileCopyrightText: 2026 Sythos (https://www.sythos.net)
 // Author: Sythos (https://www.sythos.net)
 
-// @ts-nocheck
 
 import assert from 'node:assert/strict';
 import test from 'node:test';
@@ -19,13 +18,13 @@ function createClock(start = Date.parse('2026-08-22T10:00:00Z')) {
   let current = start;
   return {
     clock: () => new Date(current),
-    advance(milliseconds) {
+    advance(milliseconds: number) {
       current += milliseconds;
     },
   };
 }
 
-function createProductionCompose(overrides = {}) {
+function createProductionCompose(overrides: Partial<NonNullable<NonNullable<Parameters<typeof validateComposeProductionReadiness>[0]>['compose']>> & { environment?: Record<string, unknown>; service?: Record<string, unknown> } = {}) {
   const environment = {
     APP_ENV: 'production',
     LDAP_ENABLED: 'true',
@@ -83,7 +82,7 @@ test('rate limiter covers every required channel and hashes IP/session dimension
 
 test('abuse guard emits metadata-only audit hooks and locks out failures', () => {
   const clock = createClock();
-  const audit = [];
+  const audit: ReturnType<typeof createAbuseAuditEvent>[] = [];
   const guard = createAbuseGuard({
     clock: clock.clock,
     onAudit: (event) => audit.push(event),
@@ -102,7 +101,7 @@ test('abuse guard emits metadata-only audit hooks and locks out failures', () =>
 });
 
 test('quarantine and release are explicit auditable controls', () => {
-  const audit = [];
+  const audit: ReturnType<typeof createAbuseAuditEvent>[] = [];
   const guard = createAbuseGuard({ onAudit: (event) => audit.push(event) });
   const quarantine = guard.quarantineSubject({ tenantId: 'acme', subjectType: 'user', subject: 'alice', channel: 'recovery', durationMs: 60_000, reason: 'repeated-recovery-abuse' });
   assert.equal(quarantine.quarantined, true);
@@ -117,7 +116,7 @@ test('quarantine and release are explicit auditable controls', () => {
 test('audit event rejects content and credential fields', () => {
   assert.throws(
     () => createAbuseAuditEvent({ action: 'abuse.failure', channel: 'api', outcome: 'rejected', tenantId: 'acme', reason: 'bad-input', details: { payload: 'mail body' } }),
-    (error) => error.code === 'SENSITIVE_DATA_FORBIDDEN',
+    (error: unknown) => error instanceof Error && 'code' in error && error.code === 'SENSITIVE_DATA_FORBIDDEN',
   );
 });
 

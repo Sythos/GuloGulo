@@ -2,18 +2,18 @@
 // SPDX-FileCopyrightText: 2026 Sythos (https://www.sythos.net)
 // Author: Sythos (https://www.sythos.net)
 
-// @ts-nocheck
-
 import { loadConfig } from './config.js';
 import { createLogger } from './logger.js';
 import { createEnvironmentSecretResolver, createPlatformAdapterForTarget, createProvisionedLoginAuthenticator, resolvePlatformTarget } from './login.js';
 import { createFixtureLoginAuthenticator, startServer, stopServer } from './server.js';
 import { createProductionRuntimeServer } from './wiring.js';
+import type { RuntimeServer } from './server.js';
+import type { Logger } from './logger.js';
 
-let runtime;
+let runtime: RuntimeServer | undefined;
 let stopping = false;
 
-function loggerOptions(config) {
+function loggerOptions(config: ReturnType<typeof loadConfig>) {
   const contract = config?.contract ?? config ?? {};
   return {
     ...config,
@@ -30,7 +30,7 @@ function loggerOptions(config) {
  * real identity client instead of the fixed "always reject" stub this used to
  * fall back to.
  */
-function resolveLoginAuthenticator(config, logger, environment = process.env) {
+function resolveLoginAuthenticator(config: ReturnType<typeof loadConfig>, logger: Logger, environment = process.env) {
   if (environment.GULOGULO_FIXTURE_MODE === 'true') {
     return createFixtureLoginAuthenticator(environment);
   }
@@ -48,13 +48,14 @@ function resolveLoginAuthenticator(config, logger, environment = process.env) {
  * which makes every `/dav/*` request respond `503 DAV_STORE_UNAVAILABLE`
  * instead of taking the whole process down.
  */
-async function resolveDavStore(config, logger, environment = process.env) {
+async function resolveDavStore(config: ReturnType<typeof loadConfig>, logger: Logger, environment = process.env) {
   try {
     const resolveSecret = createEnvironmentSecretResolver(environment);
     const adapter = createPlatformAdapterForTarget(resolvePlatformTarget(environment), { environment, resolveSecret, logger });
     return await adapter.createDavStore(config);
   } catch (error) {
-    logger.warn?.('dav_store_unavailable', { error: { name: error?.name, code: error?.code } });
+    const details = error !== null && typeof error === 'object' ? error as Record<string, unknown> : {};
+    logger.warn('dav_store_unavailable', { error: { name: details.name, code: details.code } });
     return undefined;
   }
 }
@@ -67,13 +68,13 @@ async function main() {
   runtime = createProductionRuntimeServer({ config, logger, authenticateLogin, davStore });
   await startServer(runtime);
 
-  const shutdown = async (signal) => {
+  const shutdown = async (signal: string) => {
     if (stopping) {
       return;
     }
 
     stopping = true;
-    await stopServer(runtime, { signal });
+    if (runtime !== undefined) await stopServer(runtime, { signal });
   };
 
   process.once('SIGINT', () => void shutdown('SIGINT'));

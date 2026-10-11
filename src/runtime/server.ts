@@ -9,6 +9,7 @@ import { extname, join, relative, resolve } from 'node:path';
 
 import { loadConfig } from './config.js';
 import { createDependencyRegistry, createMetrics } from './metrics.js';
+import type { InitialDependencies } from './metrics.js';
 import { createLogger } from './logger.js';
 import { getWellKnownResource, WELL_KNOWN_PATHS } from '../core/dav/discovery/index.ts';
 import { createRateLimiter } from '../core/ops/abuse/index.ts';
@@ -24,8 +25,17 @@ import type { OutgoingMessageInput } from '../core/mail/message-composer.ts';
 import { archiveMessage, MailRouteError, readMessageDetail, SEND_BODY_MAX_BYTES, submitMessage } from './mail-routes.ts';
 import type { MailRouteClients } from './mail-routes.ts';
 
-// eslint-disable-next-line @typescript-eslint/no-redundant-type-constituents -- loadConfig's inferred return already carries `any` from config.ts's tracked @ts-nocheck waiver, not from the Record here
-type RuntimeConfig = ReturnType<typeof loadConfig> & Record<string, unknown>;
+type LoadedConfig = ReturnType<typeof loadConfig>;
+type RuntimeConfig = Pick<LoadedConfig, 'host' | 'port' | 'serviceName' | 'environment' | 'shutdownTimeoutMs'> & Partial<Omit<LoadedConfig, 'host' | 'port' | 'serviceName' | 'environment' | 'shutdownTimeoutMs'>> & {
+  webRoot?: string;
+  web?: {staticRoot?: string};
+  discoveryContract?: Parameters<typeof getWellKnownResource>[0];
+  discoveryTenantId?: string;
+  tenantId?: string;
+};
+interface RuntimeRateLimiter {
+  consume(input: {channel: string; tenantId: string; ipAddress?: string; sessionId?: string}): {allowed: boolean; limitedBy?: readonly string[]; retryAfterMs?: number};
+}
 type RuntimeLogger = ReturnType<typeof createLogger>;
 type RequestDetails = Readonly<{ request_id: string; correlation_id: string }>;
 type ApiResourceName = 'mail' | 'calendar' | 'contacts' | 'discovery';
@@ -44,14 +54,14 @@ export interface RuntimeServerOptions {
   config?: RuntimeConfig;
   logger?: RuntimeLogger;
   clock?: () => Date;
-  metrics?: any;
-  dependencies?: Record<string, any>;
-  dependencyRegistry?: any;
+  metrics?: ReturnType<typeof createMetrics>;
+  dependencies?: InitialDependencies;
+  dependencyRegistry?: ReturnType<typeof createDependencyRegistry>;
   webRoot?: string;
-  discoveryContract?: any;
+  discoveryContract?: Parameters<typeof getWellKnownResource>[0];
   discoveryTenantId?: string;
   webSecurity?: WebSecurity;
-  rateLimiter?: any;
+  rateLimiter?: RuntimeRateLimiter;
   authenticateLogin?: LoginAuthenticator;
   /** Second-factor gate between a verified password and the web session. Defaults to one built from `config.webAuth`. */
   mfaGate?: MfaGate;
@@ -66,15 +76,15 @@ export interface RuntimeServerOptions {
 export interface RuntimeServer {
   config: RuntimeConfig;
   logger: RuntimeLogger;
-  metrics: any;
-  dependencies: any;
+  metrics: ReturnType<typeof createMetrics>;
+  dependencies: ReturnType<typeof createDependencyRegistry>;
   state: { ready: boolean; shuttingDown: boolean };
   clock: () => Date;
   webRoot: string;
-  discoveryContract: any;
+  discoveryContract: Parameters<typeof getWellKnownResource>[0];
   discoveryTenantId: string | undefined;
   webSecurity: WebSecurity;
-  rateLimiter: any;
+  rateLimiter: RuntimeRateLimiter;
   authenticateLogin: LoginAuthenticator;
   mfaGate: MfaGate;
   apiResources: ApiResources;
@@ -275,11 +285,12 @@ function writeStatic(response: ServerResponse, statusCode: number, body: Buffer,
   response.end();
 }
 
-function writeResource(response: ServerResponse, resource: any, method: string, requestDetails: RequestDetails): void {
+function writeResource(response: ServerResponse, resource: {body?: string; statusCode: number; headers?: Readonly<Record<string, string | null>>; contentType: string}, method: string, requestDetails: RequestDetails): void {
   const body = Buffer.from(resource.body ?? '', 'utf8');
+  const headers = Object.fromEntries(Object.entries(resource.headers ?? {}).filter((entry): entry is [string, string] => entry[1] !== null));
   response.writeHead(resource.statusCode, {
     ...STATIC_SECURITY_HEADERS,
-    ...resource.headers,
+    ...headers,
     'content-length': body.length,
     'content-type': resource.contentType,
     'x-request-id': requestDetails.request_id,
@@ -352,7 +363,7 @@ function routeName(path: string | null): string {
   return 'unmatched';
 }
 
-function staticFile(config: RuntimeConfig, path: string) {
+function staticFile(config: {webRoot?: string; web?: {staticRoot?: string}}, path: string) {
   const isArtwork = path === '/assets/gulo-gulo-calendar-mail.png';
   if (!isArtwork && path !== '/' && path !== '/login' && !(typeof path === 'string' && path.startsWith('/web/'))) {
     return null;
@@ -550,25 +561,25 @@ function caldavObjectPropXml(etag: string): string {
   return `        <D:getetag>${xmlEscapeDav(etag)}</D:getetag>\n        <D:getcontenttype>text/calendar; charset=utf-8</D:getcontenttype>\n        <D:resourcetype/>`;
 }
 
-function carddavObjectPropXml(etag: string): string {
+function carddavObjectPropXml(etag: string | null): string {
   return `        <D:getetag>${xmlEscapeDav(etag)}</D:getetag>\n        <D:getcontenttype>text/vcard</D:getcontenttype>\n        <D:resourcetype/>`;
 }
 
-function caldavCollectionPropXml(collection: any): string {
+function caldavCollectionPropXml(collection: Record<string, unknown>): string {
   return [
     '        <D:resourcetype><D:collection/><C:calendar/></D:resourcetype>',
-    `        <D:displayname>${xmlEscapeDav(collection.displayName)}</D:displayname>`,
-    `        <D:getlastmodified>${xmlEscapeDav(new Date(collection.updatedAt).toUTCString())}</D:getlastmodified>`,
-    `        <D:sync-token>${xmlEscapeDav(collection.syncToken)}</D:sync-token>`,
+    `        <D:displayname>${xmlEscapeDav(String(collection.displayName))}</D:displayname>`,
+    `        <D:getlastmodified>${xmlEscapeDav(new Date(String(collection.updatedAt)).toUTCString())}</D:getlastmodified>`,
+    `        <D:sync-token>${xmlEscapeDav(String(collection.syncToken))}</D:sync-token>`,
   ].join('\n');
 }
 
-function carddavCollectionPropXml(addressBook: any): string {
+function carddavCollectionPropXml(addressBook: Record<string, unknown>): string {
   return [
     '        <D:resourcetype><D:collection/><CARD:addressbook/></D:resourcetype>',
-    `        <D:displayname>${xmlEscapeDav(addressBook.displayName)}</D:displayname>`,
-    `        <D:getlastmodified>${xmlEscapeDav(new Date(addressBook.updatedAt).toUTCString())}</D:getlastmodified>`,
-    `        <D:sync-token>${xmlEscapeDav(addressBook.syncToken)}</D:sync-token>`,
+    `        <D:displayname>${xmlEscapeDav(String(addressBook.displayName))}</D:displayname>`,
+    `        <D:getlastmodified>${xmlEscapeDav(new Date(String(addressBook.updatedAt)).toUTCString())}</D:getlastmodified>`,
+    `        <D:sync-token>${xmlEscapeDav(String(addressBook.syncToken))}</D:sync-token>`,
   ].join('\n');
 }
 
@@ -1401,7 +1412,7 @@ export function createRuntimeServer({
     imapIdleAvailability: new Map(),
     davStore,
     trustedProxyAddresses: new Set(trustedProxyAddresses),
-    server: undefined as unknown as Server,
+    server: createHttpServer(),
   };
   const mailClients = createLocalMailClients(config ?? {}, { logger });
   const mailRouteClients: MailRouteClients = injectedMailClients ?? mailClients;
@@ -2014,7 +2025,7 @@ export function createRuntimeServer({
     );
   };
 
-  runtime.server = createHttpServer((request, response) => {
+  runtime.server.on('request', (request, response) => {
     handleRequest(request, response).catch((error: unknown) => {
       runtime.logger.error('request_handler_unhandled_rejection', { error });
       if (!response.writableEnded) response.destroy();

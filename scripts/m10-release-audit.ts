@@ -3,8 +3,6 @@
 // SPDX-FileCopyrightText: 2026 Sythos (https://www.sythos.net)
 // Author: Sythos (https://www.sythos.net)
 
-// @ts-nocheck
-
 import { readFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { createReleaseEvidence, evaluateReleaseEvidence } from '../src/core/release/release-evidence.ts';

@@ -20,15 +20,9 @@ import globals from 'globals';
 // `npm run lint` output for review; they just don't fail CI on their own.
 const securityRules = security.configs.recommended.rules;
 
-// The runtime constantly moves loosely-typed data across its edges (parsed
-// JSON bodies, LDAP/Postgres rows, config files) through `unknown`/`any`
-// before narrowing it, which is the correct shape for a boundary but reads
-// as unsafe to the type checker at every step in between. Enforcing the
-// no-unsafe-* family here would mean adding runtime schema validation at
-// hundreds of call sites, which is a real but separate initiative from
-// adopting ESLint. no-explicit-any is downgraded rather than turned off for
-// the same reason: it's a real, deliberate pattern at those same boundaries,
-// worth a nudge toward `unknown`, but not worth blocking CI on today.
+// External JSON and driver data enter through validated boundaries.
+// Keep the existing no-unsafe-* rule settings; enabling that separate rule
+// family requires its own review. Explicit any is now an error.
 //
 // require-await also fires wherever an adapter's method is declared `async`
 // purely to satisfy a shared interface (see `PlatformAdapter` in
@@ -36,22 +30,17 @@ const securityRules = security.configs.recommended.rules;
 // anything; every sibling implementation of the same method does await, so
 // the signature has to stay async for the type to line up across adapters.
 //
-// ban-ts-comment's default ban on @ts-nocheck fights the project's own
-// tracked-debt mechanism: `scripts/lp9-source-audit.ts` counts these as
-// "waivers" and `release/lp9-local-proof.json` records them as accepted
-// pre-existing debt, so flagging each occurrence here would just be a second,
-// contradictory way of saying something the audit already says on purpose.
-// ts-ignore stays banned; it has no equivalent tracking.
+// Keep whole-file type-check bypasses and ts-ignore banned.
 const typeAwareRuleAdjustments = {
   '@typescript-eslint/no-unsafe-argument': 'off',
   '@typescript-eslint/no-unsafe-assignment': 'off',
   '@typescript-eslint/no-unsafe-call': 'off',
   '@typescript-eslint/no-unsafe-member-access': 'off',
   '@typescript-eslint/no-unsafe-return': 'off',
-  '@typescript-eslint/no-explicit-any': 'warn',
+  '@typescript-eslint/no-explicit-any': 'error',
   '@typescript-eslint/require-await': 'off',
   '@typescript-eslint/ban-ts-comment': ['error', {
-    'ts-nocheck': false,
+    'ts-nocheck': true,
     'ts-ignore': true,
     'ts-expect-error': 'allow-with-description',
   }],
@@ -94,10 +83,7 @@ export default tseslint.config(
     rules: { ...securityRules, ...typeAwareRuleAdjustments },
   },
 
-  // Browser shell: still type-checked, but app.ts is a documented @ts-nocheck
-  // file that stays JavaScript-compatible until the API contracts settle, so
-  // on top of the blanket no-unsafe-* adjustment above it would also flag its
-  // own implicit anys wholesale rather than anything actionable.
+  // Browser source uses the same strict checks as the server source.
   {
     files: ['web/src/**/*.ts'],
     extends: [js.configs.recommended, ...tseslint.configs.recommendedTypeChecked, noUnsanitized.configs.recommended],

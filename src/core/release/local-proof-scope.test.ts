@@ -2,7 +2,6 @@
 // SPDX-FileCopyrightText: 2026 Sythos (https://www.sythos.net)
 // Author: Sythos (https://www.sythos.net)
 
-// @ts-nocheck
 
 import assert from 'node:assert/strict';
 import test from 'node:test';
@@ -45,32 +44,32 @@ test('LP0 accepts the frozen, offline, synthetic local scope', () => {
 test('LP0 rejects public-network and public-ACME claims', () => {
   assert.throws(
     () => createLocalProofScope({ ...VALID_SCOPE, publicDnsRequired: true }),
-    (error) => error.code === 'LP0_EXTERNAL_BOUNDARY_INVALID',
+    (error: unknown) => error instanceof Error && 'code' in error && error.code === 'LP0_EXTERNAL_BOUNDARY_INVALID',
   );
   assert.throws(
     () => createLocalProofScope({ ...VALID_SCOPE, publicAcmeEnabled: true }),
-    (error) => error.code === 'LP0_EXTERNAL_BOUNDARY_INVALID',
+    (error: unknown) => error instanceof Error && 'code' in error && error.code === 'LP0_EXTERNAL_BOUNDARY_INVALID',
   );
 });
 
 test('LP0 rejects non-reserved names and incomplete service inventories', () => {
   assert.throws(
     () => createLocalProofScope({ ...VALID_SCOPE, localNames: ['mail.example.com'] }),
-    (error) => error.code === 'LP0_LOCAL_NAME_INVALID',
+    (error: unknown) => error instanceof Error && 'code' in error && error.code === 'LP0_LOCAL_NAME_INVALID',
   );
   assert.throws(
     () => createLocalProofScope({ ...VALID_SCOPE, requiredServices: VALID_SCOPE.requiredServices.slice(1) }),
-    (error) => error.code === 'LP0_SERVICES_INVALID',
+    (error: unknown) => error instanceof Error && 'code' in error && error.code === 'LP0_SERVICES_INVALID',
   );
 });
 
 test('LP0 rejects absolute paths and unsafe release labels', () => {
   assert.throws(
     () => createLocalProofScope({ ...VALID_SCOPE, releaseLabel: 'v0.1.0-local-proof.1/secret' }),
-    (error) => error.code === 'LP0_RELEASE_LABEL_INVALID',
+    (error: unknown) => error instanceof Error && 'code' in error && error.code === 'LP0_RELEASE_LABEL_INVALID',
   );
   assert.throws(
     () => createLocalProofScope({ ...VALID_SCOPE, author: 'C:\\Users\\Sythos' }),
-    (error) => error.code === 'LP0_METADATA_INVALID',
+    (error: unknown) => error instanceof Error && 'code' in error && error.code === 'LP0_METADATA_INVALID',
   );
 });

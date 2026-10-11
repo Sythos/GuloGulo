@@ -2,11 +2,16 @@
 // SPDX-FileCopyrightText: 2026 Sythos (https://www.sythos.net)
 // Author: Sythos (https://www.sythos.net)
 
-// @ts-nocheck
-
 import { readFileSync } from 'node:fs';
 import { isIP } from 'node:net';
 import { createControlPanelConfig } from '../integrations/control-panel.ts';
+
+type ConfigurationObject = Record<string, unknown>;
+type ConfigurationEnvironment = Record<string, string | undefined>;
+export interface ConfigurationOptions {
+  configFilePath?: string | null | false;
+  readFile?: (path: string, encoding: 'utf8') => unknown;
+}
 
 export const CONFIG_SCHEMA_VERSION = 1;
 export const DEFAULT_CONFIG_FILE = '/etc/gulogulo/config.json';
@@ -258,7 +263,7 @@ const ENVIRONMENT_VARIABLES = Object.freeze({
   },
 });
 
-function isPlainObject(value) {
+function isPlainObject(value: unknown): value is ConfigurationObject {
   if (value === null || typeof value !== 'object' || Array.isArray(value)) {
     return false;
   }
@@ -267,17 +272,17 @@ function isPlainObject(value) {
   return prototype === Object.prototype || prototype === null;
 }
 
-function configurationError(message) {
+function configurationError(message: string) {
   return new Error(`Configuration error: ${message}`);
 }
 
-function assertObject(value, name) {
+function assertObject(value: unknown, name: string): asserts value is ConfigurationObject {
   if (!isPlainObject(value)) {
     throw configurationError(`${name} must be an object`);
   }
 }
 
-function assertKnownKeys(value, allowedKeys, path) {
+function assertKnownKeys(value: ConfigurationObject, allowedKeys: ReadonlySet<string>, path: string) {
   for (const key of Object.keys(value)) {
     const keyPath = `${path}.${key}`;
     if (SECRET_KEY_PATTERN.test(key)) {
@@ -290,7 +295,7 @@ function assertKnownKeys(value, allowedKeys, path) {
   }
 }
 
-function readString(value, name, pattern = null) {
+function readString(value: unknown, name: string, pattern: RegExp | null = null) {
   if (typeof value !== 'string' || value.length === 0 || (pattern !== null && !pattern.test(value))) {
     throw configurationError(`${name} must be a non-empty value using the supported characters`);
   }
@@ -298,7 +303,7 @@ function readString(value, name, pattern = null) {
   return value;
 }
 
-function readBoolean(value, name) {
+function readBoolean(value: unknown, name: string) {
   if (typeof value !== 'boolean') {
     throw configurationError(`${name} must be a boolean`);
   }
@@ -306,7 +311,7 @@ function readBoolean(value, name) {
   return value;
 }
 
-function readInteger(value, name, minimum, maximum) {
+function readInteger(value: unknown, name: string, minimum: number, maximum: number) {
   if (
     (typeof value !== 'number' && typeof value !== 'string') ||
     (typeof value === 'string' && !/^\d+$/.test(value)) ||
@@ -323,15 +328,15 @@ function readInteger(value, name, minimum, maximum) {
   return integer;
 }
 
-function readPort(value, name = 'runtime.port') {
+function readPort(value: unknown, name = 'runtime.port') {
   return readInteger(value, name, 1, 65_535);
 }
 
-function readShutdownTimeout(value, name = 'runtime.shutdownTimeoutMs') {
+function readShutdownTimeout(value: unknown, name = 'runtime.shutdownTimeoutMs') {
   return readInteger(value, name, 1_000, 60_000);
 }
 
-function readHost(value, name = 'runtime.host') {
+function readHost(value: unknown, name = 'runtime.host') {
   if (typeof value !== 'string' || value.length === 0) {
     throw configurationError(`${name} must be a valid IP address or hostname`);
   }
@@ -343,15 +348,16 @@ function readHost(value, name = 'runtime.host') {
   throw configurationError(`${name} must be a valid IP address or hostname`);
 }
 
-function readEnum(value, name, values) {
-  if (typeof value !== 'string' || !values.includes(value)) {
+function readEnum<const T extends string>(value: unknown, name: string, values: readonly T[]): T {
+  const match = values.find((candidate) => candidate === value);
+  if (match === undefined) {
     throw configurationError(`${name} must be one of: ${values.join(', ')}`);
   }
 
-  return value;
+  return match;
 }
 
-function readUrl(value, name) {
+function readUrl(value: unknown, name: string) {
   const url = readString(value, name);
   let parsed;
   try {
@@ -367,11 +373,11 @@ function readUrl(value, name) {
   return url;
 }
 
-function readSecretReference(value, name) {
+function readSecretReference(value: unknown, name: string) {
   return readString(value, name, SECRET_REFERENCE_PATTERN);
 }
 
-function readHttpsUrl(value, name) {
+function readHttpsUrl(value: unknown, name: string) {
   const url = readString(value, name);
   let parsed;
   try {
@@ -387,11 +393,11 @@ function readHttpsUrl(value, name) {
   return url;
 }
 
-function readUsername(value, name) {
+function readUsername(value: unknown, name: string) {
   return readString(value, name, CPANEL_USERNAME_PATTERN);
 }
 
-function readEnvironmentOptionalUsername(value, name) {
+function readEnvironmentOptionalUsername(value: unknown, name: string) {
   if (value === '') {
     return '';
   }
@@ -399,7 +405,7 @@ function readEnvironmentOptionalUsername(value, name) {
   return readUsername(value, name);
 }
 
-function readEnvironmentOptionalSecretReference(value, name) {
+function readEnvironmentOptionalSecretReference(value: unknown, name: string) {
   if (value === '') {
     return null;
   }
@@ -407,7 +413,7 @@ function readEnvironmentOptionalSecretReference(value, name) {
   return readSecretReference(value, name);
 }
 
-function readEnvironmentOptionalControlPanelReference(value, name) {
+function readEnvironmentOptionalControlPanelReference(value: unknown, name: string) {
   if (value === '') {
     return null;
   }
@@ -415,11 +421,11 @@ function readEnvironmentOptionalControlPanelReference(value, name) {
   return readEnvironmentString(value, name, CONTROL_PANEL_REFERENCE_PATTERN);
 }
 
-function readDistinguishedName(value, name) {
+function readDistinguishedName(value: unknown, name: string) {
   return readString(value, name, DISTINGUISHED_NAME_PATTERN);
 }
 
-function readEnvironmentOptionalDistinguishedName(value, name) {
+function readEnvironmentOptionalDistinguishedName(value: unknown, name: string) {
   if (value === '') {
     return null;
   }
@@ -427,15 +433,15 @@ function readEnvironmentOptionalDistinguishedName(value, name) {
   return readDistinguishedName(value, name);
 }
 
-function readPatchStatusFile(value, name) {
+function readPatchStatusFile(value: unknown, name: string) {
   return readString(value, name, PATCH_STATUS_PATH_PATTERN);
 }
 
-function readPath(value, name) {
+function readPath(value: unknown, name: string) {
   return readString(value, name, MAILBOX_PATH_PATTERN);
 }
 
-function readConfigurationFile(filePath, { optional, readFile = readFileSync } = {}) {
+function readConfigurationFile(filePath: unknown, { optional, readFile = readFileSync }: { optional?: boolean; readFile?: ConfigurationOptions['readFile'] } = {}): ConfigurationObject {
   if (filePath === null || filePath === false) {
     return {};
   }
@@ -448,11 +454,11 @@ function readConfigurationFile(filePath, { optional, readFile = readFileSync } =
   try {
     contents = readFile(filePath, 'utf8');
   } catch (error) {
-    if (optional && error?.code === 'ENOENT') {
+    if (optional && error !== null && typeof error === 'object' && 'code' in error && error.code === 'ENOENT') {
       return {};
     }
 
-    throw configurationError(`cannot read ${filePath}: ${error?.message ?? 'unknown file error'}`);
+    throw configurationError(`cannot read ${filePath}: ${error instanceof Error ? error.message : 'unknown file error'}`);
   }
 
   if (typeof contents !== 'string') {
@@ -463,18 +469,18 @@ function readConfigurationFile(filePath, { optional, readFile = readFileSync } =
     throw configurationError(`${filePath} exceeds the ${MAX_CONFIGURATION_FILE_BYTES}-byte limit`);
   }
 
-  let parsed;
+  let parsed: unknown;
   try {
     parsed = JSON.parse(contents);
   } catch (error) {
-    throw configurationError(`cannot parse ${filePath} as JSON: ${error.message}`);
+    throw configurationError(`cannot parse ${filePath} as JSON: ${error instanceof Error ? error.message : String(error)}`);
   }
 
   assertObject(parsed, filePath);
   return parsed;
 }
 
-function getEnvironmentValue(environment, names) {
+function getEnvironmentValue(environment: ConfigurationEnvironment, names: readonly string[]) {
   for (const name of names) {
     if (environment[name] !== undefined) {
       return { name, value: environment[name] };
@@ -484,7 +490,7 @@ function getEnvironmentValue(environment, names) {
   return undefined;
 }
 
-function applyEnvironmentValue(target, key, environment, names, parser) {
+function applyEnvironmentValue<T, K extends keyof T>(target: T, key: K, environment: ConfigurationEnvironment, names: readonly string[], parser: (value: unknown, name: string) => T[K]) {
   const found = getEnvironmentValue(environment, names);
   if (found === undefined) {
     return;
@@ -493,11 +499,11 @@ function applyEnvironmentValue(target, key, environment, names, parser) {
   target[key] = parser(found.value, found.name);
 }
 
-function readEnvironmentString(value, name, pattern = null) {
+function readEnvironmentString(value: unknown, name: string, pattern: RegExp | null = null) {
   return readString(value, name, pattern);
 }
 
-function readEnvironmentBoolean(value, name) {
+function readEnvironmentBoolean(value: unknown, name: string) {
   if (typeof value !== 'string') {
     throw configurationError(`${name} must be true or false`);
   }
@@ -513,15 +519,15 @@ function readEnvironmentBoolean(value, name) {
   throw configurationError(`${name} must be true or false`);
 }
 
-function readEnvironmentInteger(value, name, minimum, maximum) {
+function readEnvironmentInteger(value: unknown, name: string, minimum: number, maximum: number) {
   return readInteger(value, name, minimum, maximum);
 }
 
-function readEnvironmentEnum(value, name, values) {
+function readEnvironmentEnum<const T extends string>(value: unknown, name: string, values: readonly T[]): T {
   return readEnum(value, name, values);
 }
 
-function readSection(source, name) {
+function readSection(source: ConfigurationObject, name: keyof typeof SECTION_KEYS): ConfigurationObject {
   const value = source[name];
   if (value === undefined) {
     return {};
@@ -532,7 +538,7 @@ function readSection(source, name) {
   return value;
 }
 
-function buildConfiguration(fileConfiguration, environment) {
+function buildConfiguration(fileConfiguration: ConfigurationObject, environment: ConfigurationEnvironment) {
   assertKnownKeys(fileConfiguration, TOP_LEVEL_KEYS, 'config');
 
   const runtimeFile = readSection(fileConfiguration, 'runtime');
@@ -709,7 +715,7 @@ function buildConfiguration(fileConfiguration, environment) {
     ['upgrade', config.upgrade, ENVIRONMENT_VARIABLES.upgrade],
     ['patching', config.patching, ENVIRONMENT_VARIABLES.patching],
     ['alerting', config.alerting, ENVIRONMENT_VARIABLES.alerting],
-  ];
+  ] as const;
 
   for (const [sectionName, target, variables] of environmentSections) {
     if (sectionName === 'runtime') {
@@ -907,7 +913,7 @@ function buildConfiguration(fileConfiguration, environment) {
   return config;
 }
 
-function deepFreeze(value) {
+function deepFreeze<T>(value: T): T {
   if (value !== null && typeof value === 'object' && !Object.isFrozen(value)) {
     for (const nestedValue of Object.values(value)) {
       deepFreeze(nestedValue);
@@ -918,7 +924,7 @@ function deepFreeze(value) {
   return value;
 }
 
-function resolveConfigurationFile(environment, options) {
+function resolveConfigurationFile(environment: ConfigurationEnvironment, options: ConfigurationOptions) {
   if (Object.hasOwn(options, 'configFilePath')) {
     return {
       path: options.configFilePath,
@@ -936,7 +942,10 @@ function resolveConfigurationFile(environment, options) {
   return { path: DEFAULT_CONFIG_FILE, optional: true };
 }
 
-function attachContractMetadata(legacyConfig, fullConfig) {
+type FullConfiguration = ReturnType<typeof buildConfiguration>;
+type LegacyConfiguration = FullConfiguration['runtime'] & Omit<FullConfiguration, 'runtime'> & { contract: FullConfiguration };
+
+function attachContractMetadata(legacyConfig: FullConfiguration['runtime'], fullConfig: FullConfiguration): asserts legacyConfig is LegacyConfiguration {
   for (const [key, value] of Object.entries(fullConfig)) {
     if (key === 'runtime') {
       continue;
@@ -957,7 +966,6 @@ function attachContractMetadata(legacyConfig, fullConfig) {
     writable: false,
   });
 
-  return legacyConfig;
 }
 
 /**
@@ -966,7 +974,7 @@ function attachContractMetadata(legacyConfig, fullConfig) {
  * defaults. A missing default mount is allowed; an explicitly requested file
  * is mandatory and fails closed when it cannot be read or validated.
  */
-export function loadConfiguration(environment = process.env, options = {}) {
+export function loadConfiguration(environment: ConfigurationEnvironment = process.env, options: ConfigurationOptions = {}) {
   // Node exposes process.env as an environment-backed object rather than a
   // normal plain object. Copy the default process environment before schema
   // validation so the production entry point and direct test callers use the
@@ -976,12 +984,16 @@ export function loadConfiguration(environment = process.env, options = {}) {
     : environment;
 
   assertObject(effectiveEnvironment, 'environment');
-  assertObject(options, 'options');
+  const optionsArePlain = Boolean(isPlainObject(options));
+  if (!optionsArePlain) {
+    throw configurationError('options must be an object');
+  }
+  const readFile = options.readFile;
 
   const resolvedFile = resolveConfigurationFile(effectiveEnvironment, options);
   const fileConfiguration = readConfigurationFile(resolvedFile.path, {
     optional: resolvedFile.optional,
-    readFile: options.readFile,
+    readFile,
   });
   const configuration = buildConfiguration(fileConfiguration, effectiveEnvironment);
   return deepFreeze(configuration);
@@ -993,7 +1005,7 @@ export function loadConfiguration(environment = process.env, options = {}) {
  * host, port, serviceName, environment, and shutdownTimeoutMs, while new code
  * can use loadConfiguration() or config.contract without losing compatibility.
  */
-export function loadConfig(environment = process.env, options = {}) {
+export function loadConfig(environment: ConfigurationEnvironment = process.env, options: ConfigurationOptions = {}) {
   const fullConfig = loadConfiguration(environment, options);
   const legacyConfig = {
     ...fullConfig.runtime,

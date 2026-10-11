@@ -2,7 +2,14 @@
 // SPDX-FileCopyrightText: 2026 Sythos (https://www.sythos.net)
 // Author: Sythos (https://www.sythos.net)
 
-// @ts-nocheck
+import type { AdminActor } from './rbac.ts';
+type DelegationRecord = {
+ tenantId: string; ownerUserId: string; delegateUserId: string; permissions: readonly string[];
+ forced: boolean; policySource: string; reason: string | null; createdAt: Date; updatedAt: Date;
+ expiresAt: Date | null; actorId: string;
+};
+type DelegationInput = { ownerUserId?: unknown; delegateUserId?: unknown; permissions?: unknown; expiresAt?: unknown; reason?: unknown; forced?: boolean };
+type DelegationEvent = Readonly<{ schemaVersion: number; eventType: string; tenantId: string; actorId: string; actorRole: string; ownerUserId: string; delegateUserId: string; permissions: readonly string[]; forced: boolean; result: string; reason: string | null; occurredAt: string }>;
 
 import {
   assertSafeUserId,
@@ -13,16 +20,16 @@ import {
 const PERMISSION_SET = new Set(['read', 'write']);
 const REASON_PATTERN = /^[\x20-\x7E]{1,256}$/u;
 
-function delegationError(message, code = 'DELEGATION_ERROR', status = 403) {
-  const error = new Error(`Delegation error: ${message}`);
+function delegationError(message: string, code = 'DELEGATION_ERROR', status = 403) {
+  const error = Object.assign(new Error(`Delegation error: ${message}`), { code, status });
   error.name = 'DelegationError';
   error.code = code;
   error.status = status;
   return error;
 }
 
-function normalizePermissions(value) {
-  if (!Array.isArray(value) || value.length === 0 || value.some((item) => !PERMISSION_SET.has(item))) {
+function normalizePermissions(value: unknown): readonly string[] {
+  if (!Array.isArray(value) || value.length === 0 || !value.every((item): item is string => typeof item === 'string' && PERMISSION_SET.has(item))) {
     throw delegationError('permissions must contain read or write', 'INVALID_PERMISSIONS', 400);
   }
   const permissions = new Set(value);
@@ -30,7 +37,7 @@ function normalizePermissions(value) {
   return Object.freeze([...permissions].sort());
 }
 
-function normalizeReason(value, required = false) {
+function normalizeReason(value: unknown, required = false) {
   if (value === undefined || value === null || value === '') {
     if (required) throw delegationError('forced delegation requires a reason', 'REASON_REQUIRED', 400);
     return null;
@@ -41,17 +48,18 @@ function normalizeReason(value, required = false) {
   return value.trim();
 }
 
-function normalizeTimestamp(value, field, { allowNull = true } = {}) {
+function normalizeTimestamp(value: unknown, field: string, { allowNull = true } = {}) {
   if (value === null || value === undefined) {
     if (allowNull) return null;
     throw delegationError(`${field} is required`, 'INVALID_TIMESTAMP', 400);
   }
+  if (!(value instanceof Date) && typeof value !== 'string' && typeof value !== 'number') throw delegationError(`${field} is invalid`, 'INVALID_TIMESTAMP', 400);
   const date = value instanceof Date ? new Date(value.getTime()) : new Date(value);
   if (Number.isNaN(date.getTime())) throw delegationError(`${field} is invalid`, 'INVALID_TIMESTAMP', 400);
   return date;
 }
 
-function cloneDelegation(record, now) {
+function cloneDelegation(record: DelegationRecord, now: Date) {
   const expired = record.expiresAt !== null && record.expiresAt.getTime() <= now.getTime();
   return Object.freeze({
     schemaVersion: 1,
@@ -69,7 +77,7 @@ function cloneDelegation(record, now) {
   });
 }
 
-function isActive(record, now) {
+function isActive(record: DelegationRecord, now: Date) {
   return record.expiresAt === null || record.expiresAt.getTime() > now.getTime();
 }
 
@@ -78,9 +86,9 @@ function isActive(record, now) {
  * persist the same record in PostgreSQL, but it must retain the unique active
  * owner rule and the explicit user/master policy source.
  */
-export function createDelegationStore({ clock = () => new Date() } = {}) {
-  const records = new Map();
-  const history = [];
+export function createDelegationStore({ clock = () => new Date() }: { clock?: () => Date | string | number } = {}) {
+  const records = new Map<string, DelegationRecord>();
+  const history: DelegationEvent[] = [];
 
   function now() {
     const value = clock();
@@ -89,7 +97,7 @@ export function createDelegationStore({ clock = () => new Date() } = {}) {
     return date;
   }
 
-  function assertTenantOwner(actor, ownerUserId, { allowMaster = true } = {}) {
+  function assertTenantOwner(actor: unknown, ownerUserId: unknown, { allowMaster = true } = {}) {
     const canonical = normalizeActor(actor);
     const owner = assertSafeUserId(ownerUserId, 'ownerUserId');
     if (canonical.role === 'user' && canonical.userId !== owner) {
@@ -104,7 +112,7 @@ export function createDelegationStore({ clock = () => new Date() } = {}) {
     return Object.freeze({ canonical, ownerUserId: owner });
   }
 
-  function appendHistory(record, action, actor, result = 'success', reason = null) {
+  function appendHistory(record: DelegationRecord, action: 'created' | 'updated' | 'revoked', actor: AdminActor, result = 'success', reason: string | null = null) {
     history.push(Object.freeze({
       schemaVersion: 1,
       eventType: `delegation.${action}`,
@@ -121,14 +129,14 @@ export function createDelegationStore({ clock = () => new Date() } = {}) {
     }));
   }
 
-  function create(actor, {
+  function create(actor: unknown, {
     ownerUserId,
     delegateUserId,
     permissions = ['read'],
     expiresAt = null,
     reason = null,
     forced = false,
-  } = {}) {
+  }: DelegationInput = {}) {
     const { canonical, ownerUserId: owner } = assertTenantOwner(actor, ownerUserId);
     const delegate = assertSafeUserId(delegateUserId, 'delegateUserId');
     if (owner === delegate) throw delegationError('owner and delegate must be different users', 'SELF_DELEGATION', 400);
@@ -170,12 +178,12 @@ export function createDelegationStore({ clock = () => new Date() } = {}) {
     return cloneDelegation(record, timestamp);
   }
 
-  function update(actor, ownerUserId, {
+  function update(actor: unknown, ownerUserId: unknown, {
     delegateUserId,
     permissions,
     expiresAt,
     reason,
-  } = {}) {
+  }: DelegationInput = {}) {
     const { canonical, ownerUserId: owner } = assertTenantOwner(actor, ownerUserId);
     const record = records.get(owner);
     const timestamp = now();
@@ -204,7 +212,7 @@ export function createDelegationStore({ clock = () => new Date() } = {}) {
     return cloneDelegation(updated, timestamp);
   }
 
-  function revoke(actor, ownerUserId, { reason = 'owner_revoked' } = {}) {
+  function revoke(actor: unknown, ownerUserId: unknown, { reason = 'owner_revoked' }: { reason?: unknown } = {}) {
     const { canonical, ownerUserId: owner } = assertTenantOwner(actor, ownerUserId);
     const record = records.get(owner);
     const timestamp = now();
@@ -220,7 +228,7 @@ export function createDelegationStore({ clock = () => new Date() } = {}) {
     return cloneDelegation(revoked, timestamp);
   }
 
-  function canAccess(actor, ownerUserId, permission = 'read') {
+  function canAccess(actor: unknown, ownerUserId: unknown, permission = 'read') {
     let canonical;
     try {
       canonical = normalizeActor(actor);
@@ -242,7 +250,7 @@ export function createDelegationStore({ clock = () => new Date() } = {}) {
     return record.permissions.includes(permission);
   }
 
-  function get(actor, ownerUserId) {
+  function get(actor: unknown, ownerUserId: unknown) {
     const canonical = normalizeActor(actor);
     const owner = assertSafeUserId(ownerUserId, 'ownerUserId');
     const record = records.get(owner);
@@ -256,7 +264,7 @@ export function createDelegationStore({ clock = () => new Date() } = {}) {
     return cloneDelegation(record, now());
   }
 
-  function list(actor) {
+  function list(actor: unknown) {
     const canonical = normalizeActor(actor);
     if (!['provider', 'tenant_master'].includes(canonical.role)) {
       throw delegationError('only administrative roles can enumerate delegations', 'ROLE_DENIED');
@@ -268,7 +276,7 @@ export function createDelegationStore({ clock = () => new Date() } = {}) {
       .map((record) => cloneDelegation(record, timestamp)));
   }
 
-  function events(actor, { masterLogAccess = false } = {}) {
+  function events(actor: unknown, { masterLogAccess = false } = {}) {
     const canonical = normalizeActor(actor);
     if (!['provider', 'tenant_master'].includes(canonical.role)) {
       throw delegationError('only administrative roles can inspect delegation events', 'ROLE_DENIED');

@@ -2,7 +2,17 @@
 // SPDX-FileCopyrightText: 2026 Sythos (https://www.sythos.net)
 // Author: Sythos (https://www.sythos.net)
 
-// @ts-nocheck
+export interface TotpIdentity { tenantId?: string; userId?: string; actorId?: string; label?: string }
+export interface TotpRequest extends TotpIdentity { factorId?: string; code?: unknown; actorRole?: string; reason?: string }
+export interface TotpRecord { factorId: string; tenantId: string; userId: string; label: string; status: 'pending' | 'active' | 'revoked'; createdAt: number; confirmedAt: number | undefined; revokedAt: number | undefined; lastUsedAt: number | undefined; lastUsedCounter: number | undefined; encryptedSecret: string }
+export interface SecretProtector { encrypt(secret: string): string | Buffer; decrypt(value: string): unknown }
+export interface TotpOptions {
+  clock?: () => number | Date; randomBytesFn?: (size: number) => Buffer; secretProtector?: SecretProtector;
+  periodSeconds?: number; digits?: number; algorithm?: string; window?: number; maxFailures?: number; lockoutMs?: number;
+  rateLimiter?: (request: { action: string; key: string; tenantId: string; userId: string; factorId: string }) => boolean | { allowed: boolean };
+  authorizeRevocation?: (request: { actorId: string; actorRole: string; tenantId: string; userId: string; factorId: string }) => boolean;
+  audit?: (event: Readonly<Record<string, string | number | boolean>>) => void; factors?: Map<string, TotpRecord>;
+}
 
 import {
   createCipheriv,
@@ -27,13 +37,11 @@ const CODE_PATTERN = /^\d{6,8}$/u;
 const HASH_ALGORITHMS = new Set(['sha1', 'sha256', 'sha512']);
 const PROTECTOR_PAYLOAD_PATTERN = /^v1\.([A-Za-z0-9_-]+)\.([A-Za-z0-9_-]+)\.([A-Za-z0-9_-]+)$/u;
 
-function authError(message, code = 'TOTP_ERROR') {
-  const error = new Error(`TOTP error: ${message}`);
-  error.code = code;
-  return error;
+function authError(message: string, code = 'TOTP_ERROR') {
+  return Object.assign(new Error(`TOTP error: ${message}`), { code });
 }
 
-function readTime(clock) {
+function readTime(clock: () => number | Date) {
   const value = clock();
   const time = value instanceof Date ? value.getTime() : value;
   if (!Number.isFinite(time) || time < 0) {
@@ -42,32 +50,31 @@ function readTime(clock) {
   return Math.trunc(time);
 }
 
-function assertIdentityPart(value, name) {
+function assertIdentityPart(value: unknown, name: string): asserts value is string {
   if (typeof value !== 'string' || !ID_PATTERN.test(value)) {
     throw authError(`${name} is invalid`, 'INVALID_IDENTITY');
   }
-  return value;
 }
 
-function assertFactorId(value) {
+function assertFactorId(value: unknown) {
   if (typeof value !== 'string' || !FACTOR_ID_PATTERN.test(value)) {
     throw authError('factorId is invalid', 'INVALID_FACTOR');
   }
   return value;
 }
 
-function base64UrlEncode(value) {
+function base64UrlEncode(value: Uint8Array) {
   return Buffer.from(value).toString('base64url');
 }
 
-function base64UrlDecode(value, name) {
+function base64UrlDecode(value: unknown, name: string) {
   if (typeof value !== 'string' || !/^[A-Za-z0-9_-]+$/u.test(value)) {
     throw authError(`${name} is invalid`, 'INVALID_SECRET_PAYLOAD');
   }
   return Buffer.from(value, 'base64url');
 }
 
-export function encodeBase32(bytes) {
+export function encodeBase32(bytes: unknown) {
   if (!Buffer.isBuffer(bytes) || bytes.length === 0) {
     throw authError('base32 input must be a non-empty buffer', 'INVALID_SECRET');
   }
@@ -88,7 +95,7 @@ export function encodeBase32(bytes) {
   return output;
 }
 
-export function decodeBase32(secret) {
+export function decodeBase32(secret: unknown) {
   if (typeof secret !== 'string' || secret.length < 16 || secret.length > 128) {
     throw authError('secret must be a base32 string', 'INVALID_SECRET');
   }
@@ -113,12 +120,12 @@ export function decodeBase32(secret) {
   return Buffer.from(output);
 }
 
-function normalizeSecret(secret) {
+function normalizeSecret(secret: unknown) {
   const decoded = decodeBase32(secret);
   return encodeBase32(decoded);
 }
 
-function assertRandomBytes(randomBytesFn, size) {
+function assertRandomBytes(randomBytesFn: (size: number) => Buffer, size: number) {
   const bytes = randomBytesFn(size);
   if (!Buffer.isBuffer(bytes) || bytes.length !== size) {
     throw authError(`randomBytesFn must return ${size} bytes`, 'INVALID_RANDOM_SOURCE');
@@ -126,15 +133,15 @@ function assertRandomBytes(randomBytesFn, size) {
   return bytes;
 }
 
-function assertProtector(secretProtector) {
-  if (secretProtector === null || typeof secretProtector !== 'object'
+function assertProtector(secretProtector: SecretProtector | undefined): asserts secretProtector is SecretProtector {
+  if (secretProtector == null || typeof secretProtector !== 'object'
     || typeof secretProtector.encrypt !== 'function'
     || typeof secretProtector.decrypt !== 'function') {
     throw authError('secretProtector with encrypt/decrypt is required', 'INVALID_SECRET_PROTECTOR');
   }
 }
 
-function protectSecret(secretProtector, secret) {
+function protectSecret(secretProtector: SecretProtector, secret: string) {
   const protectedValue = secretProtector.encrypt(secret);
   if (typeof protectedValue !== 'string' && !Buffer.isBuffer(protectedValue)) {
     throw authError('secretProtector.encrypt must return a string or buffer', 'INVALID_SECRET_PROTECTOR');
@@ -142,7 +149,7 @@ function protectSecret(secretProtector, secret) {
   return Buffer.isBuffer(protectedValue) ? protectedValue.toString('base64url') : protectedValue;
 }
 
-function unprotectSecret(secretProtector, protectedValue) {
+function unprotectSecret(secretProtector: SecretProtector, protectedValue: string) {
   const secret = secretProtector.decrypt(protectedValue);
   if (typeof secret !== 'string') {
     throw authError('secretProtector.decrypt must return a base32 string', 'INVALID_SECRET_PROTECTOR');
@@ -150,20 +157,20 @@ function unprotectSecret(secretProtector, protectedValue) {
   return normalizeSecret(secret);
 }
 
-function assertCode(code, digits) {
+function assertCode(code: unknown, digits: number): code is string {
   if (typeof code !== 'string' || code.length !== digits || !/^\d+$/u.test(code)) {
     return false;
   }
   return CODE_PATTERN.test(code);
 }
 
-function counterBuffer(counter) {
+function counterBuffer(counter: number) {
   const buffer = Buffer.alloc(8);
   buffer.writeBigUInt64BE(BigInt(counter));
   return buffer;
 }
 
-export function generateTotpCode(secret, counter, { digits = TOTP_DEFAULT_DIGITS, algorithm = TOTP_DEFAULT_ALGORITHM } = {}) {
+export function generateTotpCode(secret: unknown, counter: number, { digits = TOTP_DEFAULT_DIGITS, algorithm = TOTP_DEFAULT_ALGORITHM }: { digits?: number; algorithm?: string } = {}) {
   if (!Number.isSafeInteger(counter) || counter < 0) {
     throw authError('counter must be a non-negative safe integer', 'INVALID_COUNTER');
   }
@@ -180,13 +187,13 @@ export function generateTotpCode(secret, counter, { digits = TOTP_DEFAULT_DIGITS
   return String(binary % (10 ** digits)).padStart(digits, '0');
 }
 
-function codesEqual(left, right) {
+function codesEqual(left: string, right: string) {
   const leftBuffer = Buffer.from(left, 'ascii');
   const rightBuffer = Buffer.from(right, 'ascii');
   return leftBuffer.length === rightBuffer.length && timingSafeEqual(leftBuffer, rightBuffer);
 }
 
-function normalizeLabel(label) {
+function normalizeLabel(label: unknown) {
   if (label === undefined) return 'user';
   if (typeof label !== 'string' || label.length < 1 || label.length > 64 || /[\r\n]/u.test(label)) {
     throw authError('label is invalid', 'INVALID_LABEL');
@@ -194,7 +201,7 @@ function normalizeLabel(label) {
   return label;
 }
 
-function metadata(record) {
+function metadata(record: TotpRecord) {
   return Object.freeze({
     factorId: record.factorId,
     type: 'totp',
@@ -209,7 +216,7 @@ function metadata(record) {
   });
 }
 
-function auditEvent(audit, event) {
+function auditEvent(audit: NonNullable<TotpOptions['audit']>, event: Record<string, string | number | boolean>) {
   // The shape is intentionally metadata-only. In particular it has no code,
   // secret, encrypted payload, or authenticator material.
   try {
@@ -238,9 +245,10 @@ export function createTotpManager({
   rateLimiter = () => true,
   authorizeRevocation = () => false,
   audit = () => {},
-  factors = new Map(),
-} = {}) {
+  factors = new Map<string, TotpRecord>(),
+}: TotpOptions = {}) {
   assertProtector(secretProtector);
+  const protector = secretProtector;
   if (!Number.isInteger(periodSeconds) || periodSeconds < 15 || periodSeconds > 300
     || !Number.isInteger(digits) || digits < 6 || digits > 8
     || !HASH_ALGORITHMS.has(algorithm)
@@ -253,9 +261,9 @@ export function createTotpManager({
     throw authError('factors must implement get, set, and delete', 'INVALID_FACTOR_STORE');
   }
   if (typeof authorizeRevocation !== 'function') throw authError('authorizeRevocation must be a function', 'INVALID_AUTHORIZER');
-  const attempts = new Map();
+  const attempts = new Map<string, { failed: number; lockedUntil: number }>();
 
-  function assertScope(record, tenantId, userId) {
+  function assertScope(record: TotpRecord, tenantId: unknown, userId: unknown) {
     assertIdentityPart(tenantId, 'tenantId');
     assertIdentityPart(userId, 'userId');
     if (record.tenantId !== tenantId || record.userId !== userId) {
@@ -263,7 +271,7 @@ export function createTotpManager({
     }
   }
 
-  function emitFailure(record, reason, now) {
+  function emitFailure(record: TotpRecord, reason: string, now: number) {
     const previous = attempts.get(record.factorId) ?? { failed: 0, lockedUntil: 0 };
     const failed = previous.failed + 1;
     const lockedUntil = failed >= maxFailures ? now + lockoutMs : previous.lockedUntil;
@@ -280,9 +288,9 @@ export function createTotpManager({
     return Object.freeze({ verified: false, code: reason, lockedUntil: lockedUntil > now ? lockedUntil : undefined });
   }
 
-  function allowAttempt(record, now) {
+  function allowAttempt(record: TotpRecord, now: number) {
     const state = attempts.get(record.factorId);
-    if (state?.lockedUntil > now) {
+    if (state !== undefined && state.lockedUntil > now) {
       return false;
     }
     if (state?.lockedUntil && state.lockedUntil <= now) {
@@ -303,14 +311,14 @@ export function createTotpManager({
     return allowed === true || (allowed !== false && allowed?.allowed === true);
   }
 
-  function evaluate(record, code, now, allowPending = false) {
+  function evaluate(record: TotpRecord, code: unknown, now: number, allowPending = false) {
     if (record.status === 'revoked') return Object.freeze({ verified: false, code: 'FACTOR_REVOKED' });
     if (!allowPending && record.status !== 'active') return Object.freeze({ verified: false, code: 'FACTOR_NOT_ACTIVE' });
     if (!assertCode(code, digits)) return emitFailure(record, 'INVALID_CODE', now);
     if (!allowAttempt(record, now)) return emitFailure(record, 'RATE_LIMITED_OR_LOCKED', now);
     let secret;
     try {
-      secret = unprotectSecret(secretProtector, record.encryptedSecret);
+      secret = unprotectSecret(protector, record.encryptedSecret);
     } catch {
       return emitFailure(record, 'SECRET_UNAVAILABLE', now);
     }
@@ -343,13 +351,13 @@ export function createTotpManager({
     return Object.freeze({ verified: true, counter: matched.counter, offset: matched.offset, factor: metadata(record) });
   }
 
-  function getFactor(factorId) {
+  function getFactor(factorId: unknown) {
     const id = assertFactorId(factorId);
     const record = factors.get(id);
     return record === undefined ? null : metadata(record);
   }
 
-  function enroll({ tenantId, userId, label, actorId = userId } = {}) {
+  function enroll({ tenantId, userId, label, actorId = userId }: TotpIdentity = {}) {
     assertIdentityPart(tenantId, 'tenantId');
     assertIdentityPart(userId, 'userId');
     assertIdentityPart(actorId, 'actorId');
@@ -367,7 +375,7 @@ export function createTotpManager({
     }
     if (factorId === undefined) throw authError('factor identifier collision', 'FACTOR_GENERATION_FAILED');
     const now = readTime(clock);
-    const record = {
+    const record: TotpRecord = {
       factorId,
       tenantId,
       userId,
@@ -378,7 +386,7 @@ export function createTotpManager({
       revokedAt: undefined,
       lastUsedCounter: undefined,
       lastUsedAt: undefined,
-      encryptedSecret: protectSecret(secretProtector, secret),
+      encryptedSecret: protectSecret(protector, secret),
     };
     factors.set(factorId, record);
     auditEvent(audit, { eventType: 'auth.totp.enrolled', tenantId, userId, factorId, status: 'pending', occurredAt: now });
@@ -393,7 +401,9 @@ export function createTotpManager({
     });
   }
 
-  function confirmEnrollment({ factorId, tenantId, userId, code } = {}) {
+  function confirmEnrollment({ factorId, tenantId, userId, code }: TotpRequest = {}) {
+    assertIdentityPart(tenantId, 'tenantId');
+    assertIdentityPart(userId, 'userId');
     const id = assertFactorId(factorId);
     const record = factors.get(id);
     if (record === undefined) return Object.freeze({ confirmed: false, code: 'FACTOR_NOT_FOUND' });
@@ -401,14 +411,14 @@ export function createTotpManager({
     if (record.status === 'revoked') return Object.freeze({ confirmed: false, code: 'FACTOR_REVOKED' });
     if (record.status === 'active') return Object.freeze({ confirmed: false, code: 'FACTOR_ALREADY_ACTIVE' });
     const result = evaluate(record, code, readTime(clock), true);
-    if (!result.verified) return Object.freeze({ confirmed: false, code: result.code, lockedUntil: result.lockedUntil });
+    if (!result.verified) return Object.freeze({ confirmed: false, code: result.code, lockedUntil: 'lockedUntil' in result ? result.lockedUntil : undefined });
     record.status = 'active';
     record.confirmedAt = readTime(clock);
     auditEvent(audit, { eventType: 'auth.totp.confirmed', tenantId, userId, factorId: id, occurredAt: record.confirmedAt });
     return Object.freeze({ confirmed: true, factor: metadata(record) });
   }
 
-  function verify({ factorId, tenantId, userId, code } = {}) {
+  function verify({ factorId, tenantId, userId, code }: TotpRequest = {}) {
     const id = assertFactorId(factorId);
     const record = factors.get(id);
     if (record === undefined) return Object.freeze({ verified: false, code: 'FACTOR_NOT_FOUND' });
@@ -416,7 +426,9 @@ export function createTotpManager({
     return evaluate(record, code, readTime(clock));
   }
 
-  function revoke({ factorId, tenantId, userId, actorId = userId, actorRole = 'user', reason = 'user_request' } = {}) {
+  function revoke({ factorId, tenantId, userId, actorId = userId, actorRole = 'user', reason = 'user_request' }: TotpRequest = {}) {
+    assertIdentityPart(tenantId, 'tenantId');
+    assertIdentityPart(userId, 'userId');
     const id = assertFactorId(factorId);
     const record = factors.get(id);
     if (record === undefined) return Object.freeze({ revoked: false, code: 'FACTOR_NOT_FOUND' });
@@ -442,7 +454,7 @@ export function createTotpManager({
     return Object.freeze({ revoked: true, factor: metadata(record) });
   }
 
-  function listFactorMetadata({ tenantId, userId } = {}) {
+  function listFactorMetadata({ tenantId, userId }: TotpIdentity = {}) {
     assertIdentityPart(tenantId, 'tenantId');
     assertIdentityPart(userId, 'userId');
     return Object.freeze([...factors.values()]
@@ -467,19 +479,19 @@ export function createTotpManager({
  * container. The key must come from a secret manager, never from source
  * control. The returned value contains no plaintext secret.
  */
-export function createAesGcmSecretProtector({ key, randomBytesFn = nodeRandomBytes } = {}) {
+export function createAesGcmSecretProtector({ key, randomBytesFn = nodeRandomBytes }: { key?: Buffer; randomBytesFn?: (size: number) => Buffer } = {}) {
   if (!Buffer.isBuffer(key) || key.length !== 32) {
     throw authError('AES-GCM key must be exactly 32 bytes', 'INVALID_SECRET_KEY');
   }
   return Object.freeze({
-    encrypt(secret) {
+    encrypt(secret: string) {
       const canonical = normalizeSecret(secret);
       const iv = assertRandomBytes(randomBytesFn, 12);
       const cipher = createCipheriv('aes-256-gcm', key, iv);
       const ciphertext = Buffer.concat([cipher.update(canonical, 'utf8'), cipher.final()]);
       return `v1.${base64UrlEncode(iv)}.${base64UrlEncode(cipher.getAuthTag())}.${base64UrlEncode(ciphertext)}`;
     },
-    decrypt(payload) {
+    decrypt(payload: unknown) {
       if (typeof payload !== 'string') throw authError('encrypted secret is invalid', 'INVALID_SECRET_PAYLOAD');
       const match = PROTECTOR_PAYLOAD_PATTERN.exec(payload);
       if (match === null) throw authError('encrypted secret payload is invalid', 'INVALID_SECRET_PAYLOAD');

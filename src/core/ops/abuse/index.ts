@@ -2,7 +2,18 @@
 // SPDX-FileCopyrightText: 2026 Sythos (https://www.sythos.net)
 // Author: Sythos (https://www.sythos.net)
 
-// @ts-nocheck
+type Timestamp = Date | string | number;
+type Clock = () => Timestamp;
+type RateRule = Readonly<{ max: number; windowMs: number }>;
+type ChannelLimits = Readonly<Record<string, RateRule>>;
+type RateLimits = Readonly<Record<string, ChannelLimits>>;
+type RateIdentityInput = { tenantId?: unknown; ipAddress?: string | null; sessionId?: string | null };
+type RateInput = RateIdentityInput & { channel?: unknown; cost?: number; now?: Timestamp; userId?: unknown };
+type SubjectInput = { tenantId?: unknown; subjectType?: unknown; subject?: unknown; channel?: string; reason?: string; now?: Timestamp; durationMs?: number };
+type AuditInput = Omit<SubjectInput, 'channel'> & { action?: unknown; channel?: unknown; outcome?: unknown; details?: unknown; occurredAt?: Timestamp };
+type ReadinessError = Readonly<{ code: string; field: string; message: string }>;
+type ComposeService = { environment?: unknown; secrets?: unknown; deploy?: { resources?: { limits?: Record<string, unknown> } }; cpus?: unknown; mem_limit?: unknown; pids_limit?: unknown; user?: unknown; privileged?: unknown; read_only?: unknown; network_mode?: unknown; pid?: unknown; cap_add?: unknown; cap_drop?: unknown; security_opt?: unknown; devices?: unknown; volumes?: unknown };
+type ComposeInput = { services?: Record<string, ComposeService>; volumes?: unknown; secrets?: unknown };
 
 import { createHash, randomUUID } from 'node:crypto';
 import { isIP } from 'node:net';
@@ -35,71 +46,73 @@ const LOOPBACK_HOSTS = new Set(['127.0.0.1', '::1', 'localhost']);
 const REQUIRED_EXTERNAL_VOLUMES = Object.freeze(['runtime-state', 'mail-data', 'dav-data', 'backup-data']);
 const DEFAULT_MAX_BUCKETS = 20_000;
 
-function abuseError(message, code = 'ABUSE_CONTRACT_ERROR') {
-  const error = new Error(`Abuse contract error: ${message}`);
-  error.code = code;
+function abuseError(message: string, code = 'ABUSE_CONTRACT_ERROR') {
+  const error = Object.assign(new Error(`Abuse contract error: ${message}`), { code });
   return error;
 }
 
-function isPlainObject(value) {
+function isPlainObject(value: unknown): value is Record<string, unknown> {
   if (value === null || typeof value !== 'object' || Array.isArray(value)) return false;
   const prototype = Object.getPrototypeOf(value);
   return prototype === Object.prototype || prototype === null;
 }
 
-function assertPlainObject(value, name) {
+function assertPlainObject(value: unknown, name: string): asserts value is Record<string, unknown> {
   if (!isPlainObject(value)) throw abuseError(`${name} must be an object`, 'INVALID_INPUT');
 }
 
-function assertString(value, name, pattern = null, maximum = 256) {
+function assertString(value: unknown, name: string, pattern: RegExp | null = null, maximum = 256) {
   if (typeof value !== 'string' || value.length === 0 || value.length > maximum || (pattern && !pattern.test(value))) {
     throw abuseError(`${name} is invalid`, 'INVALID_INPUT');
   }
   return value;
 }
 
-function assertId(value, name) {
+function assertId(value: unknown, name: string) {
   return assertString(value, name, ID_PATTERN, 128);
 }
 
-function assertDate(value, name) {
+function assertDate(value: unknown, name: string) {
+  if (!(value instanceof Date) && typeof value !== 'string' && typeof value !== 'number') throw abuseError(`${name} is invalid`, 'INVALID_TIMESTAMP');
   const date = value instanceof Date ? new Date(value.getTime()) : new Date(value);
   if (Number.isNaN(date.getTime())) throw abuseError(`${name} is invalid`, 'INVALID_TIMESTAMP');
   return date;
 }
 
-function assertInteger(value, name, minimum, maximum) {
-  if (!Number.isSafeInteger(value) || value < minimum || value > maximum) {
+function assertInteger(value: unknown, name: string, minimum: number, maximum: number) {
+  if (typeof value !== 'number' || !Number.isSafeInteger(value) || value < minimum || value > maximum) {
     throw abuseError(`${name} must be an integer between ${minimum} and ${maximum}`, 'INVALID_NUMBER');
   }
   return value;
 }
 
-function nowMilliseconds(clock, name = 'clock') {
+function nowMilliseconds(clock: Clock | Timestamp, name = 'clock') {
   const value = typeof clock === 'function' ? clock() : clock;
   return assertDate(value, name).getTime();
 }
 
-function digestSubject(subjectType, value) {
-  const canonical = `${subjectType}\u0000${value}`;
+function digestSubject(subjectType: unknown, value: unknown) {
+  const canonicalType = assertString(subjectType, 'subjectType');
+  const canonicalValue = assertString(value, 'subject', null, 512);
+  const canonical = `${canonicalType}\u0000${canonicalValue}`;
   return createHash('sha256').update(canonical, 'utf8').digest('hex');
 }
 
-function assertChannel(channel) {
+function assertChannel(channel: unknown) {
   if (typeof channel !== 'string' || !CHANNEL_SET.has(channel)) {
     throw abuseError('channel is unsupported', 'INVALID_CHANNEL');
   }
   return channel;
 }
 
-function assertSubjectType(subjectType) {
+function assertSubjectType(subjectType: unknown) {
   if (typeof subjectType !== 'string' || !SUBJECT_TYPE_SET.has(subjectType)) {
     throw abuseError('subjectType is unsupported', 'INVALID_SUBJECT');
   }
   return subjectType;
 }
 
-function assertMetadata(value, path = 'metadata') {
+function assertMetadata(value: unknown, path = 'metadata'): unknown {
   if (Array.isArray(value)) {
     value.forEach((item, index) => assertMetadata(item, `${path}[${index}]`));
     return value;
@@ -119,7 +132,7 @@ function assertMetadata(value, path = 'metadata') {
   return value;
 }
 
-function freezeDeep(value) {
+function freezeDeep<T>(value: T): Readonly<T> {
   if (value && typeof value === 'object' && !Object.isFrozen(value)) {
     Object.values(value).forEach((nested) => freezeDeep(nested));
     Object.freeze(value);
@@ -127,14 +140,14 @@ function freezeDeep(value) {
   return value;
 }
 
-function normalizeRateRule(rule, name) {
+function normalizeRateRule(rule: unknown, name: string) {
   assertPlainObject(rule, name);
   const max = assertInteger(rule.max, `${name}.max`, 1, 1_000_000);
   const windowMs = assertInteger(rule.windowMs, `${name}.windowMs`, 1_000, 86_400_000);
   return Object.freeze({ max, windowMs });
 }
 
-function makeChannelLimits(tenantMax, ipMax, sessionMax, windowMs = 60_000) {
+function makeChannelLimits(tenantMax: number, ipMax: number, sessionMax: number, windowMs = 60_000) {
   return Object.freeze({
     tenant: Object.freeze({ max: tenantMax, windowMs }),
     ip: Object.freeze({ max: ipMax, windowMs }),
@@ -142,7 +155,7 @@ function makeChannelLimits(tenantMax, ipMax, sessionMax, windowMs = 60_000) {
   });
 }
 
-export const DEFAULT_RATE_LIMITS = freezeDeep({
+export const DEFAULT_RATE_LIMITS: RateLimits = freezeDeep({
   http: makeChannelLimits(600, 120, 120),
   api: makeChannelLimits(300, 120, 120),
   mcp: makeChannelLimits(120, 30, 60),
@@ -155,9 +168,9 @@ export const DEFAULT_RATE_LIMITS = freezeDeep({
   imap: makeChannelLimits(600, 60, 120),
 });
 
-function normalizeLimits(limits) {
+function normalizeLimits(limits: unknown) {
   assertPlainObject(limits, 'limits');
-  const normalized = {};
+  const normalized: Record<string, Record<string, RateRule>> = {};
   for (const channel of ABUSE_CHANNELS) {
     const configured = limits[channel] ?? DEFAULT_RATE_LIMITS[channel];
     assertPlainObject(configured, `limits.${channel}`);
@@ -170,14 +183,14 @@ function normalizeLimits(limits) {
   return freezeDeep(normalized);
 }
 
-function normalizeRateIdentity({ tenantId, ipAddress = null, sessionId = null } = {}) {
+function normalizeRateIdentity({ tenantId, ipAddress = null, sessionId = null }: RateIdentityInput = {}) {
   const identity = { tenantId: assertId(tenantId, 'tenantId'), ipAddress, sessionId };
   if (ipAddress !== null) assertString(ipAddress, 'ipAddress', null, 256);
   if (sessionId !== null) assertString(sessionId, 'sessionId', null, 512);
   return identity;
 }
 
-function identityForDimension(identity, dimension) {
+function identityForDimension(identity: { tenantId: string; ipAddress: string | null; sessionId: string | null }, dimension: string) {
   if (dimension === 'tenant') return identity.tenantId;
   if (dimension === 'ip') return identity.ipAddress;
   return identity.sessionId;
@@ -187,10 +200,10 @@ function identityForDimension(identity, dimension) {
  * Metadata-only multi-dimensional limiter. Raw IP addresses and session
  * identifiers are hashed before they enter the in-memory state or result.
  */
-export function createRateLimiter({ limits = DEFAULT_RATE_LIMITS, clock = () => new Date(), maxBuckets = DEFAULT_MAX_BUCKETS } = {}) {
+export function createRateLimiter({ limits = DEFAULT_RATE_LIMITS, clock = () => new Date(), maxBuckets = DEFAULT_MAX_BUCKETS }: { limits?: unknown; clock?: Clock; maxBuckets?: number } = {}) {
   const normalizedLimits = normalizeLimits(limits);
   assertInteger(maxBuckets, 'maxBuckets', 100, 1_000_000);
-  const buckets = new Map();
+  const buckets = new Map<string, { startedAt: number; count: number }>();
 
   function prune() {
     while (buckets.size > maxBuckets) {
@@ -200,7 +213,7 @@ export function createRateLimiter({ limits = DEFAULT_RATE_LIMITS, clock = () => 
     }
   }
 
-  function consume({ channel, tenantId, ipAddress = null, sessionId = null, cost = 1, now = undefined } = {}) {
+  function consume({ channel, tenantId, ipAddress = null, sessionId = null, cost = 1, now = undefined }: RateInput = {}) {
     const normalizedChannel = assertChannel(channel);
     const identity = normalizeRateIdentity({ tenantId, ipAddress, sessionId });
     assertInteger(cost, 'cost', 1, 1_000_000);
@@ -269,10 +282,10 @@ export function createAbuseAuditEvent({
   reason,
   details = {},
   occurredAt = new Date(),
-} = {}) {
+}: AuditInput = {}) {
   assertString(action, 'action', SAFE_REASON_PATTERN, 128);
   assertChannel(channel);
-  if (!['allowed', 'limited', 'locked', 'quarantined', 'released', 'rejected'].includes(outcome)) {
+  if (typeof outcome !== 'string' || !['allowed', 'limited', 'locked', 'quarantined', 'released', 'rejected'].includes(outcome)) {
     throw abuseError('outcome is invalid', 'INVALID_AUDIT');
   }
   const normalizedTenant = assertId(tenantId, 'tenantId');
@@ -299,7 +312,7 @@ export function createAbuseAuditEvent({
   return freezeDeep(event);
 }
 
-function normalizeLockoutPolicy(policy = {}) {
+function normalizeLockoutPolicy(policy: unknown = {}) {
   assertPlainObject(policy, 'lockoutPolicy');
   return Object.freeze({
     failureThreshold: assertInteger(policy.failureThreshold ?? 5, 'failureThreshold', 1, 1_000),
@@ -319,27 +332,27 @@ export function createAbuseGuard({
   lockoutPolicy = {},
   clock = () => new Date(),
   onAudit = null,
-} = {}) {
+}: { limits?: unknown; lockoutPolicy?: unknown; clock?: Clock; onAudit?: ((event: ReturnType<typeof createAbuseAuditEvent>) => void) | null } = {}) {
   if (onAudit !== null && typeof onAudit !== 'function') throw abuseError('onAudit must be a function', 'INVALID_HOOK');
   const limiter = createRateLimiter({ limits, clock });
   const policy = normalizeLockoutPolicy(lockoutPolicy);
-  const failures = new Map();
-  const lockouts = new Map();
-  const quarantines = new Map();
+  const failures = new Map<string, { startedAt: number; count: number }>();
+  const lockouts = new Map<string, number>();
+  const quarantines = new Map<string, number>();
 
-  function subjectKey(tenantId, subjectType, subject) {
+  function subjectKey(tenantId: unknown, subjectType: unknown, subject: unknown) {
     const tenant = assertId(tenantId, 'tenantId');
     const type = assertSubjectType(subjectType);
     const value = assertString(subject, 'subject', null, 512);
     return `${tenant}:${type}:${digestSubject(type, value)}`;
   }
 
-  function emit(event) {
+  function emit(event: ReturnType<typeof createAbuseAuditEvent>) {
     if (onAudit !== null) onAudit(event);
     return event;
   }
 
-  function status({ tenantId, subjectType, subject, now = undefined } = {}) {
+  function status({ tenantId, subjectType, subject, now = undefined }: SubjectInput = {}) {
     const timestamp = now === undefined ? nowMilliseconds(clock) : nowMilliseconds(now, 'now');
     const key = subjectKey(tenantId, subjectType, subject);
     const lockoutUntil = lockouts.get(key) ?? 0;
@@ -361,7 +374,7 @@ export function createAbuseGuard({
     channel = 'login',
     reason = 'authentication-failure',
     now = undefined,
-  } = {}) {
+  }: SubjectInput = {}) {
     const timestamp = now === undefined ? nowMilliseconds(clock) : nowMilliseconds(now, 'now');
     assertChannel(channel);
     assertString(reason, 'reason', SAFE_REASON_PATTERN, 128);
@@ -399,7 +412,7 @@ export function createAbuseGuard({
     });
   }
 
-  function recordSuccess({ tenantId, subjectType, subject, channel = 'login', now = undefined } = {}) {
+  function recordSuccess({ tenantId, subjectType, subject, channel = 'login', now = undefined }: SubjectInput = {}) {
     const timestamp = now === undefined ? nowMilliseconds(clock) : nowMilliseconds(now, 'now');
     assertChannel(channel);
     const key = subjectKey(tenantId, subjectType, subject);
@@ -418,7 +431,7 @@ export function createAbuseGuard({
     return Object.freeze({ cleared: true, audit: emit(event) });
   }
 
-  function quarantineSubject({ tenantId, subjectType, subject, channel = 'api', durationMs = policy.quarantineMs, reason = 'operator-quarantine', now = undefined } = {}) {
+  function quarantineSubject({ tenantId, subjectType, subject, channel = 'api', durationMs = policy.quarantineMs, reason = 'operator-quarantine', now = undefined }: SubjectInput = {}) {
     const timestamp = now === undefined ? nowMilliseconds(clock) : nowMilliseconds(now, 'now');
     assertChannel(channel);
     assertInteger(durationMs, 'durationMs', 1_000, 7 * 86_400_000);
@@ -439,7 +452,7 @@ export function createAbuseGuard({
     return Object.freeze({ quarantined: true, quarantineUntil: new Date(timestamp + durationMs).toISOString(), audit: emit(event) });
   }
 
-  function releaseSubject({ tenantId, subjectType, subject, channel = 'api', reason = 'operator-release', now = undefined } = {}) {
+  function releaseSubject({ tenantId, subjectType, subject, channel = 'api', reason = 'operator-release', now = undefined }: SubjectInput = {}) {
     const timestamp = now === undefined ? nowMilliseconds(clock) : nowMilliseconds(now, 'now');
     assertChannel(channel);
     assertString(reason, 'reason', SAFE_REASON_PATTERN, 128);
@@ -460,7 +473,7 @@ export function createAbuseGuard({
     return Object.freeze({ released: true, audit: emit(event) });
   }
 
-  function check({ channel, tenantId, ipAddress = null, sessionId = null, userId = null, now = undefined, cost = 1 } = {}) {
+  function check({ channel, tenantId, ipAddress = null, sessionId = null, userId = null, now = undefined, cost = 1 }: RateInput = {}) {
     const identity = normalizeRateIdentity({ tenantId, ipAddress, sessionId });
     const candidates = [
       ['tenant', identity.tenantId],
@@ -491,7 +504,7 @@ export function createAbuseGuard({
   });
 }
 
-function readEnvironment(environment, key) {
+function readEnvironment(environment: unknown, key: string) {
   if (Array.isArray(environment)) {
     const arrayEntry = environment.find((value) => typeof value === 'string' && value.startsWith(`${key}=`));
     return arrayEntry === undefined ? undefined : arrayEntry.slice(key.length + 1);
@@ -500,12 +513,12 @@ function readEnvironment(environment, key) {
   return undefined;
 }
 
-function nonEmptyEnvironment(environment, key) {
+function nonEmptyEnvironment(environment: unknown, key: string) {
   const value = readEnvironment(environment, key);
   return typeof value === 'string' && value.trim().length > 0 ? value.trim() : null;
 }
 
-function isUnsafeHost(hostname) {
+function isUnsafeHost(hostname: string) {
   const normalized = hostname.toLowerCase().replace(/\.$/u, '');
   if (LOOPBACK_HOSTS.has(normalized) || normalized.endsWith('.internal') || PLACEHOLDER_HOST_PATTERN.test(normalized)) return true;
   const ipVersion = isIP(normalized);
@@ -525,7 +538,7 @@ function isUnsafeHost(hostname) {
   return false;
 }
 
-function validateExternalHost(value, field) {
+function validateExternalHost(value: string | null, field: string) {
   if (value === null) return { field, code: 'REQUIRED_HOST_MISSING', message: `${field} is required` };
   let parsed;
   try {
@@ -543,7 +556,7 @@ function validateExternalHost(value, field) {
   return null;
 }
 
-function validateSecretReference(environment, service, field, declaredSecrets) {
+function validateSecretReference(environment: unknown, service: ComposeService, field: string, declaredSecrets: Set<string> | null) {
   const value = nonEmptyEnvironment(environment, field);
   if (value === null) return { field, code: 'REQUIRED_SECRET_REFERENCE_MISSING', message: `${field} is required` };
   if (!SECRET_REFERENCE_PATTERN.test(value) || /[=\s]/u.test(value)) {
@@ -555,8 +568,8 @@ function validateSecretReference(environment, service, field, declaredSecrets) {
   return null;
 }
 
-function collectDeclaredSecrets(compose) {
-  const declared = new Set();
+function collectDeclaredSecrets(compose: ComposeInput) {
+  const declared = new Set<string>();
   const topLevel = compose.secrets;
   if (isPlainObject(topLevel)) Object.keys(topLevel).forEach((key) => declared.add(key));
   const serviceSecrets = compose.services?.gulogulo?.secrets;
@@ -569,7 +582,7 @@ function collectDeclaredSecrets(compose) {
   return declared;
 }
 
-function normalizeComposeService(compose, serviceName) {
+function normalizeComposeService(compose: unknown, serviceName: string): ComposeService {
   assertPlainObject(compose, 'compose');
   assertPlainObject(compose.services, 'compose.services');
   const service = compose.services[serviceName];
@@ -577,7 +590,7 @@ function normalizeComposeService(compose, serviceName) {
   return service;
 }
 
-function parseCpu(value) {
+function parseCpu(value: unknown) {
   if (typeof value === 'number') return value;
   if (typeof value !== 'string') return null;
   if (/^\d+(?:\.\d+)?$/u.test(value)) return Number(value);
@@ -585,17 +598,17 @@ function parseCpu(value) {
   return millicpu ? Number(millicpu[1]) / 1000 : null;
 }
 
-function parseMemoryBytes(value) {
+function parseMemoryBytes(value: unknown) {
   if (typeof value === 'number') return value;
   if (typeof value !== 'string') return null;
   const match = value.trim().match(/^(\d+(?:\.\d+)?)([KMGTP]i?B?)?$/iu);
   if (!match) return null;
-  const multipliers = { k: 1024, ki: 1024, kb: 1000, m: 1024 ** 2, mi: 1024 ** 2, mb: 1000 ** 2, g: 1024 ** 3, gi: 1024 ** 3, gb: 1000 ** 3, t: 1024 ** 4, ti: 1024 ** 4, tb: 1000 ** 4, pib: 1024 ** 5 };
+  const multipliers: Record<string, number> = { k: 1024, ki: 1024, kb: 1000, m: 1024 ** 2, mi: 1024 ** 2, mb: 1000 ** 2, g: 1024 ** 3, gi: 1024 ** 3, gb: 1000 ** 3, t: 1024 ** 4, ti: 1024 ** 4, tb: 1000 ** 4, pib: 1024 ** 5 };
   const suffix = (match[2] ?? '').toLowerCase();
   return Number(match[1]) * (multipliers[suffix] ?? 1);
 }
 
-function composeResourceLimits(service) {
+function composeResourceLimits(service: ComposeService) {
   const limits = service.deploy?.resources?.limits ?? {};
   return {
     cpus: parseCpu(limits.cpus ?? service.cpus),
@@ -604,7 +617,7 @@ function composeResourceLimits(service) {
   };
 }
 
-function addReadinessError(errors, code, field, message) {
+function addReadinessError(errors: ReadinessError[], code: string, field: string, message: string) {
   errors.push(Object.freeze({ code, field, message }));
 }
 
@@ -620,17 +633,18 @@ export function validateComposeProductionReadiness({
   requiredExternalVolumes = REQUIRED_EXTERNAL_VOLUMES,
   requireExternalSecrets = true,
   checkedAt = new Date(),
-} = {}) {
+}: { compose?: ComposeInput; serviceName?: string; requiredExternalHosts?: readonly string[]; requiredSecretReferences?: readonly string[]; requiredExternalVolumes?: readonly string[]; requireExternalSecrets?: boolean; checkedAt?: Timestamp } = {}) {
   const service = normalizeComposeService(compose, serviceName);
+  if (compose === undefined) throw abuseError('compose must be an object', 'INVALID_INPUT');
   const environment = service.environment ?? {};
-  const errors = [];
-  const warnings = [];
+  const errors: ReadinessError[] = [];
+  const warnings: ReadinessError[] = [];
   const appEnvironment = nonEmptyEnvironment(environment, 'APP_ENV') ?? nonEmptyEnvironment(environment, 'GULOGULO_ENV');
   if (appEnvironment !== 'production') addReadinessError(errors, 'PRODUCTION_ENV_REQUIRED', 'APP_ENV', 'production environment is required');
   const composeUser = service.user;
-  const composeUserText = composeUser === undefined || composeUser === null ? '' : String(composeUser);
+  const composeUserText = typeof composeUser === 'string' || typeof composeUser === 'number' ? String(composeUser) : '';
   const [composeUid, composeGid] = composeUserText.split(':', 2);
-  if (composeUser === undefined || composeUser === null || composeUser === '' || composeUser === 0 || composeUserText === '0' || composeUserText === 'root' || composeUid === '0' || composeGid === '0') {
+  if (composeUserText === '' || composeUser === 0 || composeUserText === '0' || composeUserText === 'root' || composeUid === '0' || composeGid === '0') {
     addReadinessError(errors, 'NON_ROOT_USER_REQUIRED', 'services.user', 'the service must run as a non-root user');
   }
   if (service.privileged === true) addReadinessError(errors, 'PRIVILEGED_FORBIDDEN', 'services.privileged', 'privileged mode is forbidden');

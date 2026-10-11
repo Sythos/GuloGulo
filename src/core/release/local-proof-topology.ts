@@ -2,7 +2,14 @@
 // SPDX-FileCopyrightText: 2026 Sythos (https://www.sythos.net)
 // Author: Sythos (https://www.sythos.net)
 
-// @ts-nocheck
+export interface LocalProofTopology extends Record<string, unknown> {
+  readonly hostBindings: readonly string[];
+  readonly localNames: readonly string[];
+  readonly services: readonly Readonly<Record<string, unknown>>[];
+  readonly volumes: readonly string[];
+  readonly caArtifacts: readonly string[];
+  readonly requiredLabels: readonly string[];
+}
 
 /**
  * LP1 Compose topology contract.
@@ -33,32 +40,31 @@ const REQUIRED_VOLUMES = Object.freeze([
   'lp1-proof-state',
 ]);
 
-function topologyError(code, message) {
-  const error = new Error(message);
-  error.code = code;
+function topologyError(code: string, message: string) {
+  const error = Object.assign(new Error(message), { code });
   return error;
 }
 
-function assertPlainObject(value, label) {
+function assertPlainObject(value: unknown, label: string): asserts value is Record<string, unknown> {
   if (!value || typeof value !== 'object' || Array.isArray(value)) {
     throw topologyError('LP1_TOPOLOGY_INVALID', `${label} must be a plain object.`);
   }
 }
 
-function assertExact(value, expected, code, label) {
+function assertExact(value: unknown, expected: unknown, code: string, label: string) {
   if (value !== expected) {
-    throw topologyError(code, `${label} must be ${expected}.`);
+    throw topologyError(code, `${label} must be ${String(expected)}.`);
   }
 }
 
-function assertExactList(value, expected, code, label) {
+function assertExactList(value: unknown, expected: readonly string[], code: string, label: string): asserts value is string[] {
   if (!Array.isArray(value) || value.length !== expected.length ||
       value.some((entry, index) => entry !== expected[index])) {
     throw topologyError(code, `${label} does not match the frozen LP1 inventory.`);
   }
 }
 
-function assertSafeName(value, code, label) {
+function assertSafeName(value: unknown, code: string, label: string) {
   if (typeof value !== 'string' || !/^[a-z0-9][a-z0-9.-]*$/.test(value) || /\.\.|[\\/]/.test(value)) {
     throw topologyError(code, `${label} contains an unsafe name.`);
   }
@@ -67,7 +73,7 @@ function assertSafeName(value, code, label) {
 /**
  * Validate and freeze the LP1 topology manifest.
  */
-export function createLocalProofTopology(input) {
+export function createLocalProofTopology(input: unknown): Readonly<LocalProofTopology> {
   assertPlainObject(input, 'topology');
   assertExact(input.schemaVersion, 1, 'LP1_SCHEMA_INVALID', 'schemaVersion');
   assertExact(input.milestone, 'LP1', 'LP1_MILESTONE_INVALID', 'milestone');
@@ -94,13 +100,14 @@ export function createLocalProofTopology(input) {
   ], 'LP1_LABELS_INVALID', 'requiredLabels');
 
   if (!Array.isArray(input.hostBindings) || input.hostBindings.length !== 2 ||
+      typeof input.hostBindings[0] !== 'string' || typeof input.hostBindings[1] !== 'string' ||
       !/^127\.0\.0\.1:[0-9]+->8080\/tcp$/.test(input.hostBindings[0]) ||
       !/^\[::1\]:[0-9]+->8080\/tcp$/.test(input.hostBindings[1])) {
     throw topologyError('LP1_HOST_BINDING_INVALID', 'LP1 must publish the application on IPv4 and IPv6 loopback only.');
   }
 
   if (!Array.isArray(input.services) || input.services.length !== REQUIRED_SERVICES.length ||
-      input.services.some((service, index) => service?.name !== REQUIRED_SERVICES[index])) {
+      input.services.some((service: unknown, index) => !service || typeof service !== 'object' || !('name' in service) || service.name !== REQUIRED_SERVICES[index])) {
     throw topologyError('LP1_SERVICES_INVALID', 'LP1 services do not match the frozen topology inventory.');
   }
   for (const service of input.services) {
@@ -117,9 +124,15 @@ export function createLocalProofTopology(input) {
 
   return Object.freeze({
     ...input,
-    hostBindings: Object.freeze([...input.hostBindings]),
+    hostBindings: Object.freeze(input.hostBindings.map((value: unknown) => {
+      if (typeof value !== 'string') throw topologyError('LP1_HOST_BINDING_INVALID', 'Host binding must be a string.');
+      return value;
+    })),
     localNames: Object.freeze([...input.localNames]),
-    services: Object.freeze(input.services.map((service) => Object.freeze({ ...service }))),
+    services: Object.freeze(input.services.map((service: unknown) => {
+      assertPlainObject(service, 'service');
+      return Object.freeze({ ...service });
+    })),
     volumes: Object.freeze([...input.volumes]),
     caArtifacts: Object.freeze([...input.caArtifacts]),
     requiredLabels: Object.freeze([...input.requiredLabels]),

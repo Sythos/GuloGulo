@@ -2,17 +2,63 @@
 // SPDX-FileCopyrightText: 2026 Sythos (https://www.sythos.net)
 // Author: Sythos (https://www.sythos.net)
 
-// @ts-nocheck
-
 import net from 'node:net';
 import tls from 'node:tls';
 import { lookup } from 'node:dns/promises';
 import { readFile } from 'node:fs/promises';
 import { pathToFileURL } from 'node:url';
 import { resolve } from 'node:path';
+import type { ImapIdleEvent } from '../src/core/mail/imap-idle.ts';
+
+type ProtocolSocket = net.Socket | tls.TLSSocket;
+interface LineReader { nextLine(): Promise<string> }
+
+function objectValue(value: unknown): Record<string, unknown> {
+  if (value === null || typeof value !== 'object' || Array.isArray(value)) fail('expected a JSON object');
+  return value as Record<string, unknown>;
+}
+function stringValue(value: unknown): string {
+  if (typeof value !== 'string') fail('expected a string');
+  return value;
+}
+function numberValue(value: unknown): number {
+  if (typeof value !== 'number' || !Number.isSafeInteger(value)) fail('expected an integer');
+  return value;
+}
+function booleanValue(value: unknown): boolean {
+  if (typeof value !== 'boolean') fail('expected a boolean');
+  return value;
+}
+function parseManifest(value: unknown) {
+  const record = objectValue(value);
+  const protocols = objectValue(record.protocols);
+  const policy = objectValue(record.policy);
+  if (!Array.isArray(record.ipFamilies)) fail('expected IP families');
+  return {
+    milestone: stringValue(record.milestone),
+    proofType: stringValue(record.proofType),
+    internalNetwork: booleanValue(record.internalNetwork),
+    externalDeliveryEnabled: booleanValue(record.externalDeliveryEnabled),
+    ipFamilies: record.ipFamilies.map(stringValue),
+    protocols: {
+      smtpInbound: { port: numberValue(objectValue(protocols.smtpInbound).port) },
+      smtpSubmission: { port: numberValue(objectValue(protocols.smtpSubmission).port) },
+      imap: { implicitTlsPort: numberValue(objectValue(protocols.imap).implicitTlsPort) },
+    },
+    policy: {
+      maxQueueAttempts: numberValue(policy.maxQueueAttempts),
+      scanFailureMode: stringValue(policy.scanFailureMode),
+      queueRetry: stringValue(policy.queueRetry),
+      queueView: stringValue(policy.queueView),
+      catchAll: booleanValue(policy.catchAll),
+      automaticForwarding: booleanValue(policy.automaticForwarding),
+      trashRetentionDays: numberValue(policy.trashRetentionDays),
+    },
+  };
+}
 
 const root = resolve(process.cwd());
-const manifest = JSON.parse(await readFile(resolve(root, 'release/lp3-local-mail.json'), 'utf8'));
+const manifest = parseManifest(JSON.parse(await readFile(resolve(root, 'release/lp3-local-mail.json'), 'utf8')) as unknown);
 const postfixHost = process.env.LP3_POSTFIX_HOST || 'lp3-postfix';
 const dovecotHost = process.env.LP3_DOVECOT_HOST || 'lp3-dovecot';
 const rspamdHost = process.env.LP3_RSPAMD_HOST || 'lp3-rspamd';
@@ -27,7 +73,7 @@ const timeoutMs = Number(process.env.LP3_PROBE_TIMEOUT_MS || 15_000);
 const imapUser = process.env.LP3_IMAP_USER || 'alice@gulogulo.test';
 const imapPassword = process.env.LP3_IMAP_PASSWORD || 'lp3-synthetic-password';
 const tlsCaFile = process.env.LP3_TLS_CA_FILE || resolve(process.env.LP3_TLS_DIR || '/run/gulogulo-lp3-tls', 'ca.crt');
-let tlsCa;
+let tlsCa: string | undefined;
 try {
   tlsCa = await readFile(tlsCaFile, 'utf8');
 } catch {
@@ -35,24 +81,24 @@ try {
   tlsCa = undefined;
 }
 
-function fail(message) {
+function fail(message: string): never {
   throw new Error(`LP3 mail proof failed: ${message}`);
 }
 
-function assert(condition, message) {
+function assert(condition: unknown, message: string): asserts condition {
   if (!condition) fail(message);
 }
 
-function withTimeout(promise, label, milliseconds = timeoutMs) {
-  let timer;
-  const timeout = new Promise((_, reject) => {
+function withTimeout<T>(promise: Promise<T>, label: string, milliseconds = timeoutMs): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const timeout = new Promise<never>((_, reject) => {
     timer = setTimeout(() => reject(new Error(`${label} timed out after ${milliseconds}ms`)), milliseconds);
   });
   return Promise.race([promise, timeout]).finally(() => clearTimeout(timer));
 }
 
-function connectSocket(host, port, { secure = false } = {}) {
-  return withTimeout(new Promise((resolveSocket, reject) => {
+function connectSocket(host: string, port: number, { secure = false } = {}): Promise<ProtocolSocket> {
+  return withTimeout(new Promise<ProtocolSocket>((resolveSocket, reject) => {
     const socket = secure
       ? tls.connect({ host, port, servername: host, ca: tlsCa, rejectUnauthorized: true })
       : net.createConnection({ host, port });
@@ -70,17 +116,17 @@ function connectSocket(host, port, { secure = false } = {}) {
   }), `connect ${host}:${port}`);
 }
 
-function lineReader(socket) {
+function lineReader(socket: ProtocolSocket): LineReader {
   let buffer = '';
-  const lines = [];
-  let pending = null;
+  const lines: string[] = [];
+  let pending: { resolve: (line: string) => void; reject: (error: Error) => void } | null = null;
   let closed = false;
 
   function flush() {
     while (pending && lines.length > 0) {
       const { resolve: resolveLine } = pending;
       pending = null;
-      resolveLine(lines.shift());
+      resolveLine(lines.shift()!);
     }
   }
 
@@ -105,16 +151,16 @@ function lineReader(socket) {
 
   return {
     nextLine() {
-      if (lines.length > 0) return Promise.resolve(lines.shift());
+      if (lines.length > 0) return Promise.resolve(lines.shift()!);
       if (closed) return Promise.reject(new Error('protocol socket is closed'));
-      return withTimeout(new Promise((resolveLine, reject) => {
+      return withTimeout(new Promise<string>((resolveLine, reject) => {
         pending = { resolve: resolveLine, reject };
       }), 'protocol response');
     },
   };
 }
 
-async function readSmtpResponse(reader) {
+async function readSmtpResponse(reader: LineReader) {
   const lines = [await reader.nextLine()];
   const code = lines[0].slice(0, 3);
   if (/^\d{3}-/u.test(lines[0])) {
@@ -127,22 +173,22 @@ async function readSmtpResponse(reader) {
   return { code, text: lines.join('\n') };
 }
 
-async function smtpCommand(socket, reader, command) {
+async function smtpCommand(socket: ProtocolSocket, reader: LineReader, command: string) {
   socket.write(`${command}\r\n`);
   return readSmtpResponse(reader);
 }
 
-function closeSocket(socket) {
+function closeSocket(socket: ProtocolSocket) {
   if (!socket.destroyed) socket.end();
 }
 
-async function assertDualStack(host, label) {
+async function assertDualStack(host: string, label: string) {
   const addresses = await lookup(host, { all: true });
   assert(addresses.some(({ family }) => family === 4), `${label} has no IPv4 DNS address`);
   assert(addresses.some(({ family }) => family === 6), `${label} has no IPv6 DNS address`);
 }
 
-async function probeSmtpRelayPolicy(port, label) {
+async function probeSmtpRelayPolicy(port: number, label: string) {
   const socket = await connectSocket(postfixHost, port);
   const reader = lineReader(socket);
   const greeting = await readSmtpResponse(reader);
@@ -177,9 +223,9 @@ async function probeInboundRecipients() {
   closeSocket(socket);
 }
 
-async function imapCommand(socket, reader, tag, command) {
+async function imapCommand(socket: ProtocolSocket, reader: LineReader, tag: string, command: string) {
   socket.write(`${tag} ${command}\r\n`);
-  const lines = [];
+  const lines: string[] = [];
   while (true) {
     const line = await reader.nextLine();
     lines.push(line);
@@ -187,11 +233,11 @@ async function imapCommand(socket, reader, tag, command) {
   }
 }
 
-function imapCommandSucceeded(lines, tag) {
+function imapCommandSucceeded(lines: string[], tag: string) {
   return new RegExp(`^${tag} OK\\b`, 'iu').test(lines.at(-1) || '');
 }
 
-function imapQuotedString(value) {
+function imapQuotedString(value: string) {
   assert(!/[\r\n]/u.test(value), 'IMAP proof credentials contain a line break');
   return `"${value.replaceAll('\\', '\\\\').replaceAll('"', '\\"')}"`;
 }
@@ -237,7 +283,7 @@ async function probeLmtp() {
 async function probeClamav() {
   const socket = await connectSocket(clamavHost, clamavPort);
   socket.write('zPING\0');
-  const pong = await withTimeout(new Promise((resolveResponse, reject) => {
+  const pong = await withTimeout(new Promise<string>((resolveResponse, reject) => {
     socket.once('data', (chunk) => resolveResponse(chunk.toString('utf8')));
     socket.once('error', reject);
   }), 'ClamAV zPING');
@@ -245,7 +291,7 @@ async function probeClamav() {
   closeSocket(socket);
   const versionSocket = await connectSocket(clamavHost, clamavPort);
   versionSocket.write('VERSIONCOMMAND\0');
-  const version = await withTimeout(new Promise((resolveVersion, reject) => {
+  const version = await withTimeout(new Promise<string>((resolveVersion, reject) => {
     versionSocket.once('data', (chunk) => resolveVersion(chunk.toString('utf8')));
     versionSocket.once('error', reject);
   }), 'ClamAV VERSIONCOMMAND');
@@ -256,20 +302,21 @@ async function probeClamav() {
 async function probeRspamd() {
   const response = await fetch(`http://${rspamdHost}:${rspamdPort}/health`, { signal: AbortSignal.timeout(timeoutMs) });
   assert(response.status === 200, `Rspamd health returned an unusable status: ${response.status}`);
-  const health = await response.json();
+  const health = objectValue(await response.json());
   assert(health.signatureStatus === 'ready' && typeof health.signatureGeneration === 'string' && typeof health.signatureDigest === 'string', 'Rspamd did not expose ready signature metadata');
 }
 
 async function probeTypedMailContracts() {
-  const module = async (name) => import(pathToFileURL(resolve(root, `dist/server/src/core/mail/${name}.js`)).href);
+  // Load compiled modules to verify the release artifact, using the source module types.
+  const module = async (name: string): Promise<unknown> => import(pathToFileURL(resolve(root, `dist/server/src/core/mail/${name}.js`)).href);
   const [{ createMailPolicy }, { createRspamdScanner, createClamAvScanner }, { createMailQueue }, { createImapIdleBroker }] = await Promise.all([
-    module('mail-policy'),
-    module('mail-scanners'),
-    module('mail-queue'),
-    module('imap-idle'),
+    module('mail-policy') as Promise<typeof import('../src/core/mail/mail-policy.ts')>,
+    module('mail-scanners') as Promise<typeof import('../src/core/mail/mail-scanners.ts')>,
+    module('mail-queue') as Promise<typeof import('../src/core/mail/mail-queue.ts')>,
+    module('imap-idle') as Promise<typeof import('../src/core/mail/imap-idle.ts')>,
   ]);
-  const userContext = Object.freeze({ tenantId: 'gulogulo', domain: 'gulogulo.test', actorId: 'alice', role: 'user' });
-  const masterContext = Object.freeze({ tenantId: 'gulogulo', domain: 'gulogulo.test', actorId: 'master', role: 'tenant_master' });
+  const userContext = Object.freeze({ tenantId: 'gulogulo', domain: 'gulogulo.test', actorId: 'alice', role: 'user' as const });
+  const masterContext = Object.freeze({ tenantId: 'gulogulo', domain: 'gulogulo.test', actorId: 'master', role: 'tenant_master' as const });
   const users = [
     { userId: 'alice', address: 'alice@gulogulo.test' },
     { userId: 'bob', address: 'bob@gulogulo.test' },
@@ -284,13 +331,13 @@ async function probeTypedMailContracts() {
     policy.authorizeSubmission(userContext, { authenticated: false, authenticatedUserId: 'alice', sender: 'alice@gulogulo.test', recipients: ['outside@example.net'], users, aliases });
     fail('typed policy accepted unauthenticated submission');
   } catch (error) {
-    assert(error.code === 'OPEN_RELAY_DISABLED', 'typed open-relay rejection used an unexpected code');
+    assert(error instanceof Error && 'code' in error && error.code === 'OPEN_RELAY_DISABLED', 'typed open-relay rejection used an unexpected code');
   }
   try {
     policy.validateSieve('redirect "outside@example.net";');
     fail('typed Sieve policy accepted redirect');
   } catch (error) {
-    assert(error.code === 'FORWARDING_DISABLED', 'typed forwarding rejection used an unexpected code');
+    assert(error instanceof Error && 'code' in error && error.code === 'FORWARDING_DISABLED', 'typed forwarding rejection used an unexpected code');
   }
   const rspamdUnavailable = await createRspamdScanner().scan({});
   const clamavUnavailable = await createClamAvScanner().scan({});
@@ -305,7 +352,7 @@ async function probeTypedMailContracts() {
   const queueView = queue.view(masterContext);
   assert(queueView[0]?.state === 'bounced' && !Object.hasOwn(queueView[0], 'messageRef'), 'typed retry/bounce or metadata-only queue contract failed');
   const idle = createImapIdleBroker({ clock: () => new Date('2026-08-24T00:00:00.000Z') });
-  const events = [];
+  const events: ImapIdleEvent[] = [];
   const subscription = idle.subscribe(userContext, { userId: 'alice', mailbox: 'INBOX', onEvent: (event) => events.push(event) });
   idle.notify(masterContext, { userId: 'alice', mailbox: 'INBOX', uidNext: 2 });
   subscription.close();

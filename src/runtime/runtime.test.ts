@@ -23,14 +23,31 @@ import { createFixtureLoginAuthenticator, createRuntimeServer, startServer, stop
 import './wiring.test.ts';
 
 type TestRuntime = ReturnType<typeof createRuntimeServer>;
-interface JsonResponse { statusCode: number | undefined; headers: IncomingHttpHeaders; body: any }
+interface JsonResponse { statusCode: number | undefined; headers: IncomingHttpHeaders; body: Record<string, unknown> }
 interface BinaryResponse { statusCode: number | undefined; headers: IncomingHttpHeaders; body: Buffer }
+
+function jsonObject(value: unknown): Record<string, unknown> {
+  assert.ok(value !== null && typeof value === 'object' && !Array.isArray(value), 'Expected a JSON object');
+  return value as Record<string, unknown>;
+}
+
+function parseResponseObject(text: string): Record<string, unknown> {
+  const value: unknown = text.length > 0 ? JSON.parse(text) : null;
+  return jsonObject(value);
+}
+
+function csrfToken(response: JsonResponse): string {
+  const value = response.body.csrfToken;
+  assert.equal(typeof value, 'string');
+  if (typeof value !== 'string') throw new Error('Expected a CSRF token');
+  return value;
+}
 
 function createTestLogger() {
   const output = new PassThrough();
   const errorOutput = new PassThrough();
   return {
-    logger: createLogger({ output: output as unknown as typeof process.stdout, errorOutput: errorOutput as unknown as typeof process.stderr }),
+    logger: createLogger({ output, errorOutput }),
     output,
     errorOutput,
   };
@@ -87,20 +104,25 @@ function requestJson(runtime: TestRuntime, path: string, { method = 'GET', heade
       let responseBody = '';
       response.setEncoding('utf8');
       response.on('data', (chunk) => { responseBody += chunk; });
-      response.on('end', () => resolve({
-        statusCode: response.statusCode,
-        headers: response.headers,
-        body: responseBody.length > 0 ? JSON.parse(responseBody) : null,
-      }));
+      response.on('end', () => {
+        try {
+          resolve({ statusCode: response.statusCode, headers: response.headers, body: parseResponseObject(responseBody) });
+        } catch (error) {
+          reject(error instanceof Error ? error : new Error('Invalid JSON response', { cause: error }));
+        }
+      });
     });
     requestHandle.on('error', reject);
     requestHandle.end(payload);
   });
 }
 
-function getJson(runtime: TestRuntime, path: string, method = 'GET'): Promise<JsonResponse> {
+interface EmptyJsonResponse { statusCode: number | undefined; headers: IncomingHttpHeaders; body: null }
+function getJson(runtime: TestRuntime, path: string, method: 'HEAD'): Promise<EmptyJsonResponse>;
+function getJson(runtime: TestRuntime, path: string, method?: 'GET' | 'POST'): Promise<JsonResponse>;
+function getJson(runtime: TestRuntime, path: string, method = 'GET'): Promise<JsonResponse | EmptyJsonResponse> {
   const address = serverAddress(runtime);
-  return new Promise<JsonResponse>((resolve, reject) => {
+  return new Promise<JsonResponse | EmptyJsonResponse>((resolve, reject) => {
     const requestHandle = request(
       {
         host: address.address,
@@ -115,11 +137,15 @@ function getJson(runtime: TestRuntime, path: string, method = 'GET'): Promise<Js
           body += chunk;
         });
         response.on('end', () => {
-          resolve({
-            statusCode: response.statusCode,
-            headers: response.headers,
-            body: body.length > 0 ? JSON.parse(body) : null,
-          });
+          try {
+            resolve({
+              statusCode: response.statusCode,
+              headers: response.headers,
+              body: method === 'HEAD' && body.length === 0 ? null : parseResponseObject(body),
+            });
+          } catch (error) {
+            reject(error instanceof Error ? error : new Error('Invalid JSON response', { cause: error }));
+          }
         });
       },
     );
@@ -161,13 +187,13 @@ test('runtime exposes liveness and readiness endpoints without secrets', async (
     const health = await getJson(runtime, '/health/live');
     assert.equal(health.statusCode, 200);
     assert.equal(health.body.status, 'ok');
-    assert.equal(health.body.checks.process, 'ok');
+    assert.equal(jsonObject(health.body.checks).process, 'ok');
     assert.equal(health.body.service, 'gulogulo-test');
 
     const readiness = await getJson(runtime, '/health/ready');
     assert.equal(readiness.statusCode, 200);
     assert.equal(readiness.body.status, 'ready');
-    assert.equal(readiness.body.checks.configuration, 'ok');
+    assert.equal(jsonObject(readiness.body.checks).configuration, 'ok');
     assert.equal(Object.hasOwn(readiness.body, 'password'), false);
     assert.equal(Object.hasOwn(readiness.body, 'token'), false);
   } finally {
@@ -241,14 +267,14 @@ test('session API fails closed, returns generic login errors, and rate limits fa
 
     const protectedResponse = await requestJson(runtime, '/api/mail/messages');
     assert.equal(protectedResponse.statusCode, 401);
-    assert.equal(protectedResponse.body.error.code, 'AUTHENTICATION_REQUIRED');
+    assert.equal(jsonObject(protectedResponse.body.error).code, 'AUTHENTICATION_REQUIRED');
 
     for (let attempt = 1; attempt <= 5; attempt += 1) {
       const failed = await requestJson(runtime, '/api/session/login', {
         method: 'POST', body: { email: 'unknown@example.test', password: 'wrong', rememberMe: false },
       });
       assert.equal(failed.statusCode, attempt < 5 ? 401 : 429);
-      assert.equal(failed.body.error.message, 'Unable to sign in.');
+      assert.equal(jsonObject(failed.body.error).message, 'Unable to sign in.');
       assert.equal(JSON.stringify(failed.body).includes('unknown@example.test'), false);
       assert.equal(JSON.stringify(failed.body).includes('wrong'), false);
     }
@@ -273,9 +299,9 @@ test('authenticated API is tenant/user scoped and logout requires a valid CSRF t
       method: 'POST', body: { email: 'alice@acme.example', password: 'test-only-password', rememberMe: false },
     });
     assert.equal(login.statusCode, 200);
-    assert.equal(login.body.user.tenantId, 'acme');
-    assert.equal(login.body.user.userId, 'alice');
-    assert.equal(Object.hasOwn(login.body.user, 'sessionId'), false);
+    assert.equal(jsonObject(login.body.user).tenantId, 'acme');
+    assert.equal(jsonObject(login.body.user).userId, 'alice');
+    assert.equal(Object.hasOwn(jsonObject(login.body.user), 'sessionId'), false);
     assert.equal(Object.hasOwn(login.body, 'password'), false);
     const cookie = firstSetCookie(login.headers).split(';', 1)[0];
 
@@ -291,7 +317,7 @@ test('authenticated API is tenant/user scoped and logout requires a valid CSRF t
     assert.equal(stillAuthenticated.body.authenticated, true);
 
     const logout = await requestJson(runtime, '/api/session/logout', {
-      method: 'POST', headers: { cookie, 'x-csrf-token': login.body.csrfToken },
+      method: 'POST', headers: { cookie, 'x-csrf-token': csrfToken(login) },
     });
     assert.equal(logout.statusCode, 200);
     assert.equal(logout.body.authenticated, false);
@@ -333,7 +359,7 @@ test('the IMAP IDLE capability probe is unauthenticated-fail-closed, then cached
     assert.equal(second.body.imapIdleAvailable, false);
 
     const logout = await requestJson(runtime, '/api/session/logout', {
-      method: 'POST', headers: { cookie, 'x-csrf-token': login.body.csrfToken },
+      method: 'POST', headers: { cookie, 'x-csrf-token': csrfToken(login) },
     });
     assert.equal(logout.statusCode, 200);
     assert.equal(runtime.imapIdleAvailability.size, 0);
@@ -410,9 +436,9 @@ test('login wiring: standalone LDAP identity client actually authenticates POST 
       method: 'POST', body: { email: 'alice@acme.test', password: 'good-password' },
     });
     assert.equal(login.statusCode, 200);
-    assert.equal(login.body.user.tenantId, 'acme.test');
-    assert.equal(login.body.user.domain, 'acme.test');
-    assert.equal(login.body.user.userId, 'alice');
+    assert.equal(jsonObject(login.body.user).tenantId, 'acme.test');
+    assert.equal(jsonObject(login.body.user).domain, 'acme.test');
+    assert.equal(jsonObject(login.body.user).userId, 'alice');
     // Proves the real LDAP transport was actually used, not a stub.
     assert.ok(FakeLdapTransport.instances.length > 0);
     assert.ok(FakeLdapTransport.instances.some((instance) => instance.bound.some((entry) => entry.dn === 'uid=alice,ou=users,dc=acme,dc=test')));
@@ -464,8 +490,8 @@ test('login wiring: standalone DB-backed identity client actually authenticates 
       method: 'POST', body: { email: 'bob@acme.test', password: 'db-backed-secret' },
     });
     assert.equal(login.statusCode, 200);
-    assert.equal(login.body.user.tenantId, 'acme.test');
-    assert.equal(login.body.user.userId, 'u-bob');
+    assert.equal(jsonObject(login.body.user).tenantId, 'acme.test');
+    assert.equal(jsonObject(login.body.user).userId, 'u-bob');
   } finally {
     await stopServer(runtime);
   }
@@ -492,7 +518,7 @@ test('login wiring: cPanel target authenticates through the real, fail-closed cP
     // real cPanel adapter/identity client and was rejected there, not
     // through the old fixed "always reject" stub.
     assert.equal(login.statusCode, 401);
-    assert.equal(login.body.error.code, 'SIGN_IN_FAILED');
+    assert.equal(jsonObject(login.body.error).code, 'SIGN_IN_FAILED');
   } finally {
     await stopServer(runtime);
   }

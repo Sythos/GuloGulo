@@ -2,7 +2,19 @@
 // SPDX-FileCopyrightText: 2026 Sythos (https://www.sythos.net)
 // Author: Sythos (https://www.sythos.net)
 
-// @ts-nocheck
+interface LogStream { write(value: string): unknown }
+export interface LoggerOptions {
+  serviceName?: string; environment?: string; version?: string; build?: string;
+  output?: LogStream; errorOutput?: LogStream; clock?: () => Date;
+  context?: Record<string, unknown>;
+}
+export interface Logger {
+  info(event: string, details?: unknown): void;
+  warn(event: string, details?: unknown): void;
+  error(event: string, details?: unknown): void;
+  child(context?: Record<string, unknown>): Logger;
+  withContext(context?: Record<string, unknown>): Logger;
+}
 
 const REDACTED = '[REDACTED]';
 const SENSITIVE_KEY_PATTERN =
@@ -23,11 +35,11 @@ const CONTEXT_ALIASES = Object.freeze({
   correlationId: 'correlation_id',
 });
 
-function isSensitiveKey(key) {
+function isSensitiveKey(key: string) {
   return typeof key === 'string' && SENSITIVE_KEY_PATTERN.test(key);
 }
 
-function redactText(value) {
+function redactText(value: string) {
   return value.replace(INLINE_SECRET_PATTERN, REDACTED);
 }
 
@@ -39,7 +51,7 @@ function redactText(value) {
  * escape through the structured log stream. Callers must still avoid passing
  * complete request bodies or message objects to the logger.
  */
-export function sanitizeLogValue(value, seen = new WeakSet(), key = '') {
+export function sanitizeLogValue(value: unknown, seen = new WeakSet<object>(), key = ''): unknown {
   if (isSensitiveKey(key)) {
     return REDACTED;
   }
@@ -93,22 +105,22 @@ export function sanitizeLogValue(value, seen = new WeakSet(), key = '') {
   return sanitized;
 }
 
-function normalizeContext(context) {
+function normalizeContext(context: unknown): Record<string, unknown> {
   const sanitized = sanitizeLogValue(context);
   if (sanitized === null || typeof sanitized !== 'object' || Array.isArray(sanitized)) {
     return {};
   }
 
-  const normalized = {};
+  const normalized: Record<string, unknown> = {};
   for (const [key, value] of Object.entries(sanitized)) {
-    const normalizedKey = CONTEXT_ALIASES[key] ?? key;
+    const normalizedKey = key === 'requestId' ? CONTEXT_ALIASES.requestId : key === 'correlationId' ? CONTEXT_ALIASES.correlationId : key;
     normalized[normalizedKey] = value;
   }
 
   return normalized;
 }
 
-function writeRecord(stream, record) {
+function writeRecord(stream: LogStream, record: unknown) {
   stream.write(JSON.stringify(record) + '\n');
 }
 
@@ -129,7 +141,7 @@ export function createLogger({
   errorOutput = process.stderr,
   clock = () => new Date(),
   context = {},
-} = {}) {
+}: LoggerOptions = {}): Logger {
   const loggerContext = normalizeContext(context);
   const loggerOptions = {
     serviceName,
@@ -141,7 +153,7 @@ export function createLogger({
     clock,
   };
 
-  function log(level, event, details = {}, stream = output) {
+  function log(level: string, event: string, details: unknown = {}, stream = output) {
     const sanitizedDetails = sanitizeLogValue(details);
     const rawEventDetails =
       sanitizedDetails !== null &&
@@ -175,7 +187,7 @@ export function createLogger({
     writeRecord(stream, record);
   }
 
-  const logger = {
+  const logger: Logger = {
     info(event, details) {
       log('info', event, details);
     },

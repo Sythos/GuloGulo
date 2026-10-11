@@ -22,11 +22,9 @@ import type { MailQueueLike } from './smtp-queue-adapter.ts';
 const context = createTenantContext({ tenantId: 'acme', domain: 'acme.example', actorId: 'master', role: 'tenant_master' });
 
 /**
- * `mail-queue.ts` is a `@ts-nocheck` transitional file (see its header) with
- * no explicit parameter types, so TypeScript's cross-file declaration
- * inference for `enqueue()`/`view()` silently drops the untyped `sender`/
- * `recipients` bindings instead of widening them. Rather than depend on that
- * inference, this test declares the exact surface it actually calls.
+ * Keep the test's queue dependency explicit. The public queue implementation
+ * must satisfy both the SMTP adapter contract and the metadata view used by
+ * retry assertions. Strict compilation checks this assignment.
  */
 interface TestMailQueue extends MailQueueLike {
   readonly enqueue: (context: unknown, options: { readonly sender: string; readonly recipients: readonly string[]; readonly sizeBytes?: number }) => { readonly queueId: string };

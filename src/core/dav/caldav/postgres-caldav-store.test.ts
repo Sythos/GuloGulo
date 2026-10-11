@@ -3,6 +3,7 @@
 // Author: Sythos (https://www.sythos.net)
 
 import assert from 'node:assert/strict';
+import { CalDavError } from './caldav-contract.ts';
 import test from 'node:test';
 
 import { createPostgresCalDavStore } from './postgres-caldav-store.ts';
@@ -209,14 +210,14 @@ test('createCalendarCollection persists a row and enforces tenant/owner isolatio
   assert.equal(collection.href, '/dav/calendars/acme/alice/personal/');
   await assert.rejects(
     () => store.createCalendarCollection({ ...alice, userId: 'bob' }, { collectionId: 'other', ownerUserId: 'alice' }),
-    (error: any) => error.code === 'ACL_DENIED',
+    (error: unknown) => error instanceof CalDavError && error.code === 'ACL_DENIED',
   );
   await assert.rejects(
     () => store.createCalendarCollection(alice, { collectionId: 'personal' }),
-    (error: any) => error.code === 'CALENDAR_EXISTS',
+    (error: unknown) => error instanceof CalDavError && error.code === 'CALENDAR_EXISTS',
   );
   const listed = await store.listCalendarCollections(alice);
-  assert.deepEqual(listed.map((c: any) => c.calendarId), ['alice/personal']);
+  assert.deepEqual(listed.map((c) => c.calendarId), ['alice/personal']);
   assert.deepEqual(await store.listCalendarCollections(bob), []);
 });
 
@@ -241,22 +242,22 @@ test('conditional create/update/delete enforce ETag preconditions', async () => 
   const created = await store.createCalendarObject(alice, { calendarId: 'alice/personal', objectId: 'event-1.ics', ical: event(), ifNoneMatch: '*' });
   await assert.rejects(
     () => store.createCalendarObject(alice, { calendarId: 'alice/personal', objectId: 'event-1.ics', ical: event(), ifNoneMatch: '*' }),
-    (error: any) => error.code === 'PRECONDITION_FAILED' && error.status === 412,
+    (error: unknown) => error instanceof CalDavError && error.code === 'PRECONDITION_FAILED' && error.status === 412,
   );
   await assert.rejects(
     () => store.updateCalendarObject(alice, { calendarId: 'alice/personal', objectId: 'event-1.ics', ical: event({ summary: 'Updated' }) }),
-    (error: any) => error.code === 'PRECONDITION_REQUIRED' && error.status === 428,
+    (error: unknown) => error instanceof CalDavError && error.code === 'PRECONDITION_REQUIRED' && error.status === 428,
   );
   await assert.rejects(
     () => store.updateCalendarObject(alice, { calendarId: 'alice/personal', objectId: 'event-1.ics', ical: event({ summary: 'Updated' }), ifMatch: '"stale"' }),
-    (error: any) => error.code === 'PRECONDITION_FAILED' && error.status === 412,
+    (error: unknown) => error instanceof CalDavError && error.code === 'PRECONDITION_FAILED' && error.status === 412,
   );
   const updated = await store.updateCalendarObject(alice, { calendarId: 'alice/personal', objectId: 'event-1.ics', ical: event({ summary: 'Updated' }), ifMatch: created.etag });
   assert.notEqual(updated.etag, created.etag);
   assert.equal(updated.metadata.summary, 'Updated');
   await assert.rejects(
     () => store.deleteCalendarObject(alice, { calendarId: 'alice/personal', objectId: 'event-1.ics', ifMatch: created.etag }),
-    (error: any) => error.code === 'PRECONDITION_FAILED' && error.status === 412,
+    (error: unknown) => error instanceof CalDavError && error.code === 'PRECONDITION_FAILED' && error.status === 412,
   );
   const deleted = await store.deleteCalendarObject(alice, { calendarId: 'alice/personal', objectId: 'event-1.ics', ifMatch: updated.etag });
   assert.equal(deleted.deleted, true);
@@ -270,7 +271,7 @@ test('sync-token/changelog exposes deterministic changes and deletion tombstones
   assert.deepEqual(empty.objects, []);
   const created = await store.createCalendarObject(alice, { calendarId: 'alice/personal', objectId: 'event-1.ics', ical: event(), ifNoneMatch: '*' });
   const afterCreate = await store.listCalendarObjects(alice, { calendarId: 'alice/personal', syncToken: empty.syncToken });
-  assert.deepEqual(afterCreate.objects.map((o: any) => o.objectId), ['event-1.ics']);
+  assert.deepEqual(afterCreate.objects.map((o) => o.objectId), ['event-1.ics']);
   const afterDelete1 = await store.deleteCalendarObject(alice, { calendarId: 'alice/personal', objectId: 'event-1.ics', ifMatch: created.etag });
   const deletionSync = await store.listCalendarObjects(alice, { calendarId: 'alice/personal', syncToken: afterCreate.syncToken });
   assert.deepEqual(deletionSync.objects, []);
@@ -284,7 +285,7 @@ test('read delegation cannot mutate; write delegation can; ACL is owner-only to 
   await store.createCalendarCollection(alice, { collectionId: 'personal' });
   await assert.rejects(
     () => store.setCalendarAcl(bob, { calendarId: 'alice/personal', delegateUserId: 'carol', permissions: ['read'] }),
-    (error: any) => error.code === 'ACL_DENIED',
+    (error: unknown) => error instanceof CalDavError && error.code === 'ACL_DENIED',
   );
   const delegated = await store.setCalendarAcl(alice, { calendarId: 'alice/personal', delegateUserId: 'bob', permissions: ['write'] });
   assert.deepEqual(delegated.acl, [{ delegateUserId: 'bob', permissions: ['read', 'write'] }]);
@@ -294,7 +295,7 @@ test('read delegation cannot mutate; write delegation can; ACL is owner-only to 
   await store.revokeCalendarAcl(alice, { calendarId: 'alice/personal' });
   await assert.rejects(
     () => store.getCalendarCollection(bob, 'alice/personal'),
-    (error: any) => error.code === 'ACL_DENIED',
+    (error: unknown) => error instanceof CalDavError && error.code === 'ACL_DENIED',
   );
 });
 
@@ -305,14 +306,14 @@ test('collection deletion is conditional and never silently drops objects', asyn
   await store.createCalendarObject(alice, { calendarId: 'alice/personal', objectId: 'event-1.ics', ical: event(), ifNoneMatch: '*' });
   await assert.rejects(
     () => store.deleteCalendarCollection(alice, { calendarId: 'alice/personal' }),
-    (error: any) => error.code === 'CALENDAR_NOT_EMPTY',
+    (error: unknown) => error instanceof CalDavError && error.code === 'CALENDAR_NOT_EMPTY',
   );
   const { store: emptyStore } = makeStore();
   if (!emptyStore.enabled) throw new Error('store unexpectedly disabled');
   await emptyStore.createCalendarCollection(alice, { collectionId: 'personal' });
   await assert.rejects(
     () => emptyStore.deleteCalendarCollection(alice, { calendarId: 'alice/personal', ifMatch: '"stale"' }),
-    (error: any) => error.code === 'PRECONDITION_FAILED',
+    (error: unknown) => error instanceof CalDavError && error.code === 'PRECONDITION_FAILED',
   );
   const result = await emptyStore.deleteCalendarCollection(alice, { calendarId: 'alice/personal', ifMatch: '*' });
   assert.equal(result.deleted, true);
